@@ -4,10 +4,10 @@
 <br>
 
 <p align="center">
-  <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Alfredsson418/observe?style=for-the-badge">
-  <img alt="GitHub top language" src="https://img.shields.io/github/languages/top/Alfredsson418/observe?style=for-the-badge&color=mediumaquamarine">
-  <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/Alfredsson418/observe?style=for-the-badge&color=darkorange">
-  <img alt="GitHub code size in bytes" src="https://img.shields.io/github/languages/code-size/Alfredsson418/observe?style=for-the-badge&color=slateblue">
+  <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Alfredsson418/archangel?style=for-the-badge">
+  <img alt="GitHub top language" src="https://img.shields.io/github/languages/top/Alfredsson418/archangel?style=for-the-badge&color=mediumaquamarine">
+  <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/Alfredsson418/archangel?style=for-the-badge&color=darkorange">
+  <img alt="GitHub code size in bytes" src="https://img.shields.io/github/languages/code-size/Alfredsson418/archangel?style=for-the-badge&color=slateblue">
   <!-- https://shields.io/badges/ -->
 </p>
 
