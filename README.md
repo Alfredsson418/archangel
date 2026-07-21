@@ -19,12 +19,21 @@ The goal of this project is to build a open source firewall that can rival the U
 
 
 
-# Features
+# Software Features
 - [ ] Basic firewall routing
 - [ ] Basic DNS Resolver
 - [ ] Basic DHCP Server
-- [ ] Network Topology
+- [ ] Device discovery
 - [ ] Deep Packet Inspection
 - [ ] Device Enrollment (requires additional projects, like raspberry PI can act as a AP)
 - [ ] Web based frontend
-- More to come
+- [ ] Port discovery
+
+And more...
+
+## Dashboard Features
+- [ ] Network Topology
+- [ ] Iteractive firewall management
+- [ ] Visual packet flow
+
+And more...

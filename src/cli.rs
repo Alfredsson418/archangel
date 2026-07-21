@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use crate::config::Params;
+use crate::params::Params;
 
 #[derive(Parser)]
 #[command(name = "archangel", about = "Archangel backend")]
