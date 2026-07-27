@@ -2,6 +2,7 @@
 
 use crate::error::AppResult;
 use serde::Serialize;
+use sysinfo;
 
 #[derive(Debug, Serialize)]
 pub struct SystemStats {

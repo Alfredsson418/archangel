@@ -13,10 +13,25 @@
 
 <br>
 
-<h3 align="center">About</h3>
+# About
 
 The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience.
 
+
+# Usage
+Project is currently being developed on rust version 1.97.1
+
+## Build
+```bash
+cargo build
+```
+
+## Usage
+The program requires special permissions to run, so either run it as root (not recommended) or add the cap_net_admin+ep permission to the executable
+```bash
+sudo setcap cap_net_admin+ep target/debug/archangel   # needed to read/modify interfaces
+./target/debug/archangel
+```
 
 
 # Software Features
