@@ -1,7 +1,7 @@
 //! Handlers for /api/dhcp/* - leases + scope config.
 
-use crate::error::AppResult;
 use crate::dhcp::leases::{self, Lease};
+use crate::error::AppResult;
 use axum::Json;
 
 pub async fn list_leases() -> AppResult<Json<Vec<Lease>>> {

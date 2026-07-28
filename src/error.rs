@@ -4,9 +4,9 @@
 //! API layer can convert any failure into a consistent HTTP response
 //! without every module inventing its own error type.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]

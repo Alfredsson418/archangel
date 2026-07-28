@@ -1,7 +1,7 @@
 //! Handlers for /api/dns/* - local records + resolver settings.
 
-use crate::error::AppResult;
 use crate::dns::records::{self, DnsRecord};
+use crate::error::AppResult;
 use axum::Json;
 
 pub async fn list_records() -> AppResult<Json<Vec<DnsRecord>>> {

@@ -1,7 +1,7 @@
 //! Top-level config schema - the full "desired state" of the box.
 
 use crate::dhcp::DhcpScope;
-use crate::dns::{records::DnsRecord, DnsSettings};
+use crate::dns::{DnsSettings, records::DnsRecord};
 use crate::firewall::FirewallRule;
 use serde::{Deserialize, Serialize};
 

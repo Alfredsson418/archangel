@@ -4,8 +4,8 @@
 use crate::api::AppState;
 use crate::error::AppResult;
 use crate::net::interfaces;
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use serde::Deserialize;
 
 pub async fn list(State(state): State<AppState>) -> AppResult<Json<Vec<interfaces::Interface>>> {

@@ -1,22 +1,23 @@
 mod api;
 mod auth;
+mod cli;
 mod config;
 mod dhcp;
 mod dns;
 mod error;
 mod firewall;
 mod net;
+mod output;
+mod params;
 mod process;
 mod stats;
 mod vpn;
-mod cli;
-mod params;
-mod output;
 
 use api::AppState;
-use net::NetManager;
-use std::sync::Arc;
 use clap::Parser;
+use net::NetManager;
+use stats::system::SystemMonitor;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Opens the netlink connection - see net/mod.rs. This is the only
     // thing needed to get the `/api/interfaces` endpoint working.
     let net = Arc::new(NetManager::new()?);
-    let state = AppState { net };
+    let sysmon = Arc::new(SystemMonitor::new());
+    let state = AppState { net, sysmon };
 
     let app = api::routes::build_router(state);
 

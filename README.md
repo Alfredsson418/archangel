@@ -15,7 +15,7 @@
 
 # About
 
-The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience.
+The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience. This program is built as a backend for a seperate frondend project, so this program only exposes endpoints that other programs can get and post to (see [routes](docs/endpoints.md) for possible endpoints). This project is just in its infancy and I do this on my freetime so dont expect something good, just doing this for the fun of it.  
 
 
 # Usage

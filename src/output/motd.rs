@@ -10,5 +10,4 @@ pub fn motd() -> &'static str {
                                         ▀▀▀
                 by Oskar Alfredsson
     "
-
 }

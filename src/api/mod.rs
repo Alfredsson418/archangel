@@ -8,9 +8,11 @@ pub mod dns;
 pub mod firewall;
 pub mod interfaces;
 pub mod routes;
+pub mod stats;
 pub mod ws;
 
 use crate::net::NetManager;
+use crate::stats::system::SystemMonitor;
 use std::sync::Arc;
 
 /// Shared state injected into every handler via Axum's `State` extractor.
@@ -18,4 +20,5 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub net: Arc<NetManager>,
+    pub sysmon: Arc<SystemMonitor>,
 }

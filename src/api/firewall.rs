@@ -1,9 +1,9 @@
 //! Handlers for /api/firewall/* - delegate to the `firewall` domain module.
 
 use crate::error::AppResult;
-use crate::firewall::{rules, FirewallRule};
-use axum::extract::Path;
+use crate::firewall::{FirewallRule, rules};
 use axum::Json;
+use axum::extract::Path;
 
 pub async fn list() -> AppResult<Json<Vec<FirewallRule>>> {
     Ok(Json(rules::list().await?))
