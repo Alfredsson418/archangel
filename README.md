@@ -1,4 +1,6 @@
-<h1 align="center">Archangel</h1>
+<p align="center">
+    <img src="docs/archangel_poster.png" alt="Archangel">
+</p>
 
 <h3 align="center">Project is written in C++.</h3>
 <br>
