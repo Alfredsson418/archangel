@@ -1,6 +1,6 @@
 <h1 align="center">Archangel</h1>
 
-<h3 align="center">Project is written in Rust.</h3>
+<h3 align="center">Project is written in C++.</h3>
 <br>
 
 <p align="center">
@@ -15,24 +15,7 @@
 
 # About
 
-The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience. This program is built as a backend for a seperate frondend project, so this program only exposes endpoints that other programs can get and post to (see [routes](docs/endpoints.md) for possible endpoints). This project is just in its infancy and I do this on my freetime so dont expect something good, just doing this for the fun of it.  
-
-
-# Usage
-Project is currently being developed on rust version 1.97.1
-
-## Build
-```bash
-cargo build
-```
-
-## Usage
-The program requires special permissions to run, so either run it as root (not recommended) or add the cap_net_admin+ep permission to the executable
-```bash
-sudo setcap cap_net_admin+ep target/debug/archangel   # needed to read/modify interfaces
-./target/debug/archangel
-```
-
+The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience. This program is built as a backend for a seperate frontend project, so this program only exposes endpoints that other programs can get and post to (see [routes](docs/endpoints.md) for possible endpoints). This project is just in its infancy and I do this on my freetime so dont expect something good, just doing this for the fun of it.  
 
 # Software Features
 - [ ] Basic firewall routing
