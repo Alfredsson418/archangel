@@ -2,7 +2,6 @@
     <img src="docs/archangel_poster.png" alt="Archangel">
 </p>
 
-<h3 align="center">Project is written in C++.</h3>
 <br>
 
 <p align="center">
@@ -51,22 +50,38 @@ Logical communications between segmented networks can only be done between the a
 The role of the SG is to have a logical seperation between Edge Gateways, by having different VPN connections between each EG (Network Zone), and route traffic between them based on Access Control. This makes it so that EG could share a physical connection, but not nessesarly be aware of each other.
 ![SG](docs/SG.png)
 
-# Software Features
-- [ ] Basic firewall routing
-- [ ] Basic DNS Resolver
-- [ ] Basic DHCP Server
-- [ ] Device discovery
-- [ ] Deep Packet Inspection
-- [ ] Device Enrollment (requires additional projects, like raspberry PI can act as a AP)
-- [ ] Web based frontend
-- [ ] Port discovery
+# Roadmap
+## Step 1: Building the Foundation
+- [ ] Basic firewall manipulation (libnfttables) ONGOING
+- [ ] Basic frontend
+- [X] Add simple CLI arg input (CLI11)
+- [ ] Add simple endpoints (cpp-httplib) ONGOING
+- [ ] Add Security.md
+- [ ] Add Logging module ONGOING
+- [ ] Add Error module
 
-And more...
+## Step 2: Going places 
+- [ ] Add firewall abstraction layer (make it possible to have other firewall backends) (create one virtual Firewall class, create subclasses that inheret and overwrite the methods in the virtual class)
+- [ ] Implement testing
+- [ ] Add Code Of Conduct
+- [ ] Add Contribution.md
 
-## Dashboard Features
-- [ ] Network Topology
-- [ ] Iteractive firewall management
-- [ ] Visual packet flow
+## Step 3: Securing the application
+- [ ] Add Authentication (API, mTLS or other type of authentication)
+- [ ] Add Access Control (Permission based?)
+- [ ] Add HTTPS option to endpoints
+- [ ] Add rate limitor to endpoints
+
+## Step 4...: Widening the scope
+- [ ] Add DNS Resolver Controller
+- [ ] Add DHCP Controller
+- [ ] Add Deep Packet Inspection
+- [ ] Add Device Enrollment
+- [ ] Add Port Discovery
+- [ ] FRONTEND: Visual Packet Flow
+- [ ] FRONTEND: Interactive Firewall Management
+- [ ] FRONTEND: Network Topology
+- [ ] Add Hardware information
 
 And more...
 
