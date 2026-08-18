@@ -1,10 +1,5 @@
 #include "../../include/firewall/nft.hpp"
 
-#include <nftables/libnftables.h>
-
-#include <stdexcept>
-#include <string>
-
 Nftables::Nftables() : context_(nullptr) {
 	context_ = nft_ctx_new(0);
 

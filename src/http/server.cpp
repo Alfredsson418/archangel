@@ -1,12 +1,8 @@
 #include "../../include/http/server.hpp"
-#include "../../include/firewall/nft.hpp"
+#
 
-#include "../../lib/cpp-httplib/cpp-httplib.hpp"
-
-#include <iostream>
-
-HttpServer::HttpServer(Nftables &nftables, const std::string &host, int port)
-	: nftables_(nftables), host_(host), port_(port) {}
+HttpServer::HttpServer(Nftables &nftables)
+	: nftables_(nftables) {}
 
 void HttpServer::run() {
 	httplib::Server server;
@@ -33,9 +29,9 @@ void HttpServer::run() {
 				   }
 			   });
 
-	std::cout << "Archangel listening on " << host_ << ':' << port_ << '\n';
+	std::cout << "Archangel listening on " << CLI_ARGS::http_hostname << ':' << CLI_ARGS::http_port << '\n';
 
-	if (!server.listen(host_.c_str(), port_)) {
+	if (!server.listen(CLI_ARGS::http_hostname.c_str(), CLI_ARGS::http_port)) {
 		throw std::runtime_error("Failed to start HTTP server");
 	}
 }

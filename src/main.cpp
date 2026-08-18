@@ -1,32 +1,18 @@
-#include "../include/firewall/nft.hpp"
-#include "../include/http/server.hpp"
-
-#include "../lib/CLI11/CLI11.hpp"
-
-#include <iostream>
-#include <string>
-
-struct arg_lit *help;
-struct arg_str *host;
-struct arg_int *port;
-struct arg_end *end;
+#include "../include/main.hpp"
 
 int main(int argc, char *argv[]) {
 
 	CLI::App app{"Archangel firewall"};
 
-	std::string host = "127.0.0.1";
-	int			port = 8080;
-
-	app.add_option("--host", host, "HTTP server address");
-	app.add_option("--port", port, "HTTP server port");
+	app.add_option("--host", CLI_ARGS::http_hostname, "HTTP server address");
+	app.add_option("--port", CLI_ARGS::http_port, "HTTP server port");
 
 	CLI11_PARSE(app, argc, argv);
 
 	try {
 		Nftables nftables;
 
-		HttpServer server(nftables, host, port);
+		HttpServer server(nftables);
 
 		server.run();
 	} catch (const std::exception &exception) {

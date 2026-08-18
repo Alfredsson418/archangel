@@ -1,5 +1,7 @@
 #pragma once
 
+#include <nftables/libnftables.h>
+#include <stdexcept>
 #include <string>
 
 class Nftables {
