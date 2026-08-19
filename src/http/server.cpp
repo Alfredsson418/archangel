@@ -1,5 +1,6 @@
 #include "../../include/http/server.hpp"
-#
+#include "../../include/logger.hpp"
+#include <string>
 
 HttpServer::HttpServer(Nftables &nftables)
 	: nftables_(nftables) {}
@@ -29,7 +30,7 @@ void HttpServer::run() {
 				   }
 			   });
 
-	std::cout << "Archangel listening on " << CLI_ARGS::http_hostname << ':' << CLI_ARGS::http_port << '\n';
+	Logger::Firewall::log("Archangel listening on " + CLI_ARGS::http_hostname + ":" + std::to_string(CLI_ARGS::http_port));
 
 	if (!server.listen(CLI_ARGS::http_hostname.c_str(), CLI_ARGS::http_port)) {
 		throw std::runtime_error("Failed to start HTTP server");

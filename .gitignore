@@ -2,6 +2,7 @@
 # Files
 archangel
 
+*.log
 
 # Defaults
 

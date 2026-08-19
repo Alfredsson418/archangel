@@ -3,9 +3,8 @@
 #include <string>
 
 class CLI_ARGS {
-	
-	public:
 
+  public:
 	/* ========================
 	 *	General Options
 	 * ========================

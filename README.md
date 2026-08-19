@@ -57,11 +57,12 @@ The role of the SG is to have a logical seperation between Edge Gateways, by hav
 - [X] Add simple CLI arg input (CLI11)
 - [ ] Add simple endpoints (cpp-httplib) ONGOING
 - [ ] Add Security.md
-- [ ] Add Logging module ONGOING
+- [X] Add Logging module ONGOING
 - [ ] Add Error module
 
 ## Step 2: Going places 
 - [ ] Add firewall abstraction layer (make it possible to have other firewall backends) (create one virtual Firewall class, create subclasses that inheret and overwrite the methods in the virtual class)
+- [ ] Build upon Logger for auto create log messages for API (send in response and create log message)
 - [ ] Implement testing
 - [ ] Add Code Of Conduct
 - [ ] Add Contribution.md
