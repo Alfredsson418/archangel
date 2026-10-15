@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set page = "config" %}
+{% set active_view = "" %}
+
+{% block title %}Archangel | Configuration{% endblock %}
+{% block breadcrumb %}CONFIGURATION{% endblock %}
+{% block heading_label %}CONNECTION{% endblock %}
+{% block page_heading %}Configuration{% endblock %}
+{% block page_subtitle %}Set the address of the Archangel C++ API used by this dashboard.{% endblock %}
+{% block page_status %}SETTINGS{% endblock %}
+
+{% block content %}
+  <section class="panel settings-panel" aria-labelledby="connection-heading">
+    <div class="panel-heading"><div><p class="eyebrow">BACKEND</p><h2 id="connection-heading">API connection</h2></div><span class="table-summary">PERSISTED LOCALLY</span></div>
+    <form class="settings-form" action="{{ url_for('config_page') }}" method="post">
+      <label for="api-url">API base URL</label>
+      <div class="settings-field"><input id="api-url" name="api_url" type="url" value="{{ api_url }}" placeholder="http://127.0.0.1:8080" required autocomplete="url"></div>
+      <p class="field-hint">Enter the base address only. The dashboard appends <code>/api/v1/rules</code>.</p>
+      <div class="settings-actions"><button class="refresh-button" type="submit" name="action" value="save">Save connection</button><button class="text-button" type="submit" name="action" value="test">Test connection <span aria-hidden="true">→</span></button></div>
+    </form>
+    {% if message %}<p class="connection-message" data-state="{{ message_type }}" role="status">{{ message }}</p>{% endif %}
+  </section>
+{% endblock %}

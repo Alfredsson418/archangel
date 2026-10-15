@@ -1,14 +1,78 @@
 # Exposed Endpoints
-## Info
-All endpoints returns all info in json for it to be easy to parse.
+The C++ API runs separately from the Flask dashboard. The dashboard proxies API requests to the configured C++ API address so browser requests remain same-origin.
 
-## System Info
-### `/api/system`
-- Usage: Get general system information
-- Authentication: No
+## Flask Dashboard
 
+### `GET /`
 
-## Interfaces
-### `/api/interfaces`
-- Usage: Get all available interfaces
-- Authentication: No
+Renders the dashboard overview. Its small ruleset snapshot is loaded from the C++ API by the browser.
+
+### `GET /rules`
+
+Fetches the C++ ruleset in Flask and renders the firewall rules table with the `rules.html` template.
+
+### `GET, POST /config`
+
+Renders and updates the dashboard's C++ API connection setting.
+
+## C++ API
+
+### `GET /`
+
+Returns a plain-text service status message.
+
+### `GET /api/v1/rules`
+
+Returns the nftables ruleset as JSON. The caller must have permission to query nftables. The Flask dashboard exposes this route as a same-origin proxy and reports upstream connection or API errors.
+
+### `GET /api/v1/stats`
+
+Returns statistics computed by the selected firewall backend from its active ruleset:
+
+```json
+{
+	"total_rules": 8,
+	"total_tables": 2,
+	"total_chains": 4,
+	"rules_by_family": {"inet": 8},
+	"rules_by_protocol": {"tcp": 5, "udp": 3},
+	"rules_by_verdict": {"accept": 5, "drop": 2, "other": 1}
+}
+```
+
+### `GET /api/v1/system`
+
+Returns the gateway hostname, online CPU core count, 1/5/15-minute load averages, memory totals/usage, root filesystem totals/usage, and uptime. Usage values are in bytes with percentages for memory and disk. The Flask dashboard proxies this endpoint and displays the system resource summary.
+
+### `POST /api/v1/rules`
+
+Adds one rule to an existing family/table/chain. The request is JSON; raw nftables commands are not accepted.
+
+```json
+{
+	"family": "inet",
+	"table": "filter",
+	"chain": "input",
+	"protocol": "tcp",
+	"source_address": "192.0.2.10",
+	"destination_port": 443,
+	"action": "accept"
+}
+```
+
+`source_address`, `destination_address`, and `destination_port` are optional, but at least one match is required. Supported families are `ip`, `ip6`, and `inet`; protocols are `tcp` and `udp`; verdicts are `accept`, `drop`, and `reject`. Success returns HTTP `201`.
+
+### `DELETE /api/v1/rules`
+
+Deletes a rule by its family, table, chain, and numeric handle:
+
+```json
+{
+	"family": "inet",
+	"table": "filter",
+	"chain": "input",
+	"handle": 12
+}
+```
+
+Mutating endpoints have no authentication and apply changes immediately. See [Security](../SECURITY.md) before enabling access beyond localhost.

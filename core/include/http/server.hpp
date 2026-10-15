@@ -2,18 +2,16 @@
 
 #include "../../lib/cpp-httplib/cpp-httplib.hpp"
 #include "../cli.hpp"
-#include "../firewall/nft.hpp"
+#include "../firewall/firewall.hpp"
 #include <iostream>
 #include <string>
 
-class Nftables;
-
 class HttpServer {
   public:
-	HttpServer(Nftables &nftables);
+	HttpServer(Firewall &firewall);
 
 	void run();
 
   private:
-	Nftables &nftables_;
+	Firewall &firewall_;
 };

@@ -10,11 +10,46 @@
   <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/Alfredsson418/archangel?style=for-the-badge&color=darkorange">
   <img alt="GitHub code size in bytes" src="https://img.shields.io/github/languages/code-size/Alfredsson418/archangel?style=for-the-badge&color=slateblue">
   <!-- https://shields.io/badges/ -->
+The goal of this project is to build an open source firewall with an approachable network-management experience. Archangel has a C++ nftables API in `core/` and a Flask-hosted dashboard in `app/web/`.
+
 </p>
 
 <br>
 
 # About
+
+## Current Architecture
+
+The firewall API is implemented in C++ under `core/src` with dependencies under `core/lib`. The Flask dashboard lives in `app/web` and proxies the rules endpoint from the C++ service.
+
+## Run
+
+Build and run the C++ API (requires a C++20 compiler and libnftables development files):
+
+```sh
+make debug
+./archangel --host 127.0.0.1 --port 8080
+```
+
+In a second terminal, install Flask and start the dashboard:
+
+```sh
+python3 -m venv app/web/.venv
+app/web/.venv/bin/pip install -r app/web/requirements.txt
+app/web/.venv/bin/python app/web/server.py
+```
+
+Open <http://127.0.0.1:5000>. Configure the C++ API base URL on the dashboard's Configuration page; it is saved to `~/.config/archangel/web.json` by default. Set `ARCHANGEL_WEB_CONFIG` to choose another settings file. `ARCHANGEL_API_URL` supplies the initial default, while `WEB_HOST` and `WEB_PORT` change the dashboard listener. Neither service has authentication; keep both on trusted networks.
+
+### Run the frontend in Docker
+
+On Linux, with the C++ API running on `127.0.0.1:8080`, start the containerized dashboard:
+
+```sh
+docker compose up --build -d
+```
+
+Open <http://127.0.0.1:5000>. The frontend uses host networking to reach the local C++ API and binds only to localhost. Its saved connection setting persists in the `archangel-web-config` volume. Stop it with `docker compose down`.
 
 The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience. This program is built as a backend for a seperate frontend project, so this program only exposes endpoints that other programs can get and post to (see [routes](docs/endpoints.md) for possible endpoints). This project is just in its infancy and I do this on my freetime so dont expect something good, just doing this for the fun of it.  
 
@@ -52,17 +87,17 @@ The role of the SG is to have a logical seperation between Edge Gateways, by hav
 
 # Roadmap
 ## Step 1: Building the Foundation
-- [ ] Basic firewall manipulation (libnfttables) ONGOING
-- [ ] Basic frontend
+- [X] Basic firewall manipulation (libnfttables)
+- [X] Basic frontend
 - [X] Add simple CLI arg input (CLI11)
-- [ ] Add simple endpoints (cpp-httplib) ONGOING
-- [ ] Add Security.md
-- [X] Add Logging module ONGOING
-- [ ] Add Error module
+- [X] Add simple endpoints (cpp-httplib)
+- [X] Add Security.md
+- [X] Add Logging module
+- [X] Add Error module
 
 ## Step 2: Going places 
-- [ ] Add firewall abstraction layer (make it possible to have other firewall backends) (create one virtual Firewall class, create subclasses that inheret and overwrite the methods in the virtual class)
-- [ ] Build upon Logger for auto create log messages for API (send in response and create log message)
+- [X] Add firewall abstraction layer (make it possible to have other firewall backends)
+- [X] Build upon Logger for API request and error logs
 - [ ] Implement testing
 - [ ] Add Code Of Conduct
 - [ ] Add Contribution.md

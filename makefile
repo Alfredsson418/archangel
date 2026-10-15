@@ -5,9 +5,10 @@ CC = g++
 NAME = archangel
 
 # Directories
-LIB = lib
+CORE = core
+LIB = $(CORE)/lib
 BUILD = build
-SRC = src
+SRC = $(CORE)/src
 
 # ------------------------------------------------------
 # 					Code compilation
