@@ -16,7 +16,7 @@ The goal of this project is to build an open source firewall with an approachabl
 
 <br>
 
-# About
+
 
 ## Current Architecture
 
@@ -31,16 +31,6 @@ make debug
 ./archangel --host 127.0.0.1 --port 8080
 ```
 
-In a second terminal, install Flask and start the dashboard:
-
-```sh
-python3 -m venv app/web/.venv
-app/web/.venv/bin/pip install -r app/web/requirements.txt
-app/web/.venv/bin/python app/web/server.py
-```
-
-Open <http://127.0.0.1:5000>. Configure the C++ API base URL on the dashboard's Configuration page; it is saved to `~/.config/archangel/web.json` by default. Set `ARCHANGEL_WEB_CONFIG` to choose another settings file. `ARCHANGEL_API_URL` supplies the initial default, while `WEB_HOST` and `WEB_PORT` change the dashboard listener. Neither service has authentication; keep both on trusted networks.
-
 ### Run the frontend in Docker
 
 On Linux, with the C++ API running on `127.0.0.1:8080`, start the containerized dashboard:
@@ -49,8 +39,7 @@ On Linux, with the C++ API running on `127.0.0.1:8080`, start the containerized 
 docker compose up --build -d
 ```
 
-Open <http://127.0.0.1:5000>. The frontend uses host networking to reach the local C++ API and binds only to localhost. Its saved connection setting persists in the `archangel-web-config` volume. Stop it with `docker compose down`.
-
+# About
 The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience. This program is built as a backend for a seperate frontend project, so this program only exposes endpoints that other programs can get and post to (see [routes](docs/endpoints.md) for possible endpoints). This project is just in its infancy and I do this on my freetime so dont expect something good, just doing this for the fun of it.  
 
 This software is also a continueation of my [thesis work](docs/Zero_Trust_i_Komplexa_Isolerade_Miljöer.pdf), but it is in Swedish! If you are wondering what this project would compare to in my thesis work, it would be the Edge Gateway module. The idea is to create a firewall application that would work as both a proxy for server communication and keep communication secure.
