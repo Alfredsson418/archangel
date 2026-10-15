@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     WEB_HOST=127.0.0.1 \
     WEB_PORT=8081 \
     WEB_WORKERS=1 \
+    WEB_LOG_LEVEL=INFO \
     ARCHANGEL_API_URL=http://127.0.0.1:8080 \
     ARCHANGEL_WEB_CONFIG=/data/web.json
 
@@ -18,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && chown archangel:archangel /data
 
 COPY --chown=archangel:archangel server.py ./server.py
+COPY --chown=archangel:archangel webapp ./webapp
 COPY --chown=archangel:archangel templates ./templates
 COPY --chown=archangel:archangel static ./static
 

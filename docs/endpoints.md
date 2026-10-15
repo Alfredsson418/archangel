@@ -1,11 +1,11 @@
 # Exposed Endpoints
-The C++ API runs separately from the Flask dashboard. The dashboard proxies API requests to the configured C++ API address so browser requests remain same-origin.
+The C++ API runs separately from the Flask dashboard. Flask reads it directly while rendering pages and does not expose API passthrough routes.
 
 ## Flask Dashboard
 
 ### `GET /`
 
-Renders the dashboard overview. Its small ruleset snapshot is loaded from the C++ API by the browser.
+Renders the overview with rules, firewall statistics, and host statistics loaded server-side from the C++ API.
 
 ### `GET /rules`
 
@@ -23,7 +23,7 @@ Returns a plain-text service status message.
 
 ### `GET /api/v1/rules`
 
-Returns the nftables ruleset as JSON. The caller must have permission to query nftables. The Flask dashboard exposes this route as a same-origin proxy and reports upstream connection or API errors.
+Returns the nftables ruleset as JSON. The caller must have permission to query nftables.
 
 ### `GET /api/v1/stats`
 
@@ -42,7 +42,7 @@ Returns statistics computed by the selected firewall backend from its active rul
 
 ### `GET /api/v1/system`
 
-Returns the gateway hostname, online CPU core count, 1/5/15-minute load averages, memory totals/usage, root filesystem totals/usage, and uptime. Usage values are in bytes with percentages for memory and disk. The Flask dashboard proxies this endpoint and displays the system resource summary.
+Returns the gateway hostname, online CPU core count, 1/5/15-minute load averages, memory totals/usage, root filesystem totals/usage, and uptime. Usage values are in bytes with percentages for memory and disk.
 
 ### `POST /api/v1/rules`
 

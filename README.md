@@ -10,17 +10,12 @@
   <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/Alfredsson418/archangel?style=for-the-badge&color=darkorange">
   <img alt="GitHub code size in bytes" src="https://img.shields.io/github/languages/code-size/Alfredsson418/archangel?style=for-the-badge&color=slateblue">
   <!-- https://shields.io/badges/ -->
-The goal of this project is to build an open source firewall with an approachable network-management experience. Archangel has a C++ nftables API in `core/` and a Flask-hosted dashboard in `app/web/`.
-
 </p>
-
 <br>
-
-
 
 ## Current Architecture
 
-The firewall API is implemented in C++ under `core/src` with dependencies under `core/lib`. The Flask dashboard lives in `app/web` and proxies the rules endpoint from the C++ service.
+The firewall API is implemented in C++ under `core/src` with dependencies under `core/lib`. The Flask dashboard lives in `app/web` and reads C++ API data server-side when rendering pages.
 
 ## Run
 
@@ -38,6 +33,8 @@ On Linux, with the C++ API running on `127.0.0.1:8080`, start the containerized 
 ```sh
 docker compose up --build -d
 ```
+
+The web app writes request, backend, and configuration events to stdout. View them with `docker compose logs -f web`; set `WEB_LOG_LEVEL=DEBUG` before starting Compose for more detail. Request logs omit query strings and form values.
 
 # About
 The goal of this project is to build a open source firewall that can rival the UniFi echosystem in user experience. This program is built as a backend for a seperate frontend project, so this program only exposes endpoints that other programs can get and post to (see [routes](docs/endpoints.md) for possible endpoints). This project is just in its infancy and I do this on my freetime so dont expect something good, just doing this for the fun of it.  
