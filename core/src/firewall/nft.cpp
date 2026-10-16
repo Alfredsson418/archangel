@@ -1,13 +1,18 @@
 #include "../../include/firewall/nft.hpp"
 #include "../../include/error.hpp"
 #include "../../include/logger.hpp"
-#include "../../lib/json/json.hpp"
+#include "nft_statistics.hpp"
 #include <arpa/inet.h>
 #include <cstdint>
 #include <sstream>
 
 namespace {
 
+/**
+ * @brief Checks that a value is safe to use as an nftables table or chain name.
+ * @param value Candidate identifier.
+ * @return True if it uses the accepted ASCII identifier syntax.
+ */
 bool isIdentifier(const std::string &value) {
 	const auto isAlpha = [](unsigned char character) {
 		return (character >= 'a' && character <= 'z') ||
@@ -32,16 +37,33 @@ bool isIdentifier(const std::string &value) {
 	return true;
 }
 
+/**
+ * @brief Tests whether a string is a valid IPv4 address.
+ * @param address Address text to parse.
+ * @return True if inet_pton accepts it as IPv4.
+ */
 bool isIpv4Address(const std::string &address) {
 	in_addr parsed{};
 	return inet_pton(AF_INET, address.c_str(), &parsed) == 1;
 }
 
+/**
+ * @brief Tests whether a string is a valid IPv6 address.
+ * @param address Address text to parse.
+ * @return True if inet_pton accepts it as IPv6.
+ */
 bool isIpv6Address(const std::string &address) {
 	in6_addr parsed{};
 	return inet_pton(AF_INET6, address.c_str(), &parsed) == 1;
 }
 
+/**
+ * @brief Validates an address and its compatibility with the nftables family.
+ * @param family Requested nftables family.
+ * @param address Address text supplied by the caller.
+ * @return No value.
+ * @throws ValidationError If the address is invalid or incompatible.
+ */
 void validateAddress(const std::string &family, const std::string &address) {
 	const bool ipv4 = isIpv4Address(address);
 	const bool ipv6 = isIpv6Address(address);
@@ -51,6 +73,12 @@ void validateAddress(const std::string &family, const std::string &address) {
 	}
 }
 
+/**
+ * @brief Validates every supported field and required match in a rule.
+ * @param rule Backend-neutral rule description.
+ * @return No value.
+ * @throws ValidationError If a field is unsupported or invalid.
+ */
 void validateRule(const RuleSpec &rule) {
 	if (rule.family != "ip" && rule.family != "ip6" && rule.family != "inet") {
 		throw ValidationError("family must be ip, ip6, or inet");
@@ -79,6 +107,12 @@ void validateRule(const RuleSpec &rule) {
 	}
 }
 
+/**
+ * @brief Formats an address match using the correct nftables IP expression.
+ * @param address Validated IPv4 or IPv6 address.
+ * @param direction nftables direction keyword, such as saddr or daddr.
+ * @return nftables address-family and direction expression.
+ */
 std::string addressMatch(const std::string &address, const char *direction) {
 	return std::string(isIpv4Address(address) ? "ip " : "ip6 ") + direction +
 		   " " + address;
@@ -121,73 +155,7 @@ std::string Nftables::listRules() {
 }
 
 FirewallStatistics Nftables::getStatistics() {
-	using Json		   = nlohmann::json;
-	const Json ruleset = Json::parse(listRules());
-	if (!ruleset.is_object() || !ruleset.contains("nftables") ||
-		!ruleset["nftables"].is_array()) {
-		throw std::runtime_error("Invalid nftables ruleset JSON");
-	}
-
-	FirewallStatistics statistics;
-	for (const Json &entry : ruleset["nftables"]) {
-		if (!entry.is_object()) {
-			continue;
-		}
-		if (entry.contains("table")) {
-			++statistics.total_tables;
-		}
-		if (entry.contains("chain")) {
-			++statistics.total_chains;
-		}
-		if (!entry.contains("rule") || !entry["rule"].is_object()) {
-			continue;
-		}
-
-		const Json &rule = entry["rule"];
-		++statistics.total_rules;
-		const std::string family = rule.value("family", "other");
-		++statistics.rules_by_family[family];
-
-		std::string protocol   = "other";
-		std::string verdict	   = "other";
-		const auto	expression = rule.find("expr");
-		if (expression != rule.end() && expression->is_array()) {
-			for (const Json &statement : *expression) {
-				if (!statement.is_object()) {
-					continue;
-				}
-				for (const char *candidate : {"accept", "drop", "reject"}) {
-					if (statement.contains(candidate)) {
-						verdict = candidate;
-						break;
-					}
-				}
-
-				const auto match = statement.find("match");
-				if (match == statement.end() || !match->is_object()) {
-					continue;
-				}
-				const auto left	 = match->find("left");
-				const auto right = match->find("right");
-				if (left == match->end() || !left->is_object() ||
-					right == match->end() || !right->is_string()) {
-					continue;
-				}
-				const auto meta = left->find("meta");
-				if (meta != left->end() && meta->is_object() &&
-					meta->value("key", std::string()) == "l4proto") {
-					const std::string candidate = right->get<std::string>();
-					if (candidate == "tcp" || candidate == "udp") {
-						protocol = candidate;
-					}
-				}
-			}
-		}
-		++statistics.rules_by_protocol[protocol];
-		++statistics.rules_by_verdict[verdict];
-	}
-
-	return statistics;
+	return statisticsFromNftRuleset(listRules());
 }
 
 void Nftables::addRule(const RuleSpec &rule) {

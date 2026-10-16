@@ -7,6 +7,12 @@
 namespace {
 using HttpApi::Detail::Json;
 
+/**
+ * @brief Parses the request body and requires a JSON object at its root.
+ * @param request HTTP request containing the JSON body.
+ * @return The parsed JSON object.
+ * @throws ValidationError If the body is invalid JSON or not an object.
+ */
 Json parseObject(const httplib::Request &request) {
 	try {
 		Json body = Json::parse(request.body);
@@ -19,6 +25,13 @@ Json parseObject(const httplib::Request &request) {
 	}
 }
 
+/**
+ * @brief Reads a required non-empty string property.
+ * @param body JSON object containing the property.
+ * @param field Name of the required property.
+ * @return The property's string value.
+ * @throws ValidationError If the property is absent, empty, or not a string.
+ */
 std::string requiredString(const Json &body, const char *field) {
 	const auto value = body.find(field);
 	if (value == body.end() || !value->is_string() ||
@@ -29,6 +42,13 @@ std::string requiredString(const Json &body, const char *field) {
 	return value->get<std::string>();
 }
 
+/**
+ * @brief Reads an optional string property.
+ * @param body JSON object containing the property.
+ * @param field Name of the optional property.
+ * @return The property's value, or std::nullopt if absent or null.
+ * @throws ValidationError If a non-null property is not a string.
+ */
 std::optional<std::string> optionalString(const Json &body, const char *field) {
 	const auto value = body.find(field);
 	if (value == body.end() || value->is_null()) {
@@ -40,6 +60,12 @@ std::optional<std::string> optionalString(const Json &body, const char *field) {
 	return value->get<std::string>();
 }
 
+/**
+ * @brief Converts and validates rule fields into the backend-neutral model.
+ * @param body JSON request object.
+ * @return Structured rule ready to pass to the firewall backend.
+ * @throws ValidationError If a required field or destination port is invalid.
+ */
 RuleSpec parseRule(const Json &body) {
 	RuleSpec rule;
 	rule.family				 = requiredString(body, "family");
@@ -74,6 +100,12 @@ RuleSpec parseRule(const Json &body) {
 	return rule;
 }
 
+/**
+ * @brief Reads and validates a positive integer rule handle.
+ * @param body JSON object containing the handle property.
+ * @return The handle represented as an unsigned integer.
+ * @throws ValidationError If the handle is absent, invalid, or not positive.
+ */
 std::uint64_t parseHandle(const Json &body) {
 	const auto handle = body.find("handle");
 	if (handle == body.end() || !handle->is_number_integer()) {
@@ -97,7 +129,6 @@ namespace HttpApi {
 
 void getRules(Firewall			&firewall, const httplib::Request &,
 			  httplib::Response &response) {
-	Logger::API::log("GET /api/v1/rules");
 	try {
 		response.set_content(firewall.listRules(), "application/json");
 	} catch (const std::exception &error) {
@@ -111,7 +142,6 @@ void createRule(Firewall &firewall, const httplib::Request &request,
 				httplib::Response &response) {
 	try {
 		firewall.addRule(parseRule(parseObject(request)));
-		Logger::API::log("POST /api/v1/rules succeeded");
 		response.status = 201;
 		response.set_content(
 			Json{
@@ -135,7 +165,6 @@ void deleteRule(Firewall &firewall, const httplib::Request &request,
 		firewall.deleteRule(requiredString(body, "family"),
 							requiredString(body, "table"),
 							requiredString(body, "chain"), parseHandle(body));
-		Logger::API::log("DELETE /api/v1/rules succeeded");
 		response.set_content(
 			Json{
 				{"status", "deleted"}

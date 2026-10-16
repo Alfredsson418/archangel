@@ -7,6 +7,8 @@ from urllib.parse import urlsplit
 from unittest.mock import patch
 
 from server import app
+from webapp.api_client import request_backend
+from webapp.settings import load_api_url
 
 
 class DashboardTests(unittest.TestCase):
@@ -135,6 +137,37 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn("do-not-log", messages)
         response.close()
 
+    @patch("webapp.api_client.urlopen")
+    def test_backend_request_logging_includes_outcome_without_query_values(
+        self, urlopen
+    ):
+        class Upstream:
+            status = 200
+            headers = {"Content-Type": "application/json"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def read(self):
+                return b"{}"
+
+        urlopen.return_value = Upstream()
+        with self.assertLogs("webapp.api_client", level="INFO") as captured:
+            response = request_backend(
+                "http://127.0.0.1:8080",
+                "/api/v1/rules?token=do-not-log",
+            )
+        self.assertEqual(response.status, 200)
+        messages = "\n".join(captured.output)
+        self.assertIn(
+            "backend_request_completed method=GET path=/api/v1/rules status=200",
+            messages,
+        )
+        self.assertNotIn("do-not-log", messages)
+
     def test_configuration_page_is_rendered(self):
         response = self.client.get("/config")
         self.assertEqual(response.status_code, 200)
@@ -142,6 +175,14 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'value="http://127.0.0.1:8080"', response.data)
         self.assertNotIn(b"config.js", response.data)
         response.close()
+
+    def test_invalid_saved_api_configuration_is_logged_and_ignored(self):
+        config_path = Path(self.temp_dir.name) / "invalid.json"
+        config_path.write_text("{invalid")
+        with self.assertLogs("webapp.settings", level="WARNING") as captured:
+            api_url = load_api_url(config_path, "http://127.0.0.1:8081")
+        self.assertEqual(api_url, "http://127.0.0.1:8081")
+        self.assertIn("connection_setting_load_failed", "\n".join(captured.output))
 
     def test_flask_does_not_expose_cpp_api_passthrough_routes(self):
         for path in ("/api/v1/rules", "/api/v1/stats", "/api/v1/system"):

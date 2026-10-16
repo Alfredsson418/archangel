@@ -9,6 +9,11 @@ from .views import pages
 
 
 def create_app():
+    """Create and configure the Flask dashboard application.
+
+    Returns:
+        The configured Flask application instance.
+    """
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
     configure_logging(app)
     app.config.update(

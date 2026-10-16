@@ -1,6 +1,12 @@
 #include "../include/main.hpp"
 #include "../include/logger.hpp"
 
+/**
+ * @brief Parses runtime options and starts the firewall API service.
+ * @param argc Number of command-line arguments.
+ * @param argv Command-line argument strings.
+ * @return 0 on normal shutdown; 1 if startup or runtime fails.
+ */
 int main(int argc, char *argv[]) {
 	CLI::App app{"Archangel firewall"};
 
@@ -17,6 +23,7 @@ int main(int argc, char *argv[]) {
 		HttpServer server(nftables);
 
 		server.run();
+		Logger::Program::log("Program stopped");
 	} catch (const std::exception &exception) {
 		Logger::Program::log("Archangel error: " +
 							 std::string(exception.what()));

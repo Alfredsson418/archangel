@@ -5,7 +5,6 @@ namespace HttpApi {
 
 void getStatistics(Firewall			 &firewall, const httplib::Request &,
 				   httplib::Response &response) {
-	Logger::API::log("GET /api/v1/stats");
 	try {
 		const FirewallStatistics statistics = firewall.getStatistics();
 		const Detail::Json		 payload{

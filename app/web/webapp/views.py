@@ -11,18 +11,24 @@ pages = Blueprint("pages", __name__)
 
 
 def _load(path):
+    """Load one API JSON resource for a rendered page.
+
+    Returns:
+        A pair of (decoded payload, None) on success, or (None, error text) if
+        the backend request fails.
+    """
     try:
         return fetch_json(current_app.config["API_URL"], path), None
     except (ApiConnectionError, ApiResponseError) as error:
-        current_app.logger.warning(
-            "backend_request_failed path=%s error_type=%s",
-            path,
-            type(error).__name__,
-        )
         return None, str(error)
 
 
 def _rules_from(ruleset):
+    """Extract rule objects from an nftables ruleset response.
+
+    Returns:
+        A list of rule dictionaries, or an empty list for an invalid shape.
+    """
     if not isinstance(ruleset, dict):
         return []
     entries = ruleset.get("nftables", [])
@@ -32,6 +38,11 @@ def _rules_from(ruleset):
 
 
 def _display_bytes(value):
+    """Format a byte count for human-readable dashboard display.
+
+    Returns:
+        A scaled byte string, or "Unavailable" when value is None.
+    """
     if value is None:
         return "Unavailable"
     value = float(value)
@@ -44,6 +55,11 @@ def _display_bytes(value):
 
 
 def _dashboard_context():
+    """Build template data from the API rules, statistics, and system resources.
+
+    Returns:
+        A dictionary of values consumed by the overview template.
+    """
     ruleset, rules_error = _load("/api/v1/rules")
     statistics, stats_error = _load("/api/v1/stats")
     system, system_error = _load("/api/v1/system")
@@ -70,17 +86,32 @@ def _dashboard_context():
 
 @pages.get("/")
 def index():
+    """Render the overview page with current backend data.
+
+    Returns:
+        Rendered overview HTML, converted to an HTTP response by Flask.
+    """
     return render_template("index.html", **_dashboard_context())
 
 
 @pages.get("/rules")
 def rules_page():
+    """Render the active firewall rules page.
+
+    Returns:
+        Rendered rules HTML, converted to an HTTP response by Flask.
+    """
     ruleset, error = _load("/api/v1/rules")
     return render_template("rules.html", rules=_rules_from(ruleset), error=error)
 
 
 @pages.route("/config", methods=["GET", "POST"])
 def config_page():
+    """Render or update the dashboard's C++ API connection setting.
+
+    Returns:
+        A pair of (rendered HTML, HTTP status code) for Flask to return.
+    """
     api_url = current_app.config["API_URL"]
     message = ""
     message_type = ""

@@ -7,6 +7,11 @@ from flask import Flask, g, request
 
 
 def configure_logging(app: Flask) -> None:
+    """Configure stdout logging and per-request lifecycle events.
+
+    Returns:
+        None. The Flask app is configured in place.
+    """
     level_name = os.getenv("WEB_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
@@ -19,11 +24,13 @@ def configure_logging(app: Flask) -> None:
 
     @app.before_request
     def log_request_start():
+        """Record the request start time and safe method/path fields."""
         g.request_started_at = perf_counter()
         app.logger.info("request_started method=%s path=%s", request.method, request.path)
 
     @app.after_request
     def log_request_complete(response):
+        """Log response status and elapsed time, then return the response."""
         started_at = getattr(g, "request_started_at", perf_counter())
         duration_ms = (perf_counter() - started_at) * 1000
         app.logger.info(

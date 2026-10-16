@@ -1,5 +1,4 @@
 #include "../../../include/http/api/system.hpp"
-#include "../../../include/logger.hpp"
 #include "api_common.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -11,12 +10,23 @@
 namespace {
 using HttpApi::Detail::Json;
 
+/**
+ * @brief Computes usage percentage without dividing by zero.
+ * @param used Quantity currently in use.
+ * @param total Total capacity.
+ * @return Percentage as a JSON number, or null when total is zero.
+ */
 Json percentage(std::uint64_t used, std::uint64_t total) {
 	if (total == 0)
 		return nullptr;
 	return 100.0 * static_cast<double>(used) / static_cast<double>(total);
 }
 
+/**
+ * @brief Collects host identity, load, memory, disk, and uptime metrics.
+ * @return JSON object containing available metrics and null for unavailable
+ * values.
+ */
 Json collectSystemStatistics() {
 	Json stats = Json::object();
 
@@ -99,7 +109,6 @@ namespace HttpApi {
 
 void getSystemStatistics(const httplib::Request &,
 						 httplib::Response &response) {
-	Logger::API::log("GET /api/v1/system");
 	try {
 		response.set_content(collectSystemStatistics().dump(),
 							 "application/json");

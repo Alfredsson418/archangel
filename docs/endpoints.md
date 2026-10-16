@@ -76,3 +76,5 @@ Deletes a rule by its family, table, chain, and numeric handle:
 ```
 
 Mutating endpoints have no authentication and apply changes immediately. See [Security](../SECURITY.md) before enabling access beyond localhost.
+
+When authentication is implemented, it is intended to be enforced by the C++ API on every API request, including reads and health/status requests, with authorization checked for each call. A dashboard login screen alone will not grant API access; requests must carry credentials or a verifiable backend-issued credential. This is planned behavior, not a current API capability.
