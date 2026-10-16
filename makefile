@@ -9,6 +9,11 @@ CORE = core
 LIB = $(CORE)/lib
 BUILD = build
 SRC = $(CORE)/src
+VERSION_HEADER = $(BUILD)/generated/archangel_version.hpp
+GIT_COMMIT = $(shell git rev-parse --verify HEAD 2>/dev/null)
+ifeq ($(strip $(GIT_COMMIT)),)
+$(error Unable to determine the Git commit hash required for the backend version)
+endif
 
 # ------------------------------------------------------
 # 					Code compilation
@@ -30,7 +35,16 @@ LIB_SRCFILES = $(shell find $(LIB) -name '*.cpp')
 OBJFILES = $(patsubst $(SRC)/%.cpp, $(BUILD)/$(SRC)/%.o, $(SRCFILES))
 LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/$(LIB)/%.o, $(LIB_SRCFILES))
 
-.PHONY: debug release clean
+.PHONY: debug release clean FORCE
+
+FORCE:
+
+$(VERSION_HEADER): FORCE
+	@mkdir -p $(@D)
+	@printf '#pragma once\n#define ARCHANGEL_GIT_COMMIT "%s"\n' "$(GIT_COMMIT)" > $@.tmp
+	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm $@.tmp; fi
+
+$(BUILD)/$(SRC)/http/server.o: $(VERSION_HEADER)
 
 # Target to build the executable with debug flags
 debug: CFLAGS = $(DEBUG_CFLAGS)
@@ -51,12 +65,12 @@ build_release: $(OBJFILES) $(LIB_OBJFILES)
 $(BUILD)/$(SRC)/%.o: $(SRC)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(CFLAGS) -c -o $@ $<
+	@$(CC) $(CFLAGS) -I$(BUILD)/generated -c -o $@ $<
 
 $(BUILD)/$(LIB)/%.o: $(LIB)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(CFLAGS) -c -o $@ $<
+	@$(CC) $(CFLAGS) -I$(BUILD)/generated -c -o $@ $<
 
 
 # Target to clean up generated file

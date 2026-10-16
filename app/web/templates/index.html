@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% set page = "dashboard" %}
 
-{% block title %}Archangel | Firewall dashboard{% endblock %}
+{% block title %}Archangel | Server overview{% endblock %}
 {% block breadcrumb %}OVERVIEW{% endblock %}
 {% block topbar_actions %}
   <span class="last-updated">Updated {{ last_updated }}</span>
   <form action="{{ url_for('pages.index') }}" method="get"><button class="refresh-button" type="submit">Refresh</button></form>
 {% endblock %}
-{% block heading_label %}FIREWALL CONTROL PLANE{% endblock %}
-{% block page_heading %}<span id="page-title">Network overview</span>{% endblock %}
-{% block page_subtitle %}<span id="page-subtitle">Inspect the active nftables policy on this gateway.</span>{% endblock %}
+{% block heading_label %}SERVER HEALTH{% endblock %}
+{% block page_heading %}<span id="page-title">Server overview</span>{% endblock %}
+{% block page_subtitle %}<span id="page-subtitle">Health and system information for the server running the Archangel backend.</span>{% endblock %}
 {% block status_class %}{{ 'connected' if api_connected else '' }}{% endblock %}
 {% block page_status %}{{ 'API CONNECTED' if api_connected else 'API UNAVAILABLE' }}{% endblock %}
 
@@ -17,21 +17,10 @@
   {% if errors %}<div class="notice" role="status">{{ errors|join(' · ') }}</div>{% endif %}
   <section class="view active" id="view-overview" aria-labelledby="page-title">
     <div class="metric-grid">
-      <article class="metric metric-primary"><div class="metric-label">ACTIVE RULES</div><div class="metric-value">{{ statistics.get('total_rules', '—') }}</div><div class="metric-foot"><span class="metric-mark">01</span><span>In the current ruleset</span></div></article>
-      <article class="metric"><div class="metric-label">TABLES</div><div class="metric-value">{{ statistics.get('total_tables', '—') }}</div><div class="metric-foot"><span class="metric-mark">02</span><span>Across all families</span></div></article>
-      <article class="metric"><div class="metric-label">CHAINS</div><div class="metric-value">{{ statistics.get('total_chains', '—') }}</div><div class="metric-foot"><span class="metric-mark">03</span><span>Configured in ruleset</span></div></article>
+      <article class="metric metric-primary"><div class="metric-label">NFTABLES STATUS</div><div class="metric-value metric-value-label">{{ firewall_status }}</div><div class="metric-foot"><span class="metric-mark">01</span><span>{% if active_base_chains is not none %}{{ active_base_chains }} active base chains{% else %}Status unavailable{% endif %}</span></div></article>
+      <article class="metric"><div class="metric-label">ARCHANGEL API</div><div class="metric-value metric-value-label">{{ 'ONLINE' if api_connected else 'OFFLINE' }}</div><div class="metric-foot"><span class="metric-mark">02</span><span>Build {{ backend.get('backend_version', 'Unavailable') }}</span></div></article>
+      <article class="metric"><div class="metric-label">SERVER</div><div class="metric-value metric-value-label">{{ system.get('hostname', 'Unavailable') }}</div><div class="metric-foot"><span class="metric-mark">03</span><span>Uptime {{ host_uptime }}</span></div></article>
     </div>
-    <section class="panel statistics-panel" aria-labelledby="statistics-heading">
-      <div class="panel-heading"><div><p class="eyebrow">BACKEND ANALYTICS</p><h2 id="statistics-heading">Rule statistics</h2></div></div>
-      <div class="statistics-grid">
-        {% for title, key in [('By family', 'rules_by_family'), ('By protocol', 'rules_by_protocol'), ('By verdict', 'rules_by_verdict')] %}
-          <section class="statistics-group"><h3>{{ title }}</h3><div class="statistics-list">
-            {% for label, count in statistics.get(key, {}).items() %}<div class="statistics-row"><span>{{ label }}</span><strong>{{ count }}</strong></div>
-            {% else %}<span class="statistics-empty">{{ 'No data' if api_connected else 'Unavailable' }}</span>{% endfor %}
-          </div></section>
-        {% endfor %}
-      </div>
-    </section>
     <section class="panel resources-panel" aria-labelledby="resources-heading">
       <div class="panel-heading"><div><p class="eyebrow">HOST HEALTH</p><h2 id="resources-heading">System resources</h2></div><span class="table-summary">{{ system.get('hostname', 'Unavailable') }}</span></div>
       <div class="resources-grid">
@@ -41,11 +30,8 @@
       </div>
     </section>
     <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">POLICY</p><h2>Ruleset snapshot</h2></div><a class="text-button" href="{{ url_for('pages.rules_page') }}">View all <span aria-hidden="true">→</span></a></div>
-      <div class="table-wrap"><table><thead><tr><th>FAMILY</th><th>TABLE</th><th>CHAIN</th><th>HANDLE</th><th>EXPRESSION</th></tr></thead><tbody>
-        {% for rule in rules %}<tr><td class="code-cell">{{ rule.get('family', '—') }}</td><td class="code-cell">{{ rule.get('table', '—') }}</td><td class="code-cell">{{ rule.get('chain', '—') }}</td><td class="code-cell">{{ rule.get('handle', '—') }}</td><td class="expression-cell" title="{{ rule.get('expr', [])|tojson|forceescape }}">{{ rule.get('expr', [])|tojson }}</td></tr>
-        {% else %}<tr><td class="empty-cell" colspan="5">{{ rules_error or 'No rules in the active ruleset.' }}</td></tr>{% endfor %}
-      </tbody></table></div>
+      <div class="panel-heading"><div><p class="eyebrow">MANAGEMENT</p><h2>Server controls</h2></div><a class="text-button" href="{{ url_for('pages.system_page') }}">System management <span aria-hidden="true">→</span></a></div>
+      <p class="panel-copy">Review backend status and host resources, and see which management actions are available.</p>
     </section>
   </section>
 {% endblock %}

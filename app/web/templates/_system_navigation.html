@@ -1,0 +1,4 @@
+<nav class="subnavigation" aria-label="System management pages">
+  <a class="subnav-link {% if active_system_page == 'overview' %}active{% endif %}" href="{{ url_for('pages.system_page') }}" {% if active_system_page == 'overview' %}aria-current="page"{% endif %}>System overview</a>
+  <a class="subnav-link {% if active_system_page == 'logs' %}active{% endif %}" href="{{ url_for('pages.system_logs_page') }}" {% if active_system_page == 'logs' %}aria-current="page"{% endif %}>Application logs</a>
+</nav>

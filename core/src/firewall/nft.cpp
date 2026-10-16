@@ -1,10 +1,13 @@
 #include "../../include/firewall/nft.hpp"
 #include "../../include/error.hpp"
 #include "../../include/logger.hpp"
+#include "../../lib/json/json.hpp"
 #include "nft_statistics.hpp"
 #include <arpa/inet.h>
 #include <cstdint>
+#include <set>
 #include <sstream>
+#include <utility>
 
 namespace {
 
@@ -151,7 +154,83 @@ std::string Nftables::listRules() {
 	execute("list ruleset");
 
 	const char *output = nft_ctx_get_output_buffer(context_);
-	return output == nullptr ? "{}" : std::string(output);
+	if (output == nullptr) {
+		throw std::runtime_error("nftables returned no ruleset output");
+	}
+	return output;
+}
+
+std::string Nftables::exportRuleset() {
+	const std::string ruleset = listRules();
+	try {
+		const auto parsed = nlohmann::json::parse(ruleset);
+		if (!parsed.is_object() || !parsed.contains("nftables") ||
+			!parsed["nftables"].is_array()) {
+			throw std::runtime_error("nftables returned an invalid JSON ruleset");
+		}
+		return parsed.dump(2);
+	} catch (const nlohmann::json::exception &error) {
+		throw std::runtime_error(std::string("Unable to encode nftables JSON: ") +
+								 error.what());
+	}
+}
+
+void Nftables::importRuleset(const std::string &ruleset, bool replaceAll) {
+	using Json = nlohmann::json;
+	Json document;
+	try {
+		document = Json::parse(ruleset);
+	} catch (const Json::exception &error) {
+		throw std::runtime_error(std::string("Invalid nftables JSON ruleset: ") +
+								 error.what());
+	}
+	if (!document.is_object() || !document.contains("nftables") ||
+		!document["nftables"].is_array()) {
+		throw std::runtime_error(
+			"nftables JSON ruleset must contain an nftables array");
+	}
+
+	static const std::set<std::string> supportedObjects{
+		"table",	 "chain", "rule",	  "set",	"map",
+		"element",	 "flowtable", "counter", "quota", "ct_helper",
+		"limit",	 "ct_timeout", "ct_expectation"};
+	Json commands = Json::array();
+	if (replaceAll) {
+		commands.push_back(Json{{"flush", Json{{"ruleset", nullptr}}}});
+	}
+	for (const Json &entry : document["nftables"]) {
+		if (!entry.is_object() || entry.size() != 1) {
+			throw std::runtime_error(
+				"Each nftables ruleset entry must be a single object");
+		}
+		const auto object = entry.begin();
+		if (object.key() == "metainfo") {
+			continue;
+		}
+		if (supportedObjects.find(object.key()) == supportedObjects.end() ||
+			!object.value().is_object()) {
+			throw std::runtime_error("Unsupported nftables ruleset object");
+		}
+		Json value = object.value();
+		value.erase("handle");
+		value.erase("index");
+		commands.push_back(Json{{"add", Json{{object.key(), std::move(value)}}}});
+	}
+	const std::string input = Json{{"nftables", std::move(commands)}}.dump();
+
+	std::lock_guard<std::mutex> lock(mutex_);
+	const unsigned int inputFlags = nft_ctx_input_get_flags(context_);
+	nft_ctx_input_set_flags(context_, inputFlags | NFT_CTX_INPUT_JSON);
+	try {
+		execute(input);
+		nft_ctx_input_set_flags(context_, inputFlags);
+	} catch (...) {
+		nft_ctx_input_set_flags(context_, inputFlags);
+		throw;
+	}
+	Logger::Firewall::log(replaceAll
+							  ? "Replaced the complete nftables ruleset from JSON config"
+							  : "Merged nftables JSON config into the active ruleset");
 }
 
 FirewallStatistics Nftables::getStatistics() {

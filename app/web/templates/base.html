@@ -18,13 +18,14 @@
         <span class="brand-mark" aria-hidden="true">A</span>
         <span class="brand-name">archangel<span class="brand-period">.</span></span>
       </a>
-      <div class="sidebar-label">NETWORK EDGE</div>
+      <div class="sidebar-label">SERVER MANAGEMENT</div>
       <nav class="navigation">
         <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('pages.index') }}" {% if page == 'dashboard' %}aria-current="page"{% endif %}><span class="nav-index">01</span>Overview</a>
-        <a class="nav-link {% if page == 'rules' %}active{% endif %}" href="{{ url_for('pages.rules_page') }}" {% if page == 'rules' %}aria-current="page"{% endif %}><span class="nav-index">02</span>Firewall rules</a>
-        <a class="nav-link {% if page == 'config' %}active{% endif %}" href="{{ url_for('pages.config_page') }}" {% if page == 'config' %}aria-current="page"{% endif %}><span class="nav-index">03</span>Configuration</a>
+        <a class="nav-link {% if page == 'rules' %}active{% endif %}" href="{{ url_for('pages.rules_page') }}" {% if page == 'rules' %}aria-current="page"{% endif %}><span class="nav-index">02</span>Firewall configuration</a>
+        <a class="nav-link {% if page == 'system' %}active{% endif %}" href="{{ url_for('pages.system_page') }}" {% if page == 'system' %}aria-current="page"{% endif %}><span class="nav-index">03</span>System management</a>
+        <a class="nav-link {% if page == 'config' %}active{% endif %}" href="{{ url_for('pages.config_page') }}" {% if page == 'config' %}aria-current="page"{% endif %}><span class="nav-index">04</span>Configuration</a>
       </nav>
-      <div class="sidebar-foot"><span class="edge-indicator" aria-hidden="true"></span><span>LOCAL EDGE GATEWAY</span></div>
+      <div class="sidebar-foot"><span class="edge-indicator" aria-hidden="true"></span><span>CONNECTED SERVER</span></div>
     </aside>
 
     <main class="main-content">
@@ -41,7 +42,7 @@
         <div class="gateway-tag {% block status_class %}{% endblock %}" id="gateway-tag"><span class="gateway-dot"></span><span>{% block page_status %}LOCAL{% endblock %}</span></div>
       </section>
       {% block content %}{% endblock %}
-      <footer class="page-footer"><span>ARCHANGEL FIREWALL</span><span>CONTROL PLANE <span class="footer-separator">/</span> LOCAL</span></footer>
+      <footer class="page-footer"><span>ARCHANGEL FIREWALL</span><span>SERVER MANAGEMENT <span class="footer-separator">/</span> BACKEND API</span></footer>
     </main>
   </div>
   {% block scripts %}{% endblock %}

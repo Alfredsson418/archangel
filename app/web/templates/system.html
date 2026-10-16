@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% set page = "system" %}
+
+{% block title %}Archangel | System management{% endblock %}
+{% block breadcrumb %}SYSTEM MANAGEMENT{% endblock %}
+{% block heading_label %}SERVER OPERATIONS{% endblock %}
+{% block page_heading %}System management{% endblock %}
+{% block page_subtitle %}Review the host and Archangel service status. Operational controls are not yet available.{% endblock %}
+{% block status_class %}{{ 'connected' if api_connected else '' }}{% endblock %}
+{% block page_status %}{{ 'READ-ONLY' if api_connected else 'API UNAVAILABLE' }}{% endblock %}
+
+{% block content %}
+  {% if errors %}<div class="notice" role="status">{{ errors|join(' · ') }}</div>{% endif %}
+  {% set active_system_page = "overview" %}
+  {% include "_system_navigation.html" %}
+  <section class="panel" aria-labelledby="server-heading">
+    <div class="panel-heading"><div><p class="eyebrow">HOST</p><h2 id="server-heading">Server health</h2></div><span class="table-summary">{{ system.get('hostname', 'Unavailable') }}</span></div>
+    <div class="resources-grid">
+      <article class="resource-item"><p class="resource-label">HOST UPTIME</p><strong class="resource-value">{{ host_uptime }}</strong><span class="resource-detail">Time since the operating system started</span></article>
+      <article class="resource-item"><p class="resource-label">CPU LOAD (1 / 5 / 15 MIN)</p><strong class="resource-value">{{ cpu_load }}</strong><span class="resource-detail">{{ system.get('cpu_cores', 'Unavailable') }} online cores</span></article>
+      <article class="resource-item"><div class="resource-heading"><p class="resource-label">MEMORY</p><strong class="resource-value">{{ '%.1f%%'|format(memory_percent) if memory_percent is not none else 'Unavailable' }}</strong></div><progress class="resource-progress" max="100" value="{{ memory_percent or 0 }}" aria-label="Memory used"></progress><span class="resource-detail">{{ memory_detail }}</span></article>
+      <article class="resource-item"><div class="resource-heading"><p class="resource-label">ROOT DISK</p><strong class="resource-value">{{ '%.1f%%'|format(disk_percent) if disk_percent is not none else 'Unavailable' }}</strong></div><progress class="resource-progress" max="100" value="{{ disk_percent or 0 }}" aria-label="Root disk used"></progress><span class="resource-detail">{{ disk_detail }}</span></article>
+    </div>
+  </section>
+  <section class="panel" aria-labelledby="service-heading">
+    <div class="panel-heading"><div><p class="eyebrow">ARCHANGEL BACKEND</p><h2 id="service-heading">Service status</h2></div><span class="table-summary">{{ 'ONLINE' if api_connected else 'UNAVAILABLE' }}</span></div>
+    <dl class="detail-list">
+      <div><dt>Build version</dt><dd class="code-cell">{{ backend.get('backend_version', 'Unavailable') }}</dd></div>
+      <div><dt>Process uptime</dt><dd>{{ backend_uptime }}</dd></div>
+      <div><dt>API version</dt><dd>{{ backend.get('api_version', 'Unavailable') }}</dd></div>
+    </dl>
+  </section>
+  <section class="panel" aria-labelledby="operations-heading">
+    <div class="panel-heading"><div><p class="eyebrow">OPERATIONS</p><h2 id="operations-heading">Service actions</h2></div><span class="table-summary">NOT AVAILABLE</span></div>
+    <div class="operation-notice">
+      <p>Restart controls are unavailable. The backend does not yet provide authenticated service-management operations or a configured service-manager integration.</p>
+      <button class="refresh-button" type="button" disabled aria-describedby="restart-unavailable">Restart Archangel</button>
+      <span id="restart-unavailable" class="field-hint">Restarting a firewall service is a privileged operation and will be enabled only after backend authorization and deployment behavior are defined.</span>
+    </div>
+  </section>
+{% endblock %}

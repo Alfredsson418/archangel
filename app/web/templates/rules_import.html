@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% set page = "rules" %}
+
+{% block title %}Archangel | Import firewall rules{% endblock %}
+{% block breadcrumb %}FIREWALL CONFIGURATION / IMPORT{% endblock %}
+{% block heading_label %}PORTABLE FIREWALL CONFIGURATION{% endblock %}
+{% block page_heading %}Import firewall rules{% endblock %}
+{% block page_subtitle %}Preview a versioned Archangel rules bundle before adding rules to this server.{% endblock %}
+{% block status_class %}connected{% endblock %}
+{% block page_status %}ADDITIVE IMPORT{% endblock %}
+
+{% block content %}
+  {% if error %}<div class="notice" role="alert">{{ error }}</div>{% endif %}
+  {% if message %}<div class="success-notice" role="status">{{ message }}</div>{% endif %}
+  <section class="panel" aria-labelledby="import-heading">
+    <div class="panel-heading"><div><p class="eyebrow">JSON BUNDLE</p><h2 id="import-heading">Choose a portable rules file</h2></div></div>
+    <form class="settings-form" action="{{ url_for('pages.import_rules') }}" method="post" enctype="multipart/form-data">
+      <label for="bundle-file">Firewall rules bundle</label>
+      <div class="settings-field"><input id="bundle-file" name="bundle_file" type="file" accept="application/json,.json" required></div>
+      <p class="field-hint">Only versioned Archangel structured-rule bundles are accepted (maximum 512 KiB and 1000 rules). Arbitrary nftables commands and native nftables dumps are not imported.</p>
+      <div class="settings-actions"><button class="refresh-button" type="submit" name="action" value="preview">Preview bundle</button><a class="text-button" href="{{ url_for('pages.rules_page') }}">Cancel</a></div>
+    </form>
+  </section>
+
+  {% if preview_rules is defined %}
+    <section class="panel" aria-labelledby="preview-heading">
+      {% if omitted_unsupported_rules %}<div class="notice" role="status">{{ omitted_unsupported_rules }} unsupported rule(s) were omitted when this bundle was exported. They cannot be recreated by the current structured-rule API.</div>{% endif %}
+      <div class="panel-heading"><div><p class="eyebrow">REVIEW BEFORE APPLYING</p><h2 id="preview-heading">{{ preview_rules|length }} rules will be added</h2></div><span class="table-summary">EXISTING RULES WILL REMAIN</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>FAMILY</th><th>TABLE</th><th>CHAIN</th><th>PROTOCOL</th><th>ACTION</th><th>MATCHES</th></tr></thead>
+        <tbody>{% for rule in preview_rules %}
+          <tr>
+            <td class="code-cell">{{ rule.family }}</td><td class="code-cell">{{ rule.table }}</td><td class="code-cell">{{ rule.chain }}</td>
+            <td class="code-cell">{{ rule.protocol }}</td><td class="code-cell">{{ rule.action }}</td>
+            <td class="expression-cell">{{ rule.get("source_address", "") }} {{ rule.get("destination_address", "") }} {{ rule.get("destination_port", "") }}</td>
+          </tr>
+        {% endfor %}</tbody>
+      </table></div>
+      <form class="settings-form import-confirm-form" action="{{ url_for('pages.import_rules') }}" method="post">
+        <input type="hidden" name="bundle" value="{{ bundle_json }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="confirm-import-label"><input type="checkbox" name="confirm" value="yes" required> I reviewed these rules and understand they will be added to the active firewall.</label>
+        <p class="field-hint">Rules are added one at a time. If the backend rejects a later rule, earlier additions remain in effect; this import is not atomic.</p>
+        <div class="settings-actions"><button class="refresh-button" type="submit" name="action" value="apply">Add rules to firewall</button></div>
+      </form>
+    </section>
+  {% endif %}
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">PORTABLE EXPORT</p><h2>Export current rules</h2></div></div>
+    <p class="panel-copy">Download active rules that can be represented by Archangel's structured rule format. Unsupported rules are omitted and counted in the bundle; import preview displays that count. The bundle does not include host-specific API addresses or service settings.</p>
+    <p class="panel-copy">An export is a portable snapshot, not an automatic boot-time restore. Keep a separate backup and verify the target system before applying imported rules.</p>
+  </section>
+{% endblock %}

@@ -8,10 +8,16 @@ The repository currently provides:
 
 - A C++ HTTP API with a backend-neutral `Firewall` interface and an nftables implementation.
 - JSON endpoints for listing, adding, and deleting firewall rules, plus firewall statistics and host system information.
-- A Flask dashboard that renders overview, rules, and API connection configuration pages, and calls the C++ API server-side.
+- A versioned API endpoint returning bounded, source-grouped Archangel application logs and conditional nftables packet logs from the kernel journal.
+- A bodyless `/status/health` liveness endpoint, a versioned JSON `/status/info` endpoint, and a schema-version header on API calls. Make embeds the current Git commit hash in the backend binary.
+- A Flask dashboard with a server-health overview, a Firewall Configuration page for individual rules, a read-only System Management page with a source-grouped Logs subpage, and API connection configuration. It calls the C++ API server-side.
+- Backend CLI one-shot export/import of a versioned JSON config containing bind settings and the full nftables JSON ruleset. Every import requires an explicit merge or whole-ruleset replace mode.
+- The Firewall Configuration page can filter and sort active rules and provides a disabled Edit control. It can export and preview-import versioned, rules-only bundles; imports are additive and non-atomic, and exports omit unsupported nftables rules.
+- The overview summarizes nftables base-chain hook status without rendering firewall rules. The System Management page reports host and backend status; restart controls are not operational because authenticated service control and a deployment-specific service-manager integration are not yet designed.
+- The services are independently deployable in design: the privileged binary belongs on the managed server, while the Dockerized dashboard is intended to remain portable and may run on a separate management computer. The current Compose configuration is a same-host development setup, not a validated remote deployment recipe.
 - Structured application logging and a dashboard unittest suite.
 
-The C++ API and Flask dashboard currently have no authentication or authorization. Firewall rule mutations are privileged and take effect immediately. Keep both services on localhost or an isolated, trusted management network; do not expose them to the public internet. See [SECURITY.md](../SECURITY.md) and [endpoints.md](endpoints.md).
+The C++ API and Flask dashboard currently have no authentication or authorization. Firewall rule mutations are privileged and take effect immediately. Keep both services on localhost or an isolated, trusted management network; when deployed on separate computers, ensure their communication and dashboard access stay within that trusted network. Do not expose them to the public internet. See [SECURITY.md](../SECURITY.md) and [endpoints.md](endpoints.md).
 
 ## Phase 1: Testing and Contribution Readiness
 
@@ -30,27 +36,29 @@ The C++ API and Flask dashboard currently have no authentication or authorizatio
    - Add `CONTRIBUTING.md` with issue-first feature discussion, build/test steps, code and documentation expectations, and security reporting guidance.
    - Add a Code of Conduct and explain how to report conduct concerns.
    - **Exit criteria:** contribution and conduct documents are linked from the README and state clear reporting paths.
+4. **Other**
+   - For export/import system/firewall config, seperate firewall rules in the config between other rules and archangel rules
 
 ## Phase 2: Backend-Owned Security Controls
 
 **Status: Planned; design decisions are open**
 
-Security controls must be enforced at the backend/API trust boundary. The backend is authoritative for identity, authentication, and authorization. Do not create a separate Flask dashboard or browser user-authentication database. Until the controls below are implemented and verified, retain the deployment restrictions in [SECURITY.md](../SECURITY.md).
+Security controls must be enforced at the backend/API trust boundary. The backend is authoritative for identity, authentication, and authorization. Do not create a separate Flask dashboard or browser user-authentication database. `GET /status/health` is the deliberate exception: it remains unauthenticated and returns only a status code for liveness. `GET /status/info` and every other API route are intended to require backend authentication once controls are implemented. Until then, retain the deployment restrictions in [SECURITY.md](../SECURITY.md).
 
 1. **Decide and document the security model before implementation.**
    - Treat security as a major concern throughout the project. Assess each design against the CIA triad: confidentiality, integrity, and availability.
    - Apply IAAA access-control principles: identification, authentication, authorization, and accounting. Define what identities are represented, how they are authenticated, what each identity may do, and what security-relevant events are recorded.
    - Compare the expected reduction in security risk with the attack surface, configuration risk, operational burden, and maintenance complexity introduced by each control. Prefer the simplest effective design, not complexity for its own sake.
    - Define the threat model, supported deployment topologies, identity provisioning and recovery, credential/session handling, and the API-to-dashboard authentication flow.
-   - Define which operations require which permissions, including read-only access, firewall mutations, system information, and health checks.
+   - Define which operations require which permissions, including read-only access, firewall mutations, and diagnostic status. Keep the minimal `/status/health` liveness check public and free of sensitive details.
    - Decide how HTTPS is provided for browser-to-dashboard and dashboard-to-API traffic, including certificate configuration and renewal responsibilities.
    - Define rate-limit scope and behavior, including how authenticated identities and unauthenticated requests are treated.
    - **Exit criteria:** the decisions, threat analysis against confidentiality/integrity/availability, IAAA responsibilities, complexity tradeoffs, and remaining risks are documented before selecting protocols or storage details; no proposed design depends on frontend-only access checks.
 2. **Implement backend authentication and authorization.**
-   - Require credentials or a verifiable backend-issued credential on every API call. Authenticate and authorize each request independently in the C++ API; do not infer API access from having passed a frontend login screen or from frontend-only session state.
-   - Flask may present the login experience, but each call it makes to the C++ API must include a credential the API can validate. Apply explicit authorization to every API route and deny access by default when the caller is unauthenticated or lacks permission.
+   - Require credentials or a verifiable backend-issued credential on every API call except `GET /status/health`. Authenticate and authorize each request independently in the C++ API; do not infer API access from having passed a frontend login screen or from frontend-only session state.
+   - Flask may present the login experience, but each call it makes to the C++ API other than the liveness check must include a credential the API can validate. Apply explicit authorization to every other API route and deny access by default when the caller is unauthenticated or lacks permission.
    - Protect browser form submissions and session handling against request forgery and session misuse as appropriate to the chosen design.
-   - **Exit criteria:** tests cover missing, invalid, and valid credentials plus allowed and denied permissions for every route, including reads and health/status requests; bypassing or skipping the frontend login cannot grant API access; identity and permissions are not independently managed by the dashboard.
+   - **Exit criteria:** tests cover missing, invalid, and valid credentials plus allowed and denied permissions for every authenticated route, including reads and `/status/info`; tests also verify `/status/health` remains available without credentials and returns no body; bypassing or skipping the frontend login cannot grant access to other API routes; identity and permissions are not independently managed by the dashboard.
 3. **Provide HTTPS support.**
    - Implement the selected TLS deployment option for the documented service boundaries and validate certificate/configuration failures explicitly.
    - **Exit criteria:** deployment documentation explains secure setup and certificate lifecycle; tests or integration checks confirm encrypted connections and reject invalid TLS configuration.
@@ -124,6 +132,7 @@ The thesis discusses Swedish Armed Forces security-function requirements (KSF). 
 - What backend identity and credential-management model should be used, and how will administrators recover access?
 - Should TLS terminate in the application, a trusted reverse proxy, or support both?
 - What permission roles and rate-limit policy fit expected single-gateway and multi-gateway use?
+- Which backend service-manager integrations and authorized operations, if any, should be supported by the System Management page? Define restart scope, authorization, and behavior before enabling controls.
 - How should peer backends authenticate, authorize, discover, and securely communicate when forming a mesh?
 - Which platforms and firewall implementations are in scope for a usable release?
 - Which long-term network features are priorities, and which should remain out of scope?

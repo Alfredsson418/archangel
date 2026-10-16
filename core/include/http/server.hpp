@@ -3,6 +3,7 @@
 #include "../../lib/cpp-httplib/cpp-httplib.hpp"
 #include "../cli.hpp"
 #include "../firewall/firewall.hpp"
+#include <chrono>
 #include <iostream>
 #include <string>
 
@@ -23,5 +24,6 @@ class HttpServer {
 	void run();
 
   private:
-	Firewall &firewall_;
+	Firewall							 &firewall_;
+	std::chrono::steady_clock::time_point started_at_;
 };

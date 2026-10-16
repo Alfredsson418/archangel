@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% set page = "system" %}
+
+{% block title %}Archangel | System logs{% endblock %}
+{% block breadcrumb %}SYSTEM MANAGEMENT / LOGS{% endblock %}
+{% block heading_label %}SYSTEM DIAGNOSTICS{% endblock %}
+{% block page_heading %}Application logs{% endblock %}
+{% block page_subtitle %}Recent server-side logs grouped by application source; additional sources can be added independently.{% endblock %}
+{% block status_class %}{{ 'connected' if api_connected else '' }}{% endblock %}
+{% block page_status %}{{ 'READ-ONLY' if api_connected else 'API UNAVAILABLE' }}{% endblock %}
+
+{% block content %}
+  {% if error %}<div class="notice" role="status">{{ error }}</div>{% endif %}
+  {% set active_system_page = "logs" %}
+  {% include "_system_navigation.html" %}
+  {% if sources %}
+    {% for source in sources %}
+      <section class="panel log-source" id="logs-{{ source.get('id', loop.index) }}" aria-labelledby="logs-heading-{{ loop.index }}">
+        <div class="panel-heading">
+          <div><p class="eyebrow">LOG SOURCE</p><h2 id="logs-heading-{{ loop.index }}">{{ source.get('label', 'Application logs') }}</h2></div>
+          <span class="table-summary">{{ source.get('entries', [])|length }} ENTRIES · {{ 'AVAILABLE' if source.get('available') else 'UNAVAILABLE' }}</span>
+        </div>
+        <p class="log-source-detail">{{ source.get('detail', 'No source details available.') }}</p>
+        {% if source.get('entries') %}
+          <ol class="log-entries">
+            {% for entry in source.get('entries', []) %}
+              <li><pre>{{ entry }}</pre></li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="log-empty">{{ source.get('detail', 'No recent entries.') }}</p>
+        {% endif %}
+      </section>
+    {% endfor %}
+  {% elif not error %}
+    <section class="panel"><p class="log-empty">No log sources are configured.</p></section>
+  {% endif %}
+  <p class="field-hint log-retention-note">The backend limits results to recent entries and redacts common credential-like fields. Logs may still contain sensitive system or network details; restrict dashboard access to a trusted management network.</p>
+{% endblock %}

@@ -27,6 +27,22 @@ class Nftables : public Firewall {
 	std::string listRules() override;
 
 	/**
+	 * @brief Exports the complete active nftables ruleset as nftables JSON.
+	 * @return Serialized native nftables JSON ruleset.
+	 * @throws std::runtime_error If the ruleset cannot be read.
+	 */
+	std::string exportRuleset();
+
+	/**
+	 * @brief Applies a native nftables JSON ruleset through libnftables.
+	 * @param ruleset Serialized native nftables JSON ruleset.
+	 * @param replaceAll Whether to flush the entire active ruleset first.
+	 * @return No value.
+	 * @throws std::runtime_error If the configuration cannot be applied.
+	 */
+	void importRuleset(const std::string &ruleset, bool replaceAll);
+
+	/**
 	 * @brief Implements Firewall::getStatistics.
 	 * @return Aggregated statistics for the active ruleset.
 	 */

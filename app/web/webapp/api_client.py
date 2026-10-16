@@ -8,6 +8,8 @@ from urllib.request import Request, urlopen
 
 
 logger = logging.getLogger(__name__)
+API_SCHEMA_VERSION = "1"
+API_SCHEMA_VERSION_HEADER = "X-Archangel-Schema-Version"
 
 
 @dataclass
@@ -15,6 +17,7 @@ class ApiResponse:
     status: int
     body: bytes
     content_type: str
+    schema_version: str | None
 
 
 class ApiConnectionError(Exception):
@@ -25,7 +28,14 @@ class ApiResponseError(Exception):
     pass
 
 
-def request_backend(api_url, path, timeout=10):
+def request_backend(
+    api_url,
+    path,
+    timeout=10,
+    schema_version=API_SCHEMA_VERSION,
+    method="GET",
+    body=None,
+):
     """Perform an HTTP request to the C++ API without decoding its body.
 
     Returns:
@@ -34,7 +44,10 @@ def request_backend(api_url, path, timeout=10):
     Raises:
         ApiConnectionError: If the API cannot be reached.
     """
-    request = Request(f"{api_url}{path}", headers={"Accept": "application/json"})
+    headers = {"Accept": "application/json"}
+    if schema_version is not None:
+        headers[API_SCHEMA_VERSION_HEADER] = schema_version
+    request = Request(f"{api_url}{path}", data=body, headers=headers, method=method)
     started = perf_counter()
     # Paths are logged without query parameters to avoid leaking caller-supplied
     # values that could contain tokens or other sensitive information.
@@ -45,12 +58,14 @@ def request_backend(api_url, path, timeout=10):
                 response.status,
                 response.read(),
                 response.headers.get("Content-Type", "application/json"),
+                response.headers.get(API_SCHEMA_VERSION_HEADER),
             )
     except HTTPError as error:
         result = ApiResponse(
             error.code,
             error.read(),
             error.headers.get("Content-Type", "application/json"),
+            error.headers.get(API_SCHEMA_VERSION_HEADER),
         )
     except (URLError, TimeoutError, OSError) as error:
         duration_ms = (perf_counter() - started) * 1000
@@ -88,6 +103,14 @@ def fetch_json(api_url, path, timeout=10):
             status.
     """
     response = request_backend(api_url, path, timeout)
+    if response.schema_version != API_SCHEMA_VERSION:
+        logger.warning(
+            "backend_schema_version_mismatch path=%s expected=%s actual=%s",
+            urlsplit(path).path,
+            API_SCHEMA_VERSION,
+            response.schema_version or "missing",
+        )
+        raise ApiResponseError("The API returned an unsupported schema version.")
     try:
         payload = json.loads(response.body)
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
@@ -111,15 +134,33 @@ def fetch_json(api_url, path, timeout=10):
     return payload
 
 
-def test_api_connection(api_url):
-    """Check API connectivity by requesting the active ruleset.
+def check_api_health(api_url):
+    """Check whether the backend is online using its unauthenticated health route.
 
     Returns:
-        A pair of (connected, human-readable result); expected connection and
-        response errors are returned as a failed result rather than raised.
+        A pair of (online, human-readable result).
+
+    Raises:
+        ApiConnectionError: If the API cannot be reached.
+        ApiResponseError: If the health endpoint returns a non-success status.
+    """
+    response = request_backend(
+        api_url, "/status/health", timeout=5, schema_version=None
+    )
+    if not 200 <= response.status < 300:
+        raise ApiResponseError(
+            f"The API health check returned HTTP {response.status}."
+        )
+    return True, "Health check successful. The API is online."
+
+
+def test_api_connection(api_url):
+    """Check API connectivity using the health route.
+
+    Returns:
+        A pair of (connected, human-readable result).
     """
     try:
-        fetch_json(api_url, "/api/v1/rules", timeout=5)
-        return True, "Connection successful. The API returned the active ruleset."
+        return check_api_health(api_url)
     except (ApiConnectionError, ApiResponseError) as error:
         return False, str(error)

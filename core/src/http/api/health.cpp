@@ -3,7 +3,7 @@
 namespace HttpApi {
 
 void getHealth(const httplib::Request &, httplib::Response &response) {
-	response.set_content("Archangel firewall\n", "text/plain");
+	response.status = 200;
 }
 
 } // namespace HttpApi
