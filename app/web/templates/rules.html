@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% set page = "rules" %}
+
+{% block title %}Archangel | Firewall rules{% endblock %}
+{% block breadcrumb %}FIREWALL RULES{% endblock %}
+{% block heading_label %}NFTABLES POLICY{% endblock %}
+{% block page_heading %}Firewall rules{% endblock %}
+{% block page_subtitle %}Rules loaded directly by the Flask backend from the active nftables ruleset.{% endblock %}
+{% block status_class %}{% if not error %}connected{% endif %}{% endblock %}
+{% block page_status %}{{ "API UNAVAILABLE" if error else "API CONNECTED" }}{% endblock %}
+
+{% block content %}
+  {% if error %}<div class="notice" role="status">{{ error }}</div>{% endif %}
+  <section class="panel" aria-labelledby="rules-heading">
+    <div class="panel-heading"><div><p class="eyebrow">LIVE RULESET</p><h2 id="rules-heading">Active rules</h2></div><span class="table-summary">{{ rules|length }} {{ "RULE" if rules|length == 1 else "RULES" }}</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>FAMILY</th><th>TABLE</th><th>CHAIN</th><th>HANDLE</th><th>EXPRESSION</th></tr></thead>
+      <tbody>
+        {% for rule in rules %}
+          {% set expression = rule.get("expr", []) %}
+          <tr>
+            <td class="code-cell">{{ rule.get("family", "—") }}</td>
+            <td class="code-cell">{{ rule.get("table", "—") }}</td>
+            <td class="code-cell">{{ rule.get("chain", "—") }}</td>
+            <td class="code-cell">{{ rule.get("handle", "—") }}</td>
+            <td class="expression-cell" title="{{ expression|tojson|forceescape }}">{{ expression|tojson }}</td>
+          </tr>
+        {% else %}
+          <tr><td class="empty-cell" colspan="5">{{ "Rules could not be loaded." if error else "No rules in the active ruleset." }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+{% endblock %}

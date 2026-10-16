@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set page = "dashboard" %}
+
+{% block title %}Archangel | Firewall dashboard{% endblock %}
+{% block breadcrumb %}OVERVIEW{% endblock %}
+{% block topbar_actions %}
+  <span class="last-updated">Updated {{ last_updated }}</span>
+  <form action="{{ url_for('pages.index') }}" method="get"><button class="refresh-button" type="submit">Refresh</button></form>
+{% endblock %}
+{% block heading_label %}FIREWALL CONTROL PLANE{% endblock %}
+{% block page_heading %}<span id="page-title">Network overview</span>{% endblock %}
+{% block page_subtitle %}<span id="page-subtitle">Inspect the active nftables policy on this gateway.</span>{% endblock %}
+{% block status_class %}{{ 'connected' if api_connected else '' }}{% endblock %}
+{% block page_status %}{{ 'API CONNECTED' if api_connected else 'API UNAVAILABLE' }}{% endblock %}
+
+{% block content %}
+  {% if errors %}<div class="notice" role="status">{{ errors|join(' · ') }}</div>{% endif %}
+  <section class="view active" id="view-overview" aria-labelledby="page-title">
+    <div class="metric-grid">
+      <article class="metric metric-primary"><div class="metric-label">ACTIVE RULES</div><div class="metric-value">{{ statistics.get('total_rules', '—') }}</div><div class="metric-foot"><span class="metric-mark">01</span><span>In the current ruleset</span></div></article>
+      <article class="metric"><div class="metric-label">TABLES</div><div class="metric-value">{{ statistics.get('total_tables', '—') }}</div><div class="metric-foot"><span class="metric-mark">02</span><span>Across all families</span></div></article>
+      <article class="metric"><div class="metric-label">CHAINS</div><div class="metric-value">{{ statistics.get('total_chains', '—') }}</div><div class="metric-foot"><span class="metric-mark">03</span><span>Configured in ruleset</span></div></article>
+    </div>
+    <section class="panel statistics-panel" aria-labelledby="statistics-heading">
+      <div class="panel-heading"><div><p class="eyebrow">BACKEND ANALYTICS</p><h2 id="statistics-heading">Rule statistics</h2></div></div>
+      <div class="statistics-grid">
+        {% for title, key in [('By family', 'rules_by_family'), ('By protocol', 'rules_by_protocol'), ('By verdict', 'rules_by_verdict')] %}
+          <section class="statistics-group"><h3>{{ title }}</h3><div class="statistics-list">
+            {% for label, count in statistics.get(key, {}).items() %}<div class="statistics-row"><span>{{ label }}</span><strong>{{ count }}</strong></div>
+            {% else %}<span class="statistics-empty">{{ 'No data' if api_connected else 'Unavailable' }}</span>{% endfor %}
+          </div></section>
+        {% endfor %}
+      </div>
+    </section>
+    <section class="panel resources-panel" aria-labelledby="resources-heading">
+      <div class="panel-heading"><div><p class="eyebrow">HOST HEALTH</p><h2 id="resources-heading">System resources</h2></div><span class="table-summary">{{ system.get('hostname', 'Unavailable') }}</span></div>
+      <div class="resources-grid">
+        <article class="resource-item"><p class="resource-label">CPU LOAD (1 / 5 / 15 MIN)</p><strong class="resource-value">{{ cpu_load }}</strong><span class="resource-detail">{{ system.get('cpu_cores', '—') }} online cores</span></article>
+        <article class="resource-item"><div class="resource-heading"><p class="resource-label">MEMORY</p><strong class="resource-value">{{ '%.1f%%'|format(memory_percent) if memory_percent is not none else 'Unavailable' }}</strong></div><progress class="resource-progress" max="100" value="{{ memory_percent or 0 }}" aria-label="Memory used"></progress><span class="resource-detail">{{ memory_detail }}</span></article>
+        <article class="resource-item"><div class="resource-heading"><p class="resource-label">ROOT DISK</p><strong class="resource-value">{{ '%.1f%%'|format(disk_percent) if disk_percent is not none else 'Unavailable' }}</strong></div><progress class="resource-progress" max="100" value="{{ disk_percent or 0 }}" aria-label="Root disk used"></progress><span class="resource-detail">{{ disk_detail }}</span></article>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">POLICY</p><h2>Ruleset snapshot</h2></div><a class="text-button" href="{{ url_for('pages.rules_page') }}">View all <span aria-hidden="true">→</span></a></div>
+      <div class="table-wrap"><table><thead><tr><th>FAMILY</th><th>TABLE</th><th>CHAIN</th><th>HANDLE</th><th>EXPRESSION</th></tr></thead><tbody>
+        {% for rule in rules %}<tr><td class="code-cell">{{ rule.get('family', '—') }}</td><td class="code-cell">{{ rule.get('table', '—') }}</td><td class="code-cell">{{ rule.get('chain', '—') }}</td><td class="code-cell">{{ rule.get('handle', '—') }}</td><td class="expression-cell" title="{{ rule.get('expr', [])|tojson|forceescape }}">{{ rule.get('expr', [])|tojson }}</td></tr>
+        {% else %}<tr><td class="empty-cell" colspan="5">{{ rules_error or 'No rules in the active ruleset.' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+  </section>
+{% endblock %}
