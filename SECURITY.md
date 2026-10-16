@@ -4,6 +4,8 @@ Security is a major concern for Archangel because its backend can make immediate
 
 Controls should be proportionate to the threats they address. New mechanisms can themselves increase attack surface, create configuration hazards, and make secure operation harder through added complexity. Designs should weigh that residual risk and operational burden against the expected security benefit, and prefer the simplest effective control rather than adding mechanisms without a clear purpose.
 
+The thesis [Zero Trust i isolerade komplexa miljöer](assets/Zero_Trust_i_Komplexa_Isolerade_Miljöer.pdf) is a source of long-term architectural ideas, including mutually authenticated gateway links, policy decision and enforcement points, microsegmentation, session review, and protected security logging. It also identifies high impact from failures or compromise of central decision/gateway services and the PKI. These ideas are not current controls or a compliance claim. Any future design must address availability, recovery, key/certificate lifecycle, control-plane protection, and log integrity as well as access prevention. See the [project goal](docs/goal.md) and [roadmap](docs/roadmap.md).
+
 ## If You Detect a Security Flaw
 
 1. Do not publish the details in a public issue, pull request, discussion, or other public channel.

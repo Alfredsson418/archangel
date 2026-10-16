@@ -88,7 +88,22 @@ The API already supports structured rule creation and deletion; the current dash
 
 **Status: Exploratory; not committed scope**
 
-The following items originate from the broader project vision and require separate scope, threat-model, and architecture decisions before implementation:
+The thesis [Zero Trust i isolerade komplexa miljöer](../assets/Zero_Trust_i_Komplexa_Isolerade_Miljöer.pdf) provides a reference architecture and proof-of-concept sequence, not an implementation specification. It describes a central Segmentation Gateway (SG), Edge Gateways (EGs) at zone boundaries, Resource Gateways (RGs) in front of individual resources, Device Agents (DAs) for endpoint identity/posture, and a Policy Decision Point (PDP) that directs Policy Enforcement Points (PEPs). The proposed PDP comprises a Policy Engine and Policy Administrator. See [goal.md](goal.md) for component roles, control/data-plane flow, principles, and limitations.
+
+### Thesis-inspired proof-of-concept sequence
+
+If this direction is selected, the thesis suggests incremental stages (printed pp. 75–76):
+
+1. **Secure SG/EG core connectivity.** Establish zone boundaries and authenticated, encrypted gateway-to-gateway communication. Agree on peer identity and bootstrap before connecting gateways.
+2. **Integrate decision and trust services.** Connect the PDP, PKI, identity management, and chosen security-information sources. Define policy, credential issuance/revocation, control-plane protection, and behavior when a dependency is unavailable.
+3. **Add endpoint agents.** Authenticate supported endpoints and collect only the posture information justified by the threat model. Treat any hardware proxy for legacy endpoints as a separate design with explicit limitations.
+4. **Add resource-level enforcement.** Deploy RG/PEP functionality in front of selected resources and apply least-privilege resource policies.
+
+These exploratory stages do not supersede the nearer-term project phases above and should not be interpreted as an approved schedule or a decision to implement every thesis component.
+
+Before committing to any stage, assess the control and data planes, CIA and IAAA requirements, complexity, threat model, and fail-safe behavior. The thesis highlights availability risks if the central PDP or SG is unavailable, compromise risks to these high-impact components, and severe consequences if the PKI is compromised. Define redundancy/recovery, certificate revocation and key protection, authenticated and encrypted control-plane links, protected security-event logging, monitoring, and zone-containment behavior as explicit design decisions. Fail-closed choices must be weighed against availability; the appropriate behavior can differ by operation and deployment.
+
+The following additional items originate from the broader project vision and require separate scope, threat-model, and architecture decisions before implementation:
 
 - DNS resolver and DHCP controllers.
 - Device enrollment and identity agents.
@@ -101,6 +116,8 @@ The following items originate from the broader project vision and require separa
 
 For any item selected for development, first document the use case, trust boundaries, required data and permissions, failure behavior, privacy implications, operational impact, and API/UI contract. For a backend mesh, also decide peer identity and authentication, authorization across peers, secure transport, discovery and membership, topology, and behavior when links or peers fail; do not assume that network location implies trust. Then define testable acceptance criteria and update the relevant architecture, endpoint, security, and goal documentation. These concepts are not current capabilities.
 
+The thesis discusses Swedish Armed Forces security-function requirements (KSF). It is not evidence that Archangel or a future deployment is KSF-compliant or certified. Any real deployment must be assessed against its applicable requirements, threat model, and component-specific security obligations.
+
 ## Decisions Still Open
 
 - Which users and deployment environments should the first secured release support?
@@ -110,3 +127,4 @@ For any item selected for development, first document the use case, trust bounda
 - How should peer backends authenticate, authorize, discover, and securely communicate when forming a mesh?
 - Which platforms and firewall implementations are in scope for a usable release?
 - Which long-term network features are priorities, and which should remain out of scope?
+- What availability and recovery requirements should apply to the PDP, SG, PKI, and security-log services?
