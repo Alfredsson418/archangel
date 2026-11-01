@@ -17,6 +17,9 @@ VERSION_HEADER = $(BUILD)/generated/archangel_version.hpp
 # Includes are written relative to these roots, for example
 # "http/server.hpp" or "json/json.hpp".
 INCLUDE_FLAGS = -I$(CORE)/include -I$(LIB) -I$(BUILD)/generated
+# Enables cpp-httplib's TLS server; it must be defined for every file that
+# includes cpp-httplib so they all see the same class layouts.
+INCLUDE_FLAGS += -DCPPHTTPLIB_OPENSSL_SUPPORT
 GIT_COMMIT = $(shell git rev-parse --verify HEAD 2>/dev/null)
 ifeq ($(strip $(GIT_COMMIT)),)
 $(error Unable to determine the Git commit hash required for the backend version)
@@ -33,7 +36,7 @@ DEBUG_CFLAGS = -std=c++20 -Wall -Wextra -g
 RELEASE_CFLAGS = -std=c++20 -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE
 RELEASE_LDFLAGS = -pie -Wl,-z,relro,-z,now
 TEST_CFLAGS = -std=c++20 -Wall -O0 -g0
-LDFLAGS = -lnftables -lsqlite3 -largon2 -lcrypto -lrt -ldl -pthread
+LDFLAGS = -lnftables -lsqlite3 -largon2 -lssl -lcrypto -lrt -ldl -pthread
 # lm is used by argtable3
 
 
@@ -86,7 +89,7 @@ build_release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
 $(TEST_BINARY): $(TEST_SRCFILES) $(TEST_APP_SRCFILES)
 	@mkdir -p $(@D)
 	@echo "Building backend tests"
-	@$(CC) $(TEST_CFLAGS) $(INCLUDE_FLAGS) $^ -o $@ -lsqlite3 -largon2 -lcrypto -lrt -ldl -pthread
+	@$(CC) $(TEST_CFLAGS) $(INCLUDE_FLAGS) $^ -o $@ -lsqlite3 -largon2 -lssl -lcrypto -lrt -ldl -pthread
 
 test: $(TEST_BINARY)
 	@$(TEST_BINARY)

@@ -7,6 +7,7 @@
 #include "firewall/providers/firewall_config_provider.hpp"
 #include "firewall/providers/nft.hpp"
 #include "http/server.hpp"
+#include "http/tls.hpp"
 #include "logger.hpp"
 #include "logs/providers/application_log_source.hpp"
 #include "logs/providers/jsonl_file_sink.hpp"
@@ -204,9 +205,13 @@ int runApplication(int argc, char *argv[]) {
 		return 1;
 	}
 	if (appConfig.tls.enabled) {
-		std::cerr << "Runtime TLS is configured but native TLS is not "
-					 "implemented yet\n";
-		return 1;
+		try {
+			HttpApi::validateTlsFiles(appConfig.tls);
+		} catch (const std::exception &error) {
+			std::cerr << "TLS configuration is invalid: " << error.what()
+					  << '\n';
+			return 1;
+		}
 	}
 
 	if (!importFirewallConfigPath.empty() &&
@@ -232,7 +237,8 @@ int runApplication(int argc, char *argv[]) {
 					 "replace-all\n";
 		return 2;
 	}
-	if (!Network::isLoopbackAddress(appConfig.server.bind_address)) {
+	if (!appConfig.tls.enabled &&
+		!Network::isLoopbackAddress(appConfig.server.bind_address)) {
 		Logger::Program::log(
 			"SECURITY WARNING: API listener is non-loopback and TLS is not "
 			"enabled; network traffic is unprotected",
@@ -290,14 +296,16 @@ int runApplication(int argc, char *argv[]) {
 				importMode);
 			Logger::Program::log("Imported Archangel firewall config bundle");
 			HttpServer server(nftables, authProvider, logSources(),
-							  appConfig.server, appConfig.rate_limits);
+							  appConfig.server, appConfig.tls,
+							  appConfig.rate_limits);
 			server.run();
 			Logger::Program::log("Program stopped");
 			return 0;
 		}
 
 		HttpServer server(nftables, authProvider, logSources(),
-						  appConfig.server, appConfig.rate_limits);
+						  appConfig.server, appConfig.tls,
+						  appConfig.rate_limits);
 
 		server.run();
 		Logger::Program::log("Program stopped");

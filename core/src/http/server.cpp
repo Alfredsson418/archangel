@@ -11,6 +11,7 @@
 #include "http/api/system.hpp"
 #include "http/authentication.hpp"
 #include "http/request_audit.hpp"
+#include "http/tls.hpp"
 #include "logger.hpp"
 #include <chrono>
 #include <optional>
@@ -66,7 +67,8 @@ void addRoute(httplib::Server &server, HttpApi::RoutePolicies &policies,
 HttpServer::HttpServer(
 	Firewall &firewall, Auth::AuthProvider &auth,
 	std::vector<std::unique_ptr<Logging::LogSource>> logSources,
-	AppConfig::Server serverConfig, AppConfig::RateLimits rateLimits)
+	AppConfig::Server serverConfig, AppConfig::Tls tlsConfig,
+	AppConfig::RateLimits rateLimits)
 	: firewall_(firewall), auth_(auth), log_sources_(std::move(logSources)),
 	  login_limiter_(
 		  rateLimits.failed_auth_attempts,
@@ -81,11 +83,29 @@ HttpServer::HttpServer(
 	  firewall_mutation_identity_limiter_(
 		  rateLimits.firewall_mutations_per_minute, std::chrono::minutes(1)),
 	  server_config_(std::move(serverConfig)),
+	  tls_config_(std::move(tlsConfig)),
 	  started_at_(std::chrono::steady_clock::now()) {}
 
 void HttpServer::run() {
 	using HttpApi::RouteAccess;
-	httplib::Server		   server;
+	// With TLS enabled the listener only speaks HTTPS; startup fails rather
+	// than falling back to plaintext when the TLS setup is invalid.
+	std::unique_ptr<httplib::Server> listener;
+	if (tls_config_.enabled) {
+		std::string tlsError;
+		auto		secure = std::make_unique<httplib::SSLServer>(
+			   [this, &tlsError](httplib::tls::ctx_t context) {
+				   return HttpApi::configureTlsContext(
+					   static_cast<SSL_CTX *>(context), tls_config_, tlsError);
+			   });
+		if (!secure->is_valid()) {
+			throw std::runtime_error("TLS setup failed: " + tlsError);
+		}
+		listener = std::move(secure);
+	} else {
+		listener = std::make_unique<httplib::Server>();
+	}
+	httplib::Server		  &server = *listener;
 	HttpApi::RoutePolicies routes;
 	server.set_pre_routing_handler([this,
 									&routes](const httplib::Request &request,
@@ -198,7 +218,8 @@ void HttpServer::run() {
 				 HttpApi::getLogs(log_sources_, request, response);
 			 });
 
-	Logger::Firewall::log("Archangel listening on " +
+	Logger::Firewall::log(std::string("Archangel listening on ") +
+						  (tls_config_.enabled ? "https://" : "http://") +
 						  server_config_.bind_address + ":" +
 						  std::to_string(server_config_.port));
 

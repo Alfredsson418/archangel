@@ -42,9 +42,9 @@ effective-settings object; explicit CLI options then override its values.
 | `auth.argon2id.parallelism` | `1` | Argon2id parallelism; range 1–8. |
 | `sessions.idle_timeout_seconds` | `900` | API session idle lifetime. |
 | `sessions.absolute_timeout_seconds` | `28800` | Absolute session lifetime; must exceed the idle lifetime. |
-| `tls.enabled` | `false` | Native API TLS setting. Enabling TLS currently fails startup because TLS support is not implemented. |
-| `tls.certificate_file` | unset | Operator-provisioned certificate path. |
-| `tls.private_key_file` | unset | Operator-provisioned private-key path; never put key contents in JSON. |
+| `tls.enabled` | `false` | Serve the API over HTTPS only. See [TLS](#tls). |
+| `tls.certificate_file` | unset | PEM certificate chain, server certificate first. Required when TLS is enabled. |
+| `tls.private_key_file` | unset | PEM private key path; never put key contents in JSON. Required when TLS is enabled. |
 | `logging.sink` | `jsonl_file` | Backend log sink. Only the JSONL file sink is supported. |
 | `logging.path` | `/var/log/archangel/backend.jsonl` (release); `.archangel-dev/backend.jsonl` beside the executable (debug) | JSONL log destination. |
 | `logging.level` | `INFO` | Minimum level for ordinary log messages: `DEBUG`, `INFO`, `WARNING`, or `ERROR`. Request audit records are always written. |
@@ -107,9 +107,8 @@ mode `0644` (readable but not writable by group or others), and refuses to
 overwrite an existing destination. Writing the release default under
 `/etc/archangel` may require elevated privileges. It generates defaults
 rather than reading or modifying an existing config. Edit the generated file
-to customize supported settings. Generating TLS paths does
-not enable TLS, and the current backend still rejects enabling TLS because
-native TLS is not implemented.
+to customize supported settings. The generated file leaves TLS disabled; see
+[TLS](#tls) to enable it.
 
 Create the initial administrator using the same runtime file. Put `--config`
 before the `user` subcommand:
@@ -117,6 +116,30 @@ before the `user` subcommand:
 ```sh
 ./archangel --config /etc/archangel/config.json user bootstrap-admin --username admin
 ```
+
+## TLS
+
+With `tls.enabled` set to `true`, the API listener serves HTTPS only, requires
+TLS 1.2 or newer, and uses the configured certificate chain and private key.
+Startup fails, and the backend never falls back to plain HTTP, when:
+
+- `certificate_file` or `private_key_file` is missing;
+- either path is a symbolic link or not a regular file;
+- the certificate file is writable by group or others;
+- the private key file is not owned by the service user or has any group or
+  other permissions (use mode `0600`);
+- the certificate or key cannot be parsed, or the key does not match the
+  certificate.
+
+Certificates are loaded once at startup. After renewing them, restart the
+backend. Archangel does not obtain or renew certificates; provision them with
+your own CA or ACME client. The dashboard verifies the API certificate against
+the system trust store, plus a private CA bundle when `ARCHANGEL_API_CA_BUNDLE`
+is set; it has no option to disable verification.
+
+When TLS is disabled and the listener binds to a non-loopback address, the
+backend logs a startup warning, because credentials and API traffic are then
+observable and modifiable on the network.
 
 ## Backend log
 
@@ -186,13 +209,12 @@ firewall mutations per source IP and identity are limited using the configured
 thresholds. Rate-limit counters use bounded in-memory state and reset on
 restart. Session settings control API session lifetimes.
 
-Native TLS is not implemented. TLS cannot be enabled; an enabled TLS setting
-is rejected rather than silently ignored. The Flask dashboard integrates the backend login
+The Flask dashboard integrates the backend login
 contract and stores its opaque backend session on the server in a separate
 SQLite session database. Production dashboard deployments must configure
 `FLASK_SECRET_KEY`; see the deployment guidance for its session-store
-settings. API traffic is plain HTTP. Keep both services restricted to
-localhost or a trusted, isolated management network.
+settings. API traffic is plain HTTP unless TLS is enabled. Keep both services
+restricted to localhost or a trusted, isolated management network.
 
 ## Command-line precedence
 
