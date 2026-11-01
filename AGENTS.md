@@ -1,5 +1,12 @@
 # Project Guidelines
 
+## Source of Truth
+
+- `AGENTS.md` is the authoritative instruction file for coding agents and automation working in this repository.
+- User-facing documentation such as `README.md`, `docs/goal.md`, `docs/endpoints.md`, and `SECURITY.md` explains the project for humans; it is not a substitute for the agent workflow rules in this file.
+- When a project document and this file disagree, follow this file for implementation and agent behavior, and update the relevant documentation to resolve the inconsistency.
+- Keep this file as the single canonical location for repository conventions, source layout, build/test expectations, security rules, and implementation guardrails.
+
 ## Architecture
 
 - The C++20 firewall API is in `core/src` with public headers in `core/include`; it uses libnftables and `cpp-httplib`.
@@ -56,9 +63,9 @@
 ## Build and Test
 
 - Build the C++ API with `make debug`. A C++20 compiler and libnftables development files are required.
+- Run backend unit tests with `make test`; these tests use controlled inputs and a mock firewall, and must not mutate live firewall state.
 - Run dashboard tests from `app/web` with `.venv/bin/python -m unittest` when the project virtual environment is available. Install dependencies from `requirements.txt` if needed.
-- There is currently no C++ test target. Do not imply that building the API runs tests.
-- For dashboard changes, run the dashboard unittest suite. For C++ changes, build with `make debug`; also run any focused checks that apply. Report checks that could not be run and why.
+- For dashboard changes, run the dashboard unittest suite. For C++ changes, run `make test` and build with `make debug`; also run any focused checks that apply. Report checks that could not be run and why.
 
 ## Conventions
 
@@ -75,6 +82,7 @@
   - Update `SECURITY.md` when vulnerability-reporting guidance changes. Update `docs/security-concerns.md` when current security posture, known concerns, or planned security controls change. Keep planned controls clearly distinct from implemented protections.
   - Update `docs/roadmap.md` when planned work, sequencing, status, exit criteria, or material design decisions change. Keep exploratory ideas distinct from committed work and implemented features.
   - Update `docs/goal.md` when project purpose or long-term architectural direction changes. Keep it descriptive and reader-facing; distinguish implemented capabilities from aspirations and state unresolved assumptions as open questions rather than settled requirements.
+  - Update `docs/test.md` when test suites, commands, prerequisites, or expected output change.
   - Keep `docs/security-concerns.md` as the reader-facing source of truth for current security limitations and planned controls; link to it from `SECURITY.md` rather than duplicating the concern register.
   - Update `AGENTS.md` when agent-facing conventions, design rules, source layout, or build/test workflows change. Do not update it for unrelated feature details.
   - Keep this list updated for new documentation files in the future.

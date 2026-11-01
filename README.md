@@ -32,6 +32,8 @@ make debug
 ./archangel --host 127.0.0.1 --port 8080
 ```
 
+See the [test and verification guide](docs/test.md) for prerequisites, test coverage, commands, expected output, and GitHub Actions behavior.
+
 The backend can export the complete active nftables ruleset together with its
 bind settings in a versioned JSON config, or import a config before starting
 the API:

@@ -11,7 +11,7 @@ This document summarizes security limitations visible in the current Archangel i
 | High | Browser-accessible configuration and mutation surfaces | Dashboard routes have no login; the connection-settings form has no CSRF token. |
 | High | Privileged, immediate firewall changes | Rule changes take effect immediately; imports consist of separate, non-atomic API calls. |
 | Medium | Log confidentiality and audit limitations | The unauthenticated logs endpoint exposes bounded application and packet logs; redaction is partial. |
-| Medium | Availability controls and verification gaps | No API rate limiting is implemented, and the repository has no automated C++ test target. |
+| Medium | Availability controls and verification gaps | No API rate limiting is implemented. Automated C++ unit tests cover selected parsing and HTTP-handler behavior but do not constitute broad integration, fuzz, or security testing. |
 | Medium | Session and deployment configuration | The Flask session key defaults to a per-process random value; the session cookie is not explicitly marked Secure. |
 
 These priorities assume the API or dashboard can be reached by an untrusted party. Binding to localhost reduces network exposure but does not add authentication and is not sufficient for a deployment that intentionally exposes either service to a network.
@@ -78,7 +78,7 @@ The following controls are planned or required by the project guidance but are n
 - Add API rate limiting with documented behavior and tests.
 - Decide and implement the required protections for dashboard state-changing forms and API URL configuration as part of the authentication and deployment design. Consider how configured backend destinations are constrained to avoid unintended server-side requests.
 - Define the audit events, identity attribution, protection, and retention required for accounting and incident investigation.
-- Add automated C++ API tests and appropriate security-focused checks without allowing ordinary tests to alter a live firewall.
+- Expand the automated C++ unit tests and add appropriate security-focused checks without allowing ordinary tests to alter a live firewall.
 
 The [security-control roadmap](roadmap.md#phase-2-backend-owned-security-controls) tracks the planned backend-owned authentication, HTTPS, and rate-limiting work. Design choices that affect identity, credentials, trust boundaries, or deployment should be decided before implementation.
 

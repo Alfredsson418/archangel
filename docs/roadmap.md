@@ -2,6 +2,29 @@
 
 This roadmap separates work that follows from the current implementation from longer-term concepts. It is directional, not a delivery schedule: priorities and designs may change as the project develops. A task is complete only when the behavior exists in the repository and its stated verification is satisfied.
 
+## Traceability and status model
+
+This roadmap uses status levels that keep the project evidence-based, even as some scope remains directional:
+
+- Implemented: the feature or behavior exists in the repository and is covered by current code and documentation.
+- In progress: the feature is partly present or being actively refined before it is considered complete.
+- Planned: the work is defined but not yet implemented.
+- Exploratory: the idea is part of the broader vision or thesis context, but it is not a committed implementation target yet.
+
+A roadmap item should record clear evidence and verification criteria: repository evidence, current status, and the exit criteria that would mark it complete.
+
+| Area | Status | Evidence in the repository | Notes |
+| --- | --- | --- | --- |
+| Backend firewall abstraction and nftables backend | Implemented | `core/include/firewall/firewall.hpp`, `core/src/firewall/` | Backend-neutral contract exists and is used by the HTTP layer. |
+| JSON rule management and statistics APIs | Implemented | `core/src/http/api/` | Structured rule operations and system-status endpoints exist. |
+| Health and version metadata endpoints | Implemented | `/status/health`, `/status/info`, versioned schema handling | Build embeds the Git commit hash and reports it in `/status/info`. |
+| Dashboard overview and firewall configuration UI | In progress | `app/web/`, templates, client/server code | The dashboard exists and supports core monitoring and rule workflows, but not all actions are complete. |
+| Structured logging and bounded log reads | Implemented | backend and dashboard logging configuration | Useful diagnostics exist, but access and retention policies remain limited. |
+| CLI import/export of JSON config and rule bundles | Implemented | backend CLI config handling | Imports require explicit merge or replace mode and do not claim arbitrary host recovery. |
+| Authentication and authorization | Planned | security and API design notes | No backend-authenticated scheme exists yet. |
+| HTTPS and service-manager integration | Planned | security and system-management design notes | Requires explicit deployment and trust-boundary decisions. |
+| Long-term EG/RG/SG mesh architecture | Exploratory | [goal.md](goal.md) and the thesis-inspired concept material | Strategic direction rather than a current implementation commitment. |
+
 ## Current Baseline
 
 The repository currently provides:
@@ -9,7 +32,7 @@ The repository currently provides:
 - A C++ HTTP API with a backend-neutral `Firewall` interface and an nftables implementation.
 - JSON endpoints for listing, adding, and deleting firewall rules, plus firewall statistics and host system information.
 - A versioned API endpoint returning bounded, source-grouped Archangel application logs and conditional nftables packet logs from the kernel journal.
-- A bodyless `/status/health` liveness endpoint, a versioned JSON `/status/info` endpoint, and a schema-version header on API calls. Make embeds the current Git commit hash in the backend binary.
+- A bodyless `/status/health` liveness endpoint, a versioned JSON `/status/info` endpoint, and a schema-version header on API calls. The build embeds the current Git commit hash in the backend binary.
 - A Flask dashboard with a server-health overview, a Firewall Configuration page for individual rules, a read-only System Management page with a source-grouped Logs subpage, and API connection configuration. It calls the C++ API server-side.
 - Backend CLI one-shot export/import of a versioned JSON config containing bind settings and the full nftables JSON ruleset. Every import requires an explicit merge or whole-ruleset replace mode.
 - The Firewall Configuration page can filter and sort active rules and provides a disabled Edit control. It can export and preview-import versioned, rules-only bundles; imports are additive and non-atomic, and exports omit unsupported nftables rules.
@@ -19,18 +42,76 @@ The repository currently provides:
 
 The C++ API and Flask dashboard currently have no authentication or authorization. Firewall rule mutations are privileged and take effect immediately. Keep both services on localhost or an isolated, trusted management network; when deployed on separate computers, ensure their communication and dashboard access stay within that trusted network. Do not expose them to the public internet. See [SECURITY.md](../SECURITY.md) and [endpoints.md](endpoints.md).
 
+## Decisions Still Open
+
+The following questions must be resolved before the project advances from a firewall utility into a more complete security-managed platform. The intent is to capture the unresolved design work in a way that can drive later phase gates rather than leave it implicit.
+
+| Decision | Why it matters | Related phase or gate | Decision needed before |
+| --- | --- | --- | --- |
+| Which users and deployment environments should the first secured release support? | Defines trust boundaries, personnel model, and operational risk. | Phase 2 / Phase 4 | Implementing backend identity and auth, or expanding beyond localhost/trusted management network. |
+| What backend identity and credential model should be used, and how will administrators recover access? | This determines how trustworthy access is provisioned, revoked, and recovered. | Phase 2 | Implementing any authenticated API or admin UI flow. |
+| Should TLS terminate in the application, a trusted reverse proxy, or support both? | Affects trust assumptions, deployment complexity, and certificate lifecycle. | Phase 2 / Phase 4 | Enabling HTTPS or production-facing deployment guidance. |
+| What permission roles and rate-limit policy fit expected single-gateway and multi-gateway use? | Affects access control, abuse resistance, and API stability. | Phase 2 | Authorization and rate-limiting implementation. |
+| Which service-manager integrations and authorized operations, if any, should be supported by the System Management page? | Governs service restart and administrative scope, which are high-impact operations. | Phase 3 / Phase 4 | Enabling operational controls or system-management actions. |
+| How should peer backends authenticate, authorize, discover, and securely communicate when forming a mesh? | Core requirement for backend-to-backend trust and topology decisions. | Phase 5 | Designing peer mesh relationships or backend federation. |
+| Which platforms and firewall implementations are in scope for a usable release? | Prevents overextending the project into unsupported environments. | Phase 4 | Broadening supported OS or backend diversity. |
+| Which long-term network features are priorities, and which remain out of scope? | Keeps the roadmap aligned with realistic product scope. | Phase 5 | Committing to new network or policy features. |
+| What availability and recovery requirements should apply to the PDP, SG, PKI, and security-log services? | These are critical dependencies and may become single points of failure. | Phase 5 | Launching a broader Zero Trust or segmented architecture. |
+
+## Broader Project Vision
+
+The project is intended to evolve beyond a firewall UI and into a Zero Trust network-segmentation model in which access is controlled at explicit boundaries, identities are verified, and policy decisions are enforced via authenticated, protected control planes. This direction is conceptually aligned with the thesis ideas captured in [goal.md](goal.md), especially the Edge Gateway, Resource Gateway, Segmentation Gateway, Device Agent, and Policy Decision Point concepts.
+
+### Directional architecture
+
+The broader vision is a layered model in which:
+
+- An Edge Gateway (EG) sits at a zone boundary and controls zone-level communication.
+- A Resource Gateway (RG) sits in front of an individual resource and enforces resource-specific access.
+- A Segmentation Gateway (SG) provides a logical boundary between zones and routes authorized traffic between them.
+- A Device Agent (DA) identifies supported devices or endpoints and can provide posture or credential context.
+- A Policy Decision Point (PDP) evaluates identity, permissions, policy, and context, while Policy Enforcement Points (PEPs) enforce the resulting decisions.
+
+This proposal includes protected control-plane communication, authenticated gateway relationships, certificate-based trust, and separate handling of security logs and policy decisions. The intention is to make communication explicit and policy-driven instead of assuming that network placement or local access alone is sufficient.
+
+### Thesis-inspired future sequence
+
+If this direction is selected, the thesis suggests a staged sequence rather than a single large leap:
+
+1. Secure SG/EG core connectivity: establish zone boundaries and authenticated, encrypted gateway-to-gateway communication.
+2. Integrate trust and decision services: connect the PDP, PKI, identity management, and security-information sources with explicit policy and revocation flows.
+3. Add endpoint agents: authenticate supported devices and collect only the posture data the threat model justifies.
+4. Add resource-level enforcement: deploy RG/PEP functionality in front of selected resources and apply least-privilege resource policies.
+
+These are future-stage concepts, not current implementation commitments. They should be treated as exploratory architecture until the corresponding trust model, failure behavior, and operational constraints are documented.
+
+### Industry-standard considerations
+
+The project should align with common security and engineering expectations for network-management systems, including:
+
+- Zero Trust principles such as explicit verification, least privilege, and continuous monitoring
+- Strong identity and access boundaries between administrative users, services, and peers
+- Mutual TLS and PKI lifecycle management where trust relationships are established across gateways or services
+- Secure logging, auditability, and incident response so that security-relevant activity can be reviewed without exposing sensitive data
+- A clear separation between the control plane and the data plane, with explicit fail-safe behavior when dependencies fail or are compromised
+- Threat modeling and residual-risk documentation before consuming broader deployment scope or exposing services beyond a trusted management network
+
+The thesis also discusses KSF-related concepts, but the project should not claim compliance or certification without a deployment-specific assessment and a concrete threat model. The architecture remains a directional vision until those decisions are made and verified.
+
 ## Phase 1: Testing and Contribution Readiness
 
 **Status: In progress**
 
 1. **Add automated C++ tests.**
+   - **Status: In progress.** Focused unit tests now cover nftables statistics parsing and structured rule API handlers, using controlled fixtures and a mock firewall.
    - Test API request parsing and validation, status codes, and JSON responses without changing the host firewall.
    - Test backend-neutral behavior and nftables statistics parsing using controlled fixtures.
    - Keep tests isolated from privileged host state; destructive operations must never run in ordinary test suites.
-   - **Exit criteria:** a documented test command runs the C++ tests and returns a failing status for a failing test; the debug build and dashboard tests continue to pass.
+   - **Exit criteria:** broaden contract coverage, and keep `make test` returning a failing status when a test fails; the debug build and dashboard tests continue to pass.
 2. **Add a repeatable project verification workflow.**
+   - **Status: In progress.** GitHub Actions now runs the dashboard tests, backend unit tests, and C++ debug build.
    - Document the build and test commands, required system dependencies, and any tests that require special environments.
-   - Add continuous integration for the supported build and test commands once the required runner dependencies are known.
+   - Extend CI when additional supported build or test environments are selected.
    - **Exit criteria:** a clean checkout can follow the documented local verification steps, and CI reports build and test outcomes.
 3. **Publish contribution guidance.**
    - Add `CONTRIBUTING.md` with issue-first feature discussion, build/test steps, code and documentation expectations, and security reporting guidance.

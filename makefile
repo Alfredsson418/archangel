@@ -34,8 +34,10 @@ LIB_SRCFILES = $(shell find $(LIB) -name '*.cpp')
 # Generate object file names from source file names
 OBJFILES = $(patsubst $(SRC)/%.cpp, $(BUILD)/$(SRC)/%.o, $(SRCFILES))
 LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/$(LIB)/%.o, $(LIB_SRCFILES))
+TEST_SRCFILES = $(shell find $(CORE)/tests -name '*.cpp')
+TEST_BINARY = $(BUILD)/$(CORE)/tests/backend_tests
 
-.PHONY: debug release clean FORCE
+.PHONY: debug release test clean FORCE
 
 FORCE:
 
@@ -60,6 +62,15 @@ build_release: $(OBJFILES) $(LIB_OBJFILES)
 	@echo "Building $(NAME) in release mode"
 	@$(CC) $(CFLAGS) $^ -o $(NAME) $(LDFLAGS)
 	@echo "Done!"
+
+$(TEST_BINARY): $(TEST_SRCFILES) $(SRC)/firewall/nft_statistics.cpp $(SRC)/http/api/rules.cpp
+	@mkdir -p $(@D)
+	@echo "Building backend tests"
+	@$(CC) $(DEBUG_CFLAGS) -I$(CORE)/include -I$(LIB) $^ -o $@ -pthread
+
+test: $(TEST_BINARY)
+	@$(TEST_BINARY)
+
 
 # Rule to compile each source file into an object file
 $(BUILD)/$(SRC)/%.o: $(SRC)/%.cpp

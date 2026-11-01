@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-tests:
+    name: Dashboard tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dashboard dependencies
+        run: python -m pip install -r app/web/requirements.txt
+
+      - name: Run dashboard tests
+        working-directory: app/web
+        run: python -m unittest -v
+
+  backend-tests-and-build:
+    name: Backend tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install backend build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes g++ make libnftables-dev
+
+      - name: Run backend unit tests
+        run: make test
+
+      - name: Build backend
+        run: make debug

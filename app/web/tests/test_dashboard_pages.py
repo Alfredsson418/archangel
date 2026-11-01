@@ -1,0 +1,181 @@
+from urllib.parse import urlsplit
+from unittest.mock import patch
+
+from .helpers import DashboardTestCase, UpstreamResponse
+
+
+class DashboardPageTests(DashboardTestCase):
+    @patch("webapp.api_client.urlopen")
+    def test_dashboard_renders_server_health_and_summary(self, urlopen):
+        responses = {
+            "/api/v1/rules": {
+                "nftables": [
+                    {"chain": {"family": "inet", "table": "filter", "name": "input", "hook": "input"}},
+                    {"rule": {"family": "inet", "table": "filter", "chain": "input", "handle": 7, "expr": [{"accept": None}]}},
+                ]
+            },
+            "/api/v1/system": {
+                "hostname": "firewall",
+                "cpu_cores": 6,
+                "load_average": [0.12, 0.23, 0.34],
+                "uptime_seconds": 93784,
+                "memory_used_bytes": 1024,
+                "memory_total_bytes": 2048,
+                "memory_usage_percent": 50,
+                "disk_used_bytes": 1024,
+                "disk_total_bytes": 4096,
+                "disk_usage_percent": 25,
+            },
+            "/status/info": {
+                "status": "ok",
+                "backend_version": "abc123",
+                "api_version": "v1",
+                "uptime_seconds": 120,
+            },
+            "/status/health": {},
+        }
+        urlopen.side_effect = lambda request, **_kwargs: UpstreamResponse(
+            responses[urlsplit(request.full_url).path]
+        )
+
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        for expected in (
+            b"Server overview",
+            b"/static/styles.css",
+            b'href="/rules"',
+            b'href="/system"',
+            b"API CONNECTED",
+            b"0.12 / 0.23 / 0.34",
+            b"6 online cores",
+            b"Active",
+            b"abc123",
+            b"1d 2h 3m",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, response.data)
+        self.assertNotIn(b"filter", response.data)
+        self.assertNotIn(b"accept", response.data)
+        self.assertNotIn(b"/static/app.js", response.data)
+        self.assertEqual(urlopen.call_count, 4)
+        self.assertEqual(
+            urlopen.call_args_list[-1].args[0].full_url,
+            "http://127.0.0.1:8080/status/health",
+        )
+        self.assertTrue(
+            all(
+                {
+                    name.lower(): value
+                    for name, value in call.args[0].headers.items()
+                }.get("x-archangel-schema-version")
+                == "1"
+                for call in urlopen.call_args_list[:3]
+            )
+        )
+        response.close()
+
+    @patch("webapp.api_client.urlopen")
+    def test_system_page_is_read_only_and_shows_server_status(self, urlopen):
+        responses = {
+            "/api/v1/system": {
+                "hostname": "gateway-01",
+                "cpu_cores": 4,
+                "load_average": [0.1, 0.2, 0.3],
+                "uptime_seconds": 90061,
+                "memory_used_bytes": 1024,
+                "memory_total_bytes": 2048,
+                "memory_usage_percent": 50,
+                "disk_used_bytes": 1024,
+                "disk_total_bytes": 4096,
+                "disk_usage_percent": 25,
+            },
+            "/status/info": {
+                "status": "ok",
+                "backend_version": "commit-42",
+                "api_version": "v1",
+                "uptime_seconds": 3661,
+            },
+            "/status/health": {},
+        }
+        urlopen.side_effect = lambda request, **_kwargs: UpstreamResponse(
+            responses[urlsplit(request.full_url).path]
+        )
+
+        response = self.client.get("/system")
+        self.assertEqual(response.status_code, 200)
+        for expected in (
+            b"System management",
+            b"gateway-01",
+            b"1d 1h 1m",
+            b"1h 1m",
+            b"commit-42",
+            b"Restart Archangel",
+            b"disabled",
+            b"Restart controls are unavailable",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, response.data)
+        response.close()
+
+    @patch("webapp.api_client.urlopen")
+    def test_system_logs_page_renders_sources_and_escapes_entries(self, urlopen):
+        urlopen.return_value = UpstreamResponse(
+            {
+                "sources": [
+                    {
+                        "id": "archangel",
+                        "label": "Archangel application",
+                        "available": True,
+                        "detail": "Showing recent application events.",
+                        "entries": [
+                            "[INFO:API] request_completed path=/status/info",
+                            "<script>alert(1)</script>",
+                        ],
+                    },
+                    {
+                        "id": "nftables",
+                        "label": "nftables packet logs",
+                        "available": False,
+                        "detail": "No nftables log statements are configured.",
+                        "entries": [],
+                    },
+                ]
+            }
+        )
+
+        response = self.client.get("/system/logs")
+        self.assertEqual(response.status_code, 200)
+        for expected in (
+            b"Application logs",
+            b"Archangel application",
+            b"nftables packet logs",
+            b"No nftables log statements are configured.",
+            b"&lt;script&gt;",
+            b'href="/system"',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, response.data)
+        self.assertNotIn(b"<script>", response.data)
+        urlopen.assert_called_once()
+        self.assertEqual(
+            urlopen.call_args.args[0].full_url,
+            "http://127.0.0.1:8080/api/v1/logs",
+        )
+        response.close()
+
+    def test_static_assets_are_served(self):
+        response = self.client.get("/static/styles.css")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"--paper", response.data)
+        response.close()
+
+    @patch("webapp.api_client.urlopen")
+    def test_dashboard_displays_backend_failure(self, urlopen):
+        urlopen.side_effect = OSError("connection refused")
+
+        response = self.client.get("/rules")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"The C++ API is unavailable", response.data)
+        self.assertIn(b"API UNAVAILABLE", response.data)
+        response.close()
