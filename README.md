@@ -15,7 +15,7 @@
 
 ## Current Architecture
 
-The firewall API is implemented in C++ under `core/src` with dependencies under `core/lib`. The Flask dashboard lives in `app/web` and reads C++ API data server-side when rendering pages, including a system overview, firewall configuration, and source-grouped system logs. These are independently deployable services: the privileged `archangel` binary is intended to run on the server whose firewall it manages, while the Dockerized webapp can run on a separate management computer and connect to that server's API. Keeping the webapp portable is an important design goal; its API base address must be configurable and reachable over the management network rather than tied to the managed server's local filesystem or loopback.
+The firewall API is implemented in C++ under `core/src` with dependencies under `core/lib`. The Flask dashboard lives in `app/web` and reads C++ API data server-side when rendering pages, including a system overview, firewall configuration, and source-grouped system logs. These are independently deployable services: the privileged `archangel` binary is intended to run on the server whose firewall it manages, while the Dockerized webapp can run on a separate management computer and connect to that server's API. Keeping the webapp portable is an important design goal; its API base address must be configurable and reachable over the management network rather than tied to the managed server's local filesystem or loopback. See the [architecture guide](docs/architecture.md) for component boundaries and the [frontend design guide](docs/frontend-design.md) for dashboard styling and accessibility conventions.
 
 The Firewall Configuration page can filter and sort active rules, and can export or preview-import versioned rules-only bundles. Import is additive and applies rules one at a time; it is not atomic and does not provide boot-time restoration. The API exposes an unauthenticated, bodyless `/status/health` liveness endpoint and a separate diagnostic `/status/info` endpoint. The latter reports the Git commit hash embedded into the binary during the Make build.
 
@@ -80,7 +80,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidance
 
 ## FaQ
 - Is this vibe coded?
-No, but it could include AI generated code, but I try to make a effort to note it in the commit message/description. This project is both a passion project for me, and also a way for me to extend my knowledge in C/C++.
+Maybe somewhat, dependent on how you define "vibe coded". My role in this project is more of a system architect/product owner role. I of course have a big role on how the codebase is built, and design desisions, but due to time constraints, I dont generally write code myself.
 
 - Will this project be completed?
 I hope so, I plan on implement this solution for my own servers, but it will take some time to come to a stage where it is usable.

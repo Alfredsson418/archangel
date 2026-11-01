@@ -87,4 +87,5 @@ The thesis suggests a staged proof of concept: first establish secure SG/EG conn
 - The thesis evaluates a design against Swedish Armed Forces security-function requirements (KSF), but Archangel has not performed a system-specific KSF assessment and must not claim KSF compliance or certification based on the thesis. A concrete deployment and each of its component systems would need its own applicable security analysis.
 - The operational design for PDP/SG high availability, behavior during control-plane or PKI failure, certificate/key recovery, protected log retention, monitoring, and safe zone isolation remains open.
 - Tunnel/VPN technology, key management, enrollment, routing behavior, and the deployment model remain open design decisions.
-- Production readiness, supported platforms and firewall backends, operational requirements, and compatibility goals are not yet established.
+- Linux is the primary design and development platform. Other operating systems may be supported in the future, but are not a current priority or compatibility commitment.
+- Production readiness, supported Linux distributions and firewall backends, operational requirements, and compatibility goals are not yet fully established.
