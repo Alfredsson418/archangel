@@ -1,6 +1,7 @@
 #include "../../../include/firewall/providers/nft.hpp"
-#include "../../../include/firewall/config.hpp"
+#include "../../../include/config/app_config.hpp"
 #include "../../../include/error.hpp"
+#include "../../../include/firewall/config.hpp"
 #include "../../../include/logger.hpp"
 #include "../../../lib/json/json.hpp"
 #include "nft_import.hpp"
@@ -8,7 +9,6 @@
 #include <arpa/inet.h>
 #include <cstdint>
 #include <set>
-#include <sstream>
 #include <utility>
 
 namespace {
@@ -27,7 +27,8 @@ bool isIdentifier(const std::string &value) {
 		return character >= '0' && character <= '9';
 	};
 
-	if (value.empty() || value.size() > 64 ||
+	if (value.empty() ||
+		value.size() > AppConfigLimits::MAX_FIREWALL_IDENTIFIER_LENGTH ||
 		!(isAlpha(static_cast<unsigned char>(value.front())) ||
 		  value.front() == '_')) {
 		return false;
@@ -113,14 +114,59 @@ void validateRule(const RuleSpec &rule) {
 }
 
 /**
- * @brief Formats an address match using the correct nftables IP expression.
- * @param address Validated IPv4 or IPv6 address.
- * @param direction nftables direction keyword, such as saddr or daddr.
- * @return nftables address-family and direction expression.
+ * @brief Builds an nftables JSON equality match statement.
+ * @param left Expression to compare, such as a payload or meta selector.
+ * @param right Value the expression must equal.
+ * @return A JSON match statement.
  */
-std::string addressMatch(const std::string &address, const char *direction) {
-	return std::string(isIpv4Address(address) ? "ip " : "ip6 ") + direction +
-		   " " + address;
+nlohmann::json equalityMatch(nlohmann::json left, nlohmann::json right) {
+	nlohmann::json match;
+	match["op"]	   = "==";
+	match["left"]  = std::move(left);
+	match["right"] = std::move(right);
+	return nlohmann::json{
+		{"match", std::move(match)}
+	   };
+}
+
+/**
+ * @brief Builds a payload selector expression, such as ip saddr.
+ * @param protocol Payload protocol, such as ip, ip6, or tcp.
+ * @param field Payload field, such as saddr or dport.
+ * @return A JSON payload expression.
+ */
+nlohmann::json payload(const std::string &protocol, const char *field) {
+	nlohmann::json selector;
+	selector["protocol"] = protocol;
+	selector["field"]	 = field;
+	return nlohmann::json{
+		{"payload", std::move(selector)}
+	};
+}
+
+/**
+ * @brief Builds an address match using the correct nftables IP protocol.
+ * @param address Validated IPv4 or IPv6 address.
+ * @param direction nftables direction field, such as saddr or daddr.
+ * @return A JSON match statement for the address.
+ */
+nlohmann::json addressMatch(const std::string &address, const char *direction) {
+	return equalityMatch(
+		payload(isIpv4Address(address) ? "ip" : "ip6", direction), address);
+}
+
+/**
+ * @brief Wraps one nftables JSON command in a command document.
+ * @param verb Command verb, such as add or delete.
+ * @param rule Rule object for the command.
+ * @return Serialized JSON document accepted by libnftables.
+ */
+std::string ruleCommand(const char *verb, nlohmann::json rule) {
+	nlohmann::json command;
+	command[verb]["rule"] = std::move(rule);
+	nlohmann::json document;
+	document["nftables"] = nlohmann::json::array({std::move(command)});
+	return document.dump();
 }
 
 } // namespace
@@ -229,15 +275,7 @@ void Nftables::importRuleset(const std::string &ruleset, bool replaceAll) {
 	 }.dump();
 
 	std::lock_guard<std::mutex> lock(mutex_);
-	const unsigned int			inputFlags = nft_ctx_input_get_flags(context_);
-	nft_ctx_input_set_flags(context_, inputFlags | NFT_CTX_INPUT_JSON);
-	try {
-		execute(input);
-		nft_ctx_input_set_flags(context_, inputFlags);
-	} catch (...) {
-		nft_ctx_input_set_flags(context_, inputFlags);
-		throw;
-	}
+	executeJson(input);
 	Logger::Firewall::log(
 		replaceAll ? "Replaced the complete nftables ruleset from JSON config"
 				   : "Merged nftables JSON config into the active ruleset");
@@ -256,15 +294,7 @@ void Nftables::replaceArchangelRuleset(const std::string &rules) {
 	const ArchangelRulesReplacement replacement =
 		buildArchangelRulesReplacement(output, rules);
 	if (!replacement.transaction.empty()) {
-		const unsigned int inputFlags = nft_ctx_input_get_flags(context_);
-		nft_ctx_input_set_flags(context_, inputFlags | NFT_CTX_INPUT_JSON);
-		try {
-			execute(replacement.transaction);
-			nft_ctx_input_set_flags(context_, inputFlags);
-		} catch (...) {
-			nft_ctx_input_set_flags(context_, inputFlags);
-			throw;
-		}
+		executeJson(replacement.transaction);
 	}
 	Logger::Firewall::log("Replaced Archangel-managed firewall rules removed=" +
 						  std::to_string(replacement.removed) +
@@ -278,24 +308,37 @@ FirewallStatistics Nftables::getStatistics() {
 void Nftables::addRule(const RuleSpec &rule) {
 	validateRule(rule);
 
-	std::ostringstream command;
-	command << "add rule " << rule.family << ' ' << rule.table << ' '
-			<< rule.chain;
+	// Build JSON commands rather than command text so request values can only
+	// ever be data, never nftables syntax.
+	nlohmann::json expressions = nlohmann::json::array();
 	if (rule.source_address) {
-		command << ' ' << addressMatch(*rule.source_address, "saddr");
+		expressions.push_back(addressMatch(*rule.source_address, "saddr"));
 	}
 	if (rule.destination_address) {
-		command << ' ' << addressMatch(*rule.destination_address, "daddr");
+		expressions.push_back(addressMatch(*rule.destination_address, "daddr"));
 	}
-	command << " meta l4proto " << rule.protocol;
+	expressions.push_back(equalityMatch(
+		nlohmann::json{
+			{"meta", nlohmann::json{{"key", "l4proto"}}}
+	},
+		rule.protocol));
 	if (rule.destination_port) {
-		command << ' ' << rule.protocol << " dport " << *rule.destination_port;
+		expressions.push_back(equalityMatch(payload(rule.protocol, "dport"),
+											*rule.destination_port));
 	}
-	command << ' ' << rule.action;
-	command << " comment \"" << ARCHANGEL_RULE_COMMENT << "\"";
+	expressions.push_back(nlohmann::json{
+		{rule.action, nullptr}
+	  });
+
+	nlohmann::json command;
+	command["family"]  = rule.family;
+	command["table"]   = rule.table;
+	command["chain"]   = rule.chain;
+	command["comment"] = ARCHANGEL_RULE_COMMENT;
+	command["expr"]	   = std::move(expressions);
 
 	std::lock_guard<std::mutex> lock(mutex_);
-	execute(command.str());
+	executeJson(ruleCommand("add", std::move(command)));
 	Logger::Firewall::log("Added a " + rule.protocol + " rule to " +
 						  rule.family + " " + rule.table + " " + rule.chain);
 }
@@ -308,12 +351,27 @@ void Nftables::deleteRule(const std::string &family, const std::string &table,
 			"family, table, chain, or rule handle is invalid");
 	}
 
-	const std::string command = "delete rule " + family + " " + table + " " +
-								chain + " handle " + std::to_string(handle);
+	nlohmann::json command;
+	command["family"] = family;
+	command["table"]  = table;
+	command["chain"]  = chain;
+	command["handle"] = handle;
 	std::lock_guard<std::mutex> lock(mutex_);
-	execute(command);
+	executeJson(ruleCommand("delete", std::move(command)));
 	Logger::Firewall::log("Deleted rule handle " + std::to_string(handle) +
 						  " from " + family + " " + table + " " + chain);
+}
+
+void Nftables::executeJson(const std::string &commands) {
+	const unsigned int inputFlags = nft_ctx_input_get_flags(context_);
+	nft_ctx_input_set_flags(context_, inputFlags | NFT_CTX_INPUT_JSON);
+	try {
+		execute(commands);
+		nft_ctx_input_set_flags(context_, inputFlags);
+	} catch (...) {
+		nft_ctx_input_set_flags(context_, inputFlags);
+		throw;
+	}
 }
 
 void Nftables::execute(const std::string &command) {

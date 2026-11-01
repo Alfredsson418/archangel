@@ -13,7 +13,7 @@ namespace HttpApi {
  * @param response HTTP response to populate.
  * @return No value; writes a session, validation, or authentication response.
  */
-void login(Auth::AuthProvider &auth, LoginAttemptLimiter &limiter,
+void login(Auth::AuthProvider &auth, RateLimiter &limiter,
 		   const httplib::Request &request, httplib::Response &response);
 
 /**

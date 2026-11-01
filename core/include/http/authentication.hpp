@@ -2,100 +2,140 @@
 
 #include "../../lib/cpp-httplib/cpp-httplib.hpp"
 #include "../auth/providers/auth_provider.hpp"
+#include "../config/app_config.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace HttpApi {
 
-class LoginAttemptLimiter {
-  public:
-	/**
-	 * @brief Creates a bounded per-source login-attempt limiter.
-	 * @param maximumAttempts Maximum credential submissions allowed per window.
-	 * @param window Duration of a source's attempt window.
-	 * @return No value.
-	 * @throws std::invalid_argument If the limits are zero.
-	 */
-	LoginAttemptLimiter(std::uint32_t maximumAttempts,
-						std::chrono::seconds window);
-
-	/**
-	 * @brief Reserves an attempt slot for a source address.
-	 * @param sourceAddress Direct peer address; empty values share one bucket.
-	 * @param retryAfterSeconds Receives the wait duration when denied.
-	 * @return True when the login may proceed.
-	 */
-	bool allow(std::string_view sourceAddress,
-			   std::uint32_t &retryAfterSeconds);
-
-	/**
-	 * @brief Clears a source's attempt window after successful authentication.
-	 * @param sourceAddress Direct peer address used by allow().
-	 * @return No value.
-	 */
-	void clear(std::string_view sourceAddress);
-
-  private:
-	struct AttemptWindow {
-		std::chrono::steady_clock::time_point started;
-		std::uint32_t attempts = 0;
-	};
-
-	void pruneExpired(std::chrono::steady_clock::time_point now);
-
-	std::uint32_t maximum_attempts_;
-	std::chrono::seconds window_;
-	std::mutex mutex_;
-	std::map<std::string, AttemptWindow> attempts_;
-};
-
 /**
- * @brief Enforces bounded fixed-window API request limits by caller key.
+ * @brief Enforces bounded fixed-window request limits by caller key.
  */
 class RateLimiter {
   public:
-	RateLimiter(std::uint32_t maximumRequests, std::chrono::seconds window);
+	/**
+	 * @brief Creates a bounded fixed-window limiter.
+	 * @param maximumRequests Maximum requests allowed per key and window.
+	 * @param window Duration of each key's window.
+	 * @param maximumTrackedKeys Number of distinct keys tracked at once; new
+	 * keys are denied while the table is full of unexpired windows.
+	 * @return No value.
+	 * @throws std::invalid_argument If any limit is zero.
+	 */
+	RateLimiter(std::uint32_t maximumRequests, std::chrono::seconds window,
+				std::size_t maximumTrackedKeys =
+					AppConfigLimits::MAX_TRACKED_RATE_LIMIT_KEYS);
 
 	/**
 	 * @brief Reserves a request slot for a source or authenticated identity.
-	 * @param key Stable source or identity key; do not log this value.
+	 * @param key Stable source or identity key; empty values share one bucket.
+	 * Do not log this value.
 	 * @param retryAfterSeconds Receives the wait duration when denied.
 	 * @return True when the request may proceed.
 	 */
 	bool allow(std::string_view key, std::uint32_t &retryAfterSeconds);
 
+	/**
+	 * @brief Forgets a key's window, such as after a successful login.
+	 * @param key Key previously passed to allow().
+	 * @return No value.
+	 */
+	void clear(std::string_view key);
+
   private:
 	struct Window {
 		std::chrono::steady_clock::time_point started;
-		std::uint32_t requests = 0;
+		std::uint32_t						  requests = 0;
 	};
 
 	void pruneExpired(std::chrono::steady_clock::time_point now);
 
-	std::uint32_t maximum_requests_;
+	std::uint32_t				  maximum_requests_;
 	std::chrono::seconds window_;
+	std::size_t					  maximum_tracked_keys_;
 	std::mutex mutex_;
 	std::map<std::string, Window> windows_;
 };
 
 /**
- * @brief Applies the API's default authentication and firewall-role policy.
+ * @brief Minimum caller requirement for an API route.
+ */
+enum class RouteAccess {
+	// Unauthenticated, without schema negotiation or rate limits.
+	Liveness,
+	// Unauthenticated, but schema-negotiated and source rate-limited.
+	Public,
+	Viewer,
+	Operator,
+	Administrator,
+};
+
+/**
+ * @brief Access policy declared for one registered API route.
+ */
+struct RoutePolicy {
+	RouteAccess access;
+	// Also applies the firewall-mutation rate limits.
+	bool firewallMutation = false;
+};
+
+/**
+ * @brief Access policies keyed by exact HTTP method and path.
+ */
+class RoutePolicies {
+  public:
+	/**
+	 * @brief Declares the policy for a route.
+	 * @param method HTTP method, such as GET or POST.
+	 * @param path Exact request path.
+	 * @param policy Access required to reach the route.
+	 * @return No value.
+	 * @throws std::logic_error If the route already has a policy.
+	 */
+	void add(std::string method, std::string path, RoutePolicy policy);
+
+	/**
+	 * @brief Finds the policy for a request; HEAD uses the GET policy.
+	 * @param method Request method.
+	 * @param path Request path.
+	 * @return The declared policy, or nullptr for an unregistered route.
+	 */
+	const RoutePolicy *find(std::string_view method,
+							std::string_view path) const;
+
+  private:
+	std::map<std::pair<std::string, std::string>, RoutePolicy, std::less<>>
+		policies_;
+};
+
+/**
+ * @brief Applies route access policies, authentication, and rate limits.
+ *
+ * Unregistered routes still require authentication, so unauthenticated
+ * callers cannot discover which paths exist; authenticated callers receive
+ * HTTP 404 for them.
  * @param auth Backend-owned authentication and session provider.
+ * @param routes Policies declared when the routes were registered.
  * @param request Incoming request to authorize.
  * @param response Response to populate when authorization is denied.
  * @return Unhandled when routing may continue; Handled when rejected.
  */
-httplib::Server::HandlerResponse authorizeApiRequest(
-	Auth::AuthProvider &auth, const httplib::Request &request,
-	httplib::Response &response, RateLimiter &sourceRateLimiter,
-	RateLimiter &identityRateLimiter,
-	RateLimiter &firewallMutationSourceLimiter,
-	RateLimiter &firewallMutationIdentityLimiter);
+httplib::Server::HandlerResponse
+authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
+					const httplib::Request &request,
+					httplib::Response &response, RateLimiter &sourceRateLimiter,
+					RateLimiter &identityRateLimiter,
+					RateLimiter &firewallMutationSourceLimiter,
+					RateLimiter &firewallMutationIdentityLimiter);
 
 /**
  * @brief Extracts the bearer token from exactly one Authorization header.

@@ -1,6 +1,7 @@
 #include "../../../include/http/api/auth.hpp"
-#include "../../../include/http/authentication.hpp"
 #include "../../../include/auth/secret_input.hpp"
+#include "../../../include/config/app_config.hpp"
+#include "../../../include/http/authentication.hpp"
 #include "api_common.hpp"
 
 #include <cstdint>
@@ -10,9 +11,6 @@
 
 namespace HttpApi {
 namespace {
-constexpr std::size_t MAX_LOGIN_BODY_BYTES = 16 * 1024;
-constexpr std::size_t MAX_USERNAME_BYTES = 64;
-constexpr std::size_t MAX_PASSWORD_BYTES = 512;
 
 bool hasOnlyCredentialFields(const Detail::Json &document) {
 	if (!document.is_object() || document.size() != 2 ||
@@ -23,8 +21,9 @@ bool hasOnlyCredentialFields(const Detail::Json &document) {
 	}
 	const std::string username = document["username"].get<std::string>();
 	const auto &password = document["password"].get_ref<const std::string &>();
-	return !username.empty() && username.size() <= MAX_USERNAME_BYTES &&
-		   password.size() <= MAX_PASSWORD_BYTES;
+	return !username.empty() &&
+		   username.size() <= AppConfigLimits::MAX_USERNAME_LENGTH &&
+		   password.size() <= AppConfigLimits::MAX_PASSWORD_BYTES;
 }
 
 const char *roleName(Auth::Role role) {
@@ -48,9 +47,9 @@ void sendLoginError(httplib::Response &response, int status, const char *code,
 }
 } // namespace
 
-void login(Auth::AuthProvider &auth, LoginAttemptLimiter &limiter,
+void login(Auth::AuthProvider &auth, RateLimiter &limiter,
 		   const httplib::Request &request, httplib::Response &response) {
-	if (request.body.size() > MAX_LOGIN_BODY_BYTES) {
+	if (request.body.size() > AppConfigLimits::MAX_LOGIN_BODY_BYTES) {
 		sendLoginError(response, 400, "invalid_request",
 					   "Login request is invalid");
 		return;
@@ -133,7 +132,7 @@ void logout(Auth::AuthProvider &auth, const httplib::Request &request,
 void completeAccountSetup(Auth::AuthProvider &auth,
 						  const httplib::Request &request,
 						  httplib::Response &response) {
-	if (request.body.size() > MAX_LOGIN_BODY_BYTES) {
+	if (request.body.size() > AppConfigLimits::MAX_LOGIN_BODY_BYTES) {
 		sendLoginError(response, 400, "invalid_request",
 					   "Account setup request is invalid");
 		return;
@@ -158,7 +157,8 @@ void completeAccountSetup(Auth::AuthProvider &auth,
 	const std::string token = document["setup_token"].get<std::string>();
 	Auth::SecretString password(
 		std::move(document["password"].get_ref<std::string &>()));
-	if (token.size() != 64 || password.value().size() > MAX_PASSWORD_BYTES) {
+	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||
+		password.value().size() > AppConfigLimits::MAX_PASSWORD_BYTES) {
 		sendLoginError(response, 400, "invalid_request",
 					   "Account setup request is invalid");
 		return;

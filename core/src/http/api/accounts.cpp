@@ -1,4 +1,5 @@
 #include "../../../include/http/api/accounts.hpp"
+#include "../../../include/config/app_config.hpp"
 #include "api_common.hpp"
 
 #include <string>
@@ -6,8 +7,6 @@
 
 namespace HttpApi {
 namespace {
-constexpr std::size_t MAX_ACCOUNT_BODY_BYTES = 16 * 1024;
-constexpr std::size_t MAX_ACCOUNT_ID_BYTES = 64;
 
 const char *roleName(Auth::Role role) {
 	switch (role) {
@@ -50,7 +49,7 @@ Detail::Json accountJson(const Auth::Account &account) {
 
 bool parseBody(const httplib::Request &request, Detail::Json &document,
 			   httplib::Response &response) {
-	if (request.body.size() > MAX_ACCOUNT_BODY_BYTES) {
+	if (request.body.size() > AppConfigLimits::MAX_ACCOUNT_BODY_BYTES) {
 		Detail::sendError(response,
 						  ApiError(413, "request_too_large",
 								   "Account request is too large"));
@@ -187,7 +186,8 @@ void updateAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 	if (!hasOnly(document, {"id", "username", "role"}) ||
 		!document.contains("id") || !document["id"].is_string() ||
 		document["id"].get<std::string>().empty() ||
-		document["id"].get<std::string>().size() > MAX_ACCOUNT_ID_BYTES) {
+		document["id"].get<std::string>().size() >
+			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
 		Detail::sendError(response,
 						  ApiError(400, "invalid_request",
 								   "Account update is invalid"));
@@ -232,7 +232,8 @@ void disableAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 	if (!hasOnly(document, {"id"}) || document.size() != 1 ||
 		!document["id"].is_string() ||
 		document["id"].get<std::string>().empty() ||
-		document["id"].get<std::string>().size() > MAX_ACCOUNT_ID_BYTES) {
+		document["id"].get<std::string>().size() >
+			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
 		Detail::sendError(response,
 						  ApiError(400, "invalid_request",
 								   "Account request is invalid"));
@@ -255,7 +256,8 @@ void issueAccountSetupToken(Auth::AuthProvider &auth,
 	if (!hasOnly(document, {"id"}) || document.size() != 1 ||
 		!document["id"].is_string() ||
 		document["id"].get<std::string>().empty() ||
-		document["id"].get<std::string>().size() > MAX_ACCOUNT_ID_BYTES) {
+		document["id"].get<std::string>().size() >
+			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
 		Detail::sendError(response,
 						  ApiError(400, "invalid_request",
 								   "Account request is invalid"));

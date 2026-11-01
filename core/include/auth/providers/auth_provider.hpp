@@ -1,6 +1,9 @@
 #pragma once
 
+#include "../../config/app_config.hpp"
+
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -13,14 +16,14 @@ namespace Auth {
 enum class Role { Viewer, Operator, Administrator };
 
 struct PasswordPolicy {
-	std::uint16_t minimumCharacters = 15;
-	std::uint16_t maximumCharacters = 128;
+	std::uint16_t minimumCharacters = AppConfigLimits::MIN_PASSWORD_LENGTH;
+	std::uint16_t maximumCharacters = AppConfigLimits::MAX_PASSWORD_LENGTH;
 };
 
 struct Argon2idParameters {
-	std::uint32_t memoryKiB = 19 * 1024;
-	std::uint32_t iterations = 2;
-	std::uint32_t parallelism = 1;
+	std::uint32_t memoryKiB	  = AppConfigLimits::MIN_ARGON2ID_MEMORY_KIB;
+	std::uint32_t iterations  = AppConfigLimits::MIN_ARGON2ID_ITERATIONS;
+	std::uint32_t parallelism = AppConfigLimits::MIN_ARGON2ID_PARALLELISM;
 };
 
 struct Identity {
@@ -185,12 +188,13 @@ class SqliteAuthProvider final : public AuthProvider {
 	 * @throws std::runtime_error If the path is unsafe, a migration fails, or
 	 * the database cannot be opened.
 	 */
-	explicit SqliteAuthProvider(
-		std::string databasePath,
-		std::chrono::seconds idleTimeout = std::chrono::minutes(15),
-		std::chrono::seconds absoluteTimeout = std::chrono::hours(8),
-		PasswordPolicy passwordPolicy = {},
-		Argon2idParameters argon2idParameters = {});
+	explicit SqliteAuthProvider(std::string			 databasePath,
+								std::chrono::seconds idleTimeout =
+									AppConfigDefaults::SESSION_IDLE_TIMEOUT,
+								std::chrono::seconds absoluteTimeout =
+									AppConfigDefaults::SESSION_ABSOLUTE_TIMEOUT,
+								PasswordPolicy	   passwordPolicy	  = {},
+								Argon2idParameters argon2idParameters = {});
 
 	~SqliteAuthProvider() override;
 

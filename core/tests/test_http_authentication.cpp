@@ -110,6 +110,26 @@ httplib::Request requestWithSchema(const std::string &method,
 	return request;
 }
 
+// Mirrors the policies registered in server.cpp for the routes these tests use.
+const HttpApi::RoutePolicies &testRoutes() {
+	static const HttpApi::RoutePolicies routes = [] {
+		using HttpApi::RouteAccess;
+		HttpApi::RoutePolicies policies;
+		policies.add("GET", "/status/health", {RouteAccess::Liveness});
+		policies.add("GET", "/status/info", {RouteAccess::Viewer});
+		policies.add("POST", "/api/v1/auth/login", {RouteAccess::Public});
+		policies.add("POST", "/api/v1/auth/setup", {RouteAccess::Public});
+		policies.add("GET", "/api/v1/accounts", {RouteAccess::Administrator});
+		policies.add("GET", "/api/v1/rules", {RouteAccess::Viewer});
+		policies.add("POST", "/api/v1/rules", {RouteAccess::Operator, true});
+		policies.add("DELETE", "/api/v1/rules", {RouteAccess::Operator, true});
+		policies.add("GET", "/api/v1/system", {RouteAccess::Viewer});
+		policies.add("GET", "/api/v1/logs", {RouteAccess::Viewer});
+		return policies;
+	}();
+	return routes;
+}
+
 httplib::Server::HandlerResponse authorize(MockAuthProvider &auth,
 										   httplib::Request &request,
 										   httplib::Response &response) {
@@ -119,8 +139,8 @@ httplib::Server::HandlerResponse authorize(MockAuthProvider &auth,
 											   std::chrono::minutes(1));
 	static HttpApi::RateLimiter mutationIdentity(10000,
 												 std::chrono::minutes(1));
-	return HttpApi::authorizeApiRequest(auth, request, response, source,
-										identity, mutationSource,
+	return HttpApi::authorizeApiRequest(auth, testRoutes(), request, response,
+										source, identity, mutationSource,
 										mutationIdentity);
 }
 
@@ -205,7 +225,14 @@ void restrictsFirewallMutationsToElevatedRoles() {
 		"operators should be able to mutate firewall rules");
 
 	request = requestWithSchema("DELETE", "/api/v1/rules");
-	request = requestWithSchema("GET", "/api/v1/accounts");
+	request.set_header("Authorization", "Bearer viewer-token");
+	response = httplib::Response{};
+	TestSupport::require(authorize(auth, request, response) ==
+								 httplib::Server::HandlerResponse::Handled &&
+							 response.status == 403,
+						 "viewers must not be able to delete firewall rules");
+
+	request = requestWithSchema("DELETE", "/api/v1/rules");
 	request.set_header("Authorization", "Bearer admin-token");
 	response = httplib::Response{};
 	TestSupport::require(
@@ -239,6 +266,63 @@ void restrictsAccountManagementToAdministrators() {
 			" handler=" + std::to_string(static_cast<int>(adminResult)));
 }
 
+void rejectsUnregisteredRoutesAfterAuthentication() {
+	MockAuthProvider auth;
+	auto			 request = requestWithSchema("GET", "/api/v1/unregistered");
+	request.set_header("Authorization", "Bearer admin-token");
+	httplib::Response response;
+	TestSupport::require(
+		authorize(auth, request, response) ==
+				httplib::Server::HandlerResponse::Handled &&
+			response.status == 404,
+		"authenticated callers should receive 404 for unregistered routes");
+
+	request = requestWithSchema("PUT", "/api/v1/rules");
+	request.set_header("Authorization", "Bearer admin-token");
+	response = httplib::Response{};
+	TestSupport::require(
+		authorize(auth, request, response) ==
+				httplib::Server::HandlerResponse::Handled &&
+			response.status == 404,
+		"unregistered methods on a known path should be rejected");
+
+	httplib::Request head;
+	head.method = "HEAD";
+	head.path	= "/status/health";
+	response	= httplib::Response{};
+	TestSupport::require(authorize(auth, head, response) ==
+							 httplib::Server::HandlerResponse::Unhandled,
+						 "HEAD should use the GET route policy");
+}
+
+void rejectsDuplicateRoutePolicies() {
+	HttpApi::RoutePolicies policies;
+	policies.add("GET", "/api/v1/rules", {HttpApi::RouteAccess::Viewer});
+	bool rejected = false;
+	try {
+		policies.add("GET", "/api/v1/rules",
+					 {HttpApi::RouteAccess::Administrator});
+	} catch (const std::logic_error &) {
+		rejected = true;
+	}
+	TestSupport::require(rejected,
+						 "a route must not be declared with two policies");
+}
+
+void boundsTrackedRateLimitKeys() {
+	HttpApi::RateLimiter limiter(5, std::chrono::minutes(1), 1);
+	std::uint32_t		 retryAfterSeconds = 0;
+	TestSupport::require(limiter.allow("192.0.2.70", retryAfterSeconds),
+						 "the first tracked key should be admitted");
+	TestSupport::require(
+		!limiter.allow("192.0.2.71", retryAfterSeconds) &&
+			retryAfterSeconds == 60,
+		"new keys should be denied while the tracking table is full");
+	limiter.clear("192.0.2.70");
+	TestSupport::require(limiter.allow("192.0.2.71", retryAfterSeconds),
+						 "clearing a key should free its tracking slot");
+}
+
 void limitsApiRequestsAndFirewallMutations() {
 	MockAuthProvider auth;
 	HttpApi::RateLimiter source(20, std::chrono::minutes(1));
@@ -250,24 +334,27 @@ void limitsApiRequestsAndFirewallMutations() {
 	request.set_header("Authorization", "Bearer admin-token");
 	httplib::Response response;
 	TestSupport::require(
-		HttpApi::authorizeApiRequest(auth, request, response, source, identity,
-									 mutationSources, mutations) ==
+		HttpApi::authorizeApiRequest(auth, testRoutes(), request, response,
+									 source, identity, mutationSources,
+									 mutations) ==
 			httplib::Server::HandlerResponse::Unhandled,
 		"the first API request should pass the configured limit");
 	response = httplib::Response{};
 	TestSupport::require(
-		HttpApi::authorizeApiRequest(auth, request, response, source, identity,
-									 mutationSources, mutations) ==
+		HttpApi::authorizeApiRequest(auth, testRoutes(), request, response,
+									 source, identity, mutationSources,
+									 mutations) ==
 			httplib::Server::HandlerResponse::Unhandled,
 		"requests within the configured API limit should pass");
 	response = httplib::Response{};
-	TestSupport::require(
-		HttpApi::authorizeApiRequest(auth, request, response, source, identity,
-									 mutationSources, mutations) ==
-				httplib::Server::HandlerResponse::Handled &&
-			response.status == 429 &&
-			response.get_header_value("Retry-After") == "60",
-		"API requests exceeding the configured identity limit should be rate limited");
+	TestSupport::require(HttpApi::authorizeApiRequest(
+							 auth, testRoutes(), request, response, source,
+							 identity, mutationSources, mutations) ==
+								 httplib::Server::HandlerResponse::Handled &&
+							 response.status == 429 &&
+							 response.get_header_value("Retry-After") == "60",
+						 "API requests exceeding the configured identity limit "
+						 "should be rate limited");
 
 	HttpApi::RateLimiter mutationIdentity(20, std::chrono::minutes(1));
 	request = requestWithSchema("POST", "/api/v1/rules");
@@ -275,15 +362,15 @@ void limitsApiRequestsAndFirewallMutations() {
 	request.set_header("Authorization", "Bearer admin-token");
 	response = httplib::Response{};
 	TestSupport::require(
-		HttpApi::authorizeApiRequest(auth, request, response, source,
-									 mutationIdentity, mutationSources,
+		HttpApi::authorizeApiRequest(auth, testRoutes(), request, response,
+									 source, mutationIdentity, mutationSources,
 									 mutations) ==
 			httplib::Server::HandlerResponse::Unhandled,
 		"the first firewall mutation should pass its configured limit");
 	response = httplib::Response{};
 	TestSupport::require(
-		HttpApi::authorizeApiRequest(auth, request, response, source,
-									 mutationIdentity, mutationSources,
+		HttpApi::authorizeApiRequest(auth, testRoutes(), request, response,
+									 source, mutationIdentity, mutationSources,
 									 mutations) ==
 				httplib::Server::HandlerResponse::Handled &&
 			response.status == 429,
@@ -297,8 +384,8 @@ void limitsApiRequestsAndFirewallMutations() {
 	request.set_header("Authorization", "Bearer operator-token");
 	response = httplib::Response{};
 	const auto firstSourceMutation = HttpApi::authorizeApiRequest(
-		auth, request, response, source, apiIdentity, sourceMutation,
-		identityMutation);
+		auth, testRoutes(), request, response, source, apiIdentity,
+		sourceMutation, identityMutation);
 	TestSupport::require(
 		firstSourceMutation == httplib::Server::HandlerResponse::Unhandled,
 		"the first mutation from a source should pass its source-IP limit; status=" +
@@ -310,13 +397,13 @@ void limitsApiRequestsAndFirewallMutations() {
 	request.remote_addr = "192.0.2.61";
 	request.set_header("Authorization", "Bearer operator-token");
 	response = httplib::Response{};
-	TestSupport::require(
-		HttpApi::authorizeApiRequest(auth, request, response, source,
-									 apiIdentity, sourceMutation,
-									 identityMutation) ==
-				httplib::Server::HandlerResponse::Handled &&
-			response.status == 429,
-		"mutations by separate identities from one source should share the IP limit");
+	TestSupport::require(HttpApi::authorizeApiRequest(
+							 auth, testRoutes(), request, response, source,
+							 apiIdentity, sourceMutation, identityMutation) ==
+								 httplib::Server::HandlerResponse::Handled &&
+							 response.status == 429,
+						 "mutations by separate identities from one source "
+						 "should share the IP limit");
 }
 
 void rejectsInvalidSessionsAndReportsStorageFailures() {
@@ -351,7 +438,7 @@ void rejectsInvalidSessionsAndReportsStorageFailures() {
 
 void supportsLoginAndLogoutHandlers() {
 	MockAuthProvider auth;
-	HttpApi::LoginAttemptLimiter limiter(5, std::chrono::minutes(5));
+	HttpApi::RateLimiter limiter(5, std::chrono::minutes(5));
 	httplib::Request request =
 		requestWithSchema("POST", "/api/v1/auth/login");
 	request.body =
@@ -459,7 +546,7 @@ void supportsAccountLifecycleHandlers() {
 
 void limitsFailedLoginAttemptsPerSource() {
 	MockAuthProvider auth;
-	HttpApi::LoginAttemptLimiter limiter(2, std::chrono::minutes(5));
+	HttpApi::RateLimiter limiter(2, std::chrono::minutes(5));
 	httplib::Request request =
 		requestWithSchema("POST", "/api/v1/auth/login");
 	request.body =
@@ -493,6 +580,9 @@ void runHttpAuthenticationTests() {
 	protectsAllOtherRoutesByDefault();
 	restrictsFirewallMutationsToElevatedRoles();
 	restrictsAccountManagementToAdministrators();
+	rejectsUnregisteredRoutesAfterAuthentication();
+	rejectsDuplicateRoutePolicies();
+	boundsTrackedRateLimitKeys();
 	limitsApiRequestsAndFirewallMutations();
 	rejectsInvalidSessionsAndReportsStorageFailures();
 	supportsLoginAndLogoutHandlers();

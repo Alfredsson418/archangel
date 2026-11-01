@@ -8,6 +8,8 @@ archangel
 
 # Folders
 build
+/bin/
+.archangel-dev/
 .venv/
 app/web/.venv/
 __pycache__/

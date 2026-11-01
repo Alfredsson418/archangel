@@ -16,7 +16,6 @@
 
 namespace {
 using Json = nlohmann::json;
-constexpr std::size_t MAX_RUNTIME_CONFIG_BYTES = 1024 * 1024;
 void rejectUnknownKeys(const Json &object,
 					   std::initializer_list<const char *> allowed,
 					   const char *description) {
@@ -57,7 +56,7 @@ std::string requiredString(const Json &object, const char *key,
 	}
 	const std::string value = field->get<std::string>();
 	if (value.empty() || value.find('\0') != std::string::npos ||
-		value.size() > 4096) {
+		value.size() > AppConfigLimits::MAX_RUNTIME_CONFIG_STRING_LENGTH) {
 		throw std::runtime_error(std::string(description) + "." + key +
 								 " is invalid");
 	}
@@ -504,9 +503,8 @@ AppConfig loadRuntimeConfig(const std::string &path, bool allowMissing) {
 			"Runtime config must be a regular file owned by root or the service "
 			"user and not group/world writable");
 	}
-	if (info.st_size <= 0 ||
-		static_cast<std::uint64_t>(info.st_size) >
-			MAX_RUNTIME_CONFIG_BYTES) {
+	if (info.st_size <= 0 || static_cast<std::uint64_t>(info.st_size) >
+								 AppConfigLimits::MAX_RUNTIME_CONFIG_BYTES) {
 		close(file);
 		throw std::runtime_error(
 			"Runtime config must be between 1 byte and 1 MiB");

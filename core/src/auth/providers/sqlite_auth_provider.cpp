@@ -23,10 +23,10 @@ using Auth::Detail::normalizeUsername;
 using Auth::Detail::verifyPassword;
 using Auth::Detail::validatePassword;
 
-constexpr std::uint32_t MAX_ARGON2_MEMORY_KIB = 1024 * 1024;
-constexpr std::uint32_t MAX_ARGON2_ITERATIONS = 10;
-constexpr std::uint32_t MAX_ARGON2_PARALLELISM = 8;
-constexpr std::size_t SESSION_TOKEN_HEX_LENGTH = 64;
+const std::string INVALID_USERNAME_MESSAGE =
+	"Username must be " + std::to_string(AppConfigLimits::MIN_USERNAME_LENGTH) +
+	"-" + std::to_string(AppConfigLimits::MAX_USERNAME_LENGTH) +
+	" ASCII letters, digits, dots, underscores, or hyphens";
 
 Auth::Role parseRole(int role) {
 	switch (role) {
@@ -60,8 +60,6 @@ std::int64_t unixTimeNow() {
 		.count();
 }
 
-constexpr std::int64_t ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS = 60 * 60;
-
 } // namespace
 
 struct SqliteAuthProvider::Impl {
@@ -75,22 +73,28 @@ struct SqliteAuthProvider::Impl {
 			absoluteTimeout <= idleTimeout) {
 			throw std::runtime_error("Invalid API session lifetime settings");
 		}
-		if (passwordPolicy.minimumCharacters < 15 ||
-			passwordPolicy.maximumCharacters > 128 ||
+		if (passwordPolicy.minimumCharacters <
+				AppConfigLimits::MIN_PASSWORD_LENGTH ||
+			passwordPolicy.maximumCharacters >
+				AppConfigLimits::MAX_PASSWORD_LENGTH ||
 			passwordPolicy.minimumCharacters >
 				passwordPolicy.maximumCharacters) {
 			throw std::runtime_error(
 				"Invalid local-account password policy settings");
 		}
-		if (argon2idParameters.memoryKiB < 19 * 1024 ||
+		if (argon2idParameters.memoryKiB <
+				AppConfigLimits::MIN_ARGON2ID_MEMORY_KIB ||
 			argon2idParameters.memoryKiB >
-				MAX_ARGON2_MEMORY_KIB ||
-			argon2idParameters.iterations < 2 ||
-			argon2idParameters.iterations > MAX_ARGON2_ITERATIONS ||
-			argon2idParameters.parallelism < 1 ||
-			argon2idParameters.parallelism > MAX_ARGON2_PARALLELISM ||
-			argon2idParameters.memoryKiB <
-				argon2idParameters.parallelism * 8) {
+				AppConfigLimits::MAX_ARGON2ID_MEMORY_KIB ||
+			argon2idParameters.iterations <
+				AppConfigLimits::MIN_ARGON2ID_ITERATIONS ||
+			argon2idParameters.iterations >
+				AppConfigLimits::MAX_ARGON2ID_ITERATIONS ||
+			argon2idParameters.parallelism <
+				AppConfigLimits::MIN_ARGON2ID_PARALLELISM ||
+			argon2idParameters.parallelism >
+				AppConfigLimits::MAX_ARGON2ID_PARALLELISM ||
+			argon2idParameters.memoryKiB < argon2idParameters.parallelism * 8) {
 			throw std::runtime_error(
 				"Invalid Argon2id password hashing settings");
 		}
@@ -150,9 +154,12 @@ std::optional<Session> SqliteAuthProvider::login(std::string_view username,
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	const bool passwordTooLong = password.size() > 512;
+	const bool					passwordTooLong =
+		password.size() > AppConfigLimits::MAX_PASSWORD_BYTES;
 	const std::string_view boundedPassword =
-		passwordTooLong ? password.substr(0, 512) : password;
+		passwordTooLong
+			? password.substr(0, AppConfigLimits::MAX_PASSWORD_BYTES)
+			: password;
 	const std::string normalized = normalizeUsername(username);
 	if (normalized.empty()) {
 		verifyPassword(impl_->dummyPasswordHash, boundedPassword);
@@ -229,7 +236,7 @@ SqliteAuthProvider::authenticateSession(std::string_view token) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	if (token.size() != SESSION_TOKEN_HEX_LENGTH ||
+	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||
 		!std::all_of(token.begin(), token.end(), [](unsigned char character) {
 			return std::isxdigit(character) != 0;
 		})) {
@@ -283,7 +290,7 @@ void SqliteAuthProvider::revokeSession(std::string_view token) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	if (token.size() != SESSION_TOKEN_HEX_LENGTH ||
+	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||
 		!std::all_of(token.begin(), token.end(), [](unsigned char character) {
 			return std::isxdigit(character) != 0;
 		})) {
@@ -303,9 +310,7 @@ Identity SqliteAuthProvider::bootstrapAdministrator(
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
 	const std::string normalized = normalizeUsername(username);
 	if (normalized.empty()) {
-		throw std::runtime_error(
-			"Username must be 3-64 ASCII letters, digits, dots, underscores, "
-			"or hyphens");
+		throw std::runtime_error(INVALID_USERNAME_MESSAGE);
 	}
 	try {
 		validatePassword(password, impl_->passwordPolicy);
@@ -381,10 +386,8 @@ AccountSetup SqliteAuthProvider::createAccount(std::string_view username,
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
 	const std::string normalized = normalizeUsername(username);
 	if (normalized.empty()) {
-		throw AccountOperationError(
-			AccountOperationError::Code::Invalid,
-			"Username must be 3-64 ASCII letters, digits, dots, underscores, "
-			"or hyphens");
+		throw AccountOperationError(AccountOperationError::Code::Invalid,
+									INVALID_USERNAME_MESSAGE);
 	}
 	const int storedRole = roleValue(role);
 	const std::string userId = makeUuid();
@@ -426,7 +429,8 @@ AccountSetup SqliteAuthProvider::createAccount(std::string_view username,
 	setup.bindText(1, tokenHash);
 	setup.bindText(2, userId);
 	setup.bindInteger(3, now);
-	setup.bindInteger(4, now + ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
+	setup.bindInteger(
+		4, now + AppConfigLimits::ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
 	setup.execute();
 	transaction.commit();
 	return {Account{Identity{userId, normalized, role}, false, true}, token};
@@ -437,7 +441,7 @@ Account SqliteAuthProvider::updateAccount(std::string_view id,
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (id.empty() || id.size() > 64 ||
+	if (id.empty() || id.size() > AppConfigLimits::MAX_ACCOUNT_ID_LENGTH ||
 		(!update.username && !update.role)) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									"Account update is invalid");
@@ -464,10 +468,8 @@ Account SqliteAuthProvider::updateAccount(std::string_view id,
 		update.username ? normalizeUsername(*update.username)
 						: existing.identity.username;
 	if (username.empty()) {
-		throw AccountOperationError(
-			AccountOperationError::Code::Invalid,
-			"Username must be 3-64 ASCII letters, digits, dots, underscores, "
-			"or hyphens");
+		throw AccountOperationError(AccountOperationError::Code::Invalid,
+									INVALID_USERNAME_MESSAGE);
 	}
 	const Role role = update.role.value_or(existing.identity.role);
 	const int storedRole = roleValue(role);
@@ -529,7 +531,7 @@ void SqliteAuthProvider::disableAccount(std::string_view id) {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (id.empty() || id.size() > 64) {
+	if (id.empty() || id.size() > AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									"Account ID is invalid");
 	}
@@ -587,7 +589,7 @@ AccountSetup SqliteAuthProvider::issueAccountSetupToken(std::string_view id) {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (id.empty() || id.size() > 64) {
+	if (id.empty() || id.size() > AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									"Account ID is invalid");
 	}
@@ -628,7 +630,8 @@ AccountSetup SqliteAuthProvider::issueAccountSetupToken(std::string_view id) {
 	insert.bindText(1, tokenHash);
 	insert.bindText(2, id);
 	insert.bindInteger(3, now);
-	insert.bindInteger(4, now + ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
+	insert.bindInteger(
+		4, now + AppConfigLimits::ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
 	insert.execute();
 	Statement revokeSessions(impl_->database,
 							 "DELETE FROM api_sessions WHERE user_id = ?1");
@@ -643,7 +646,7 @@ Identity SqliteAuthProvider::completeAccountSetup(std::string_view token,
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (token.size() != SESSION_TOKEN_HEX_LENGTH ||
+	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||
 		!std::all_of(token.begin(), token.end(), [](unsigned char character) {
 			return std::isxdigit(character) != 0;
 		})) {

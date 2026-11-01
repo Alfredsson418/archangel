@@ -1,4 +1,5 @@
 #include "../../include/http/authentication.hpp"
+#include "../../include/config/app_config.hpp"
 #include "../../include/http/api/schema.hpp"
 #include "../../include/logger.hpp"
 #include "../../lib/json/json.hpp"
@@ -6,13 +7,12 @@
 #include <algorithm>
 #include <cctype>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 
 namespace HttpApi {
 namespace {
 using Json = nlohmann::json;
-constexpr std::size_t MAX_TRACKED_LOGIN_SOURCES = 4096;
-constexpr std::size_t MAX_TRACKED_RATE_LIMIT_KEYS = 8192;
 
 void reject(httplib::Response &response, int status, const char *code,
 			const char *message) {
@@ -22,27 +22,25 @@ void reject(httplib::Response &response, int status, const char *code,
 		"application/json");
 }
 
-bool isPublicRoute(const httplib::Request &request) {
-	return (request.method == "GET" && request.path == "/status/health") ||
-		   (request.method == "POST" &&
-			(request.path == "/api/v1/auth/login" ||
-			 request.path == "/api/v1/auth/setup"));
-}
-
-bool requiresFirewallOperator(const httplib::Request &request) {
-	return request.path == "/api/v1/rules" &&
-		   (request.method == "POST" || request.method == "DELETE");
-}
-
-bool requiresAdministrator(const httplib::Request &request) {
-	return request.path == "/api/v1/accounts" ||
-		   request.path == "/api/v1/accounts/disable" ||
-		   request.path == "/api/v1/accounts/setup-token";
-}
-
-bool isFirewallMutation(const httplib::Request &request) {
-	return request.path == "/api/v1/rules" &&
-		   (request.method == "POST" || request.method == "DELETE");
+/**
+ * @brief Tests whether an identity's role satisfies a route requirement.
+ * @param role Authenticated caller role.
+ * @param access Route requirement; only Viewer and above are meaningful.
+ * @return True when the role is at least the required level.
+ */
+bool satisfies(Auth::Role role, RouteAccess access) {
+	switch (access) {
+	case RouteAccess::Liveness:
+	case RouteAccess::Public:
+	case RouteAccess::Viewer:
+		return true;
+	case RouteAccess::Operator:
+		return role == Auth::Role::Operator ||
+			   role == Auth::Role::Administrator;
+	case RouteAccess::Administrator:
+		return role == Auth::Role::Administrator;
+	}
+	return false;
 }
 
 httplib::Server::HandlerResponse rateLimitResponse(
@@ -56,69 +54,14 @@ httplib::Server::HandlerResponse rateLimitResponse(
 }
 } // namespace
 
-LoginAttemptLimiter::LoginAttemptLimiter(std::uint32_t maximumAttempts,
-										 std::chrono::seconds window)
-	: maximum_attempts_(maximumAttempts), window_(window) {
-	if (maximum_attempts_ == 0 || window_ <= std::chrono::seconds::zero()) {
-		throw std::invalid_argument("Login attempt limits must be positive");
-	}
-}
-
-void LoginAttemptLimiter::pruneExpired(
-	std::chrono::steady_clock::time_point now) {
-	for (auto attempt = attempts_.begin(); attempt != attempts_.end();) {
-		if (now - attempt->second.started >= window_) {
-			attempt = attempts_.erase(attempt);
-		} else {
-			++attempt;
-		}
-	}
-}
-
-bool LoginAttemptLimiter::allow(std::string_view sourceAddress,
-								std::uint32_t &retryAfterSeconds) {
-	std::lock_guard<std::mutex> lock(mutex_);
-	const auto now = std::chrono::steady_clock::now();
-	pruneExpired(now);
-	const std::string key =
-		sourceAddress.empty() ? "<unknown>" : std::string(sourceAddress);
-	auto attempt = attempts_.find(key);
-	if (attempt == attempts_.end()) {
-		if (attempts_.size() >= MAX_TRACKED_LOGIN_SOURCES) {
-			retryAfterSeconds =
-				static_cast<std::uint32_t>(window_.count());
-			return false;
-		}
-		attempt = attempts_
-					  .emplace(key, AttemptWindow{now, 0})
-					  .first;
-	}
-	const auto elapsed =
-		std::chrono::duration_cast<std::chrono::seconds>(
-			now - attempt->second.started)
-			.count();
-	if (attempt->second.attempts >= maximum_attempts_) {
-		retryAfterSeconds = static_cast<std::uint32_t>(
-			std::max<std::int64_t>(1, window_.count() - elapsed));
-		return false;
-	}
-	++attempt->second.attempts;
-	retryAfterSeconds = 0;
-	return true;
-}
-
-void LoginAttemptLimiter::clear(std::string_view sourceAddress) {
-	std::lock_guard<std::mutex> lock(mutex_);
-	const std::string key =
-		sourceAddress.empty() ? "<unknown>" : std::string(sourceAddress);
-	attempts_.erase(key);
-}
-
-RateLimiter::RateLimiter(std::uint32_t maximumRequests,
-						 std::chrono::seconds window)
-	: maximum_requests_(maximumRequests), window_(window) {
-	if (maximum_requests_ == 0 || window_ <= std::chrono::seconds::zero()) {
-		throw std::invalid_argument("API rate limits must be positive");
+RateLimiter::RateLimiter(std::uint32_t		  maximumRequests,
+						 std::chrono::seconds window,
+						 std::size_t		  maximumTrackedKeys)
+	: maximum_requests_(maximumRequests), window_(window),
+	  maximum_tracked_keys_(maximumTrackedKeys) {
+	if (maximum_requests_ == 0 || window_ <= std::chrono::seconds::zero() ||
+		maximum_tracked_keys_ == 0) {
+		throw std::invalid_argument("Rate limits must be positive");
 	}
 }
 
@@ -135,12 +78,19 @@ void RateLimiter::pruneExpired(std::chrono::steady_clock::time_point now) {
 bool RateLimiter::allow(std::string_view key,
 						std::uint32_t &retryAfterSeconds) {
 	std::lock_guard<std::mutex> lock(mutex_);
-	const auto now = std::chrono::steady_clock::now();
-	pruneExpired(now);
+	const auto					now = std::chrono::steady_clock::now();
 	const std::string stableKey = key.empty() ? "<unknown>" : std::string(key);
 	auto window = windows_.find(stableKey);
+	if (window != windows_.end() && now - window->second.started >= window_) {
+		window->second = Window{now, 0};
+	}
 	if (window == windows_.end()) {
-		if (windows_.size() >= MAX_TRACKED_RATE_LIMIT_KEYS) {
+		// Expired windows are reset on lookup, so a full scan is only needed
+		// when a new key would otherwise exceed the tracking bound.
+		if (windows_.size() >= maximum_tracked_keys_) {
+			pruneExpired(now);
+		}
+		if (windows_.size() >= maximum_tracked_keys_) {
 			retryAfterSeconds = static_cast<std::uint32_t>(window_.count());
 			return false;
 		}
@@ -158,6 +108,32 @@ bool RateLimiter::allow(std::string_view key,
 	++window->second.requests;
 	retryAfterSeconds = 0;
 	return true;
+}
+
+void RateLimiter::clear(std::string_view key) {
+	std::lock_guard<std::mutex> lock(mutex_);
+	const auto window = windows_.find(key.empty() ? std::string("<unknown>")
+												  : std::string(key));
+	if (window != windows_.end()) {
+		windows_.erase(window);
+	}
+}
+
+void RoutePolicies::add(std::string method, std::string path,
+						RoutePolicy policy) {
+	if (!policies_
+			 .emplace(std::make_pair(std::move(method), std::move(path)),
+					  policy)
+			 .second) {
+		throw std::logic_error("API route policy is declared twice");
+	}
+}
+
+const RoutePolicy *RoutePolicies::find(std::string_view method,
+									   std::string_view path) const {
+	const auto policy = policies_.find(std::make_pair(
+		std::string(method == "HEAD" ? "GET" : method), std::string(path)));
+	return policy == policies_.end() ? nullptr : &policy->second;
 }
 
 std::optional<std::string> bearerToken(const httplib::Request &request) {
@@ -179,19 +155,21 @@ std::optional<std::string> bearerToken(const httplib::Request &request) {
 	}
 	const std::string token = authorization.substr(sizeof(scheme) - 1);
 	if (token.find_first_of(" \t\r\n") != std::string::npos ||
-		token.size() > 256) {
+		token.size() > AppConfigLimits::MAX_BEARER_TOKEN_LENGTH) {
 		return std::nullopt;
 	}
 	return token;
 }
 
-httplib::Server::HandlerResponse authorizeApiRequest(
-	Auth::AuthProvider &auth, const httplib::Request &request,
-	httplib::Response &response, RateLimiter &sourceRateLimiter,
-	RateLimiter &identityRateLimiter,
-	RateLimiter &firewallMutationSourceLimiter,
-	RateLimiter &firewallMutationIdentityLimiter) {
-	if (request.method == "GET" && request.path == "/status/health") {
+httplib::Server::HandlerResponse
+authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
+					const httplib::Request &request,
+					httplib::Response &response, RateLimiter &sourceRateLimiter,
+					RateLimiter &identityRateLimiter,
+					RateLimiter &firewallMutationSourceLimiter,
+					RateLimiter &firewallMutationIdentityLimiter) {
+	const RoutePolicy *route = routes.find(request.method, request.path);
+	if (route != nullptr && route->access == RouteAccess::Liveness) {
 		return httplib::Server::HandlerResponse::Unhandled;
 	}
 	std::uint32_t retryAfterSeconds = 0;
@@ -207,7 +185,7 @@ httplib::Server::HandlerResponse authorizeApiRequest(
 		return httplib::Server::HandlerResponse::Handled;
 	}
 
-	if (isPublicRoute(request)) {
+	if (route != nullptr && route->access == RouteAccess::Public) {
 		return httplib::Server::HandlerResponse::Unhandled;
 	}
 
@@ -241,10 +219,17 @@ httplib::Server::HandlerResponse authorizeApiRequest(
 		return httplib::Server::HandlerResponse::Handled;
 	}
 
-	if (requiresFirewallOperator(request) &&
-		identity->role == Auth::Role::Viewer) {
+	if (route == nullptr) {
+		reject(response, 404, "not_found", "API route not found");
+		Logger::API::log("request_rejected code=not_found",
+						 Logger::Level::WARNING);
+		return httplib::Server::HandlerResponse::Handled;
+	}
+	if (!satisfies(identity->role, route->access)) {
 		reject(response, 403, "insufficient_role",
-			   "Operator or administrator role is required");
+			   route->access == RouteAccess::Administrator
+				   ? "Administrator role is required"
+				   : "Operator or administrator role is required");
 		Logger::API::log("request_rejected code=insufficient_role",
 						 Logger::Level::WARNING);
 		return httplib::Server::HandlerResponse::Handled;
@@ -253,21 +238,12 @@ httplib::Server::HandlerResponse authorizeApiRequest(
 	if (!identityRateLimiter.allow(identity->id, retryAfterSeconds)) {
 		return rateLimitResponse(response, retryAfterSeconds);
 	}
-	if (isFirewallMutation(request)) {
-		if (!firewallMutationSourceLimiter.allow(request.remote_addr,
-												 retryAfterSeconds) ||
-			!firewallMutationIdentityLimiter.allow(identity->id,
-												  retryAfterSeconds)) {
-			return rateLimitResponse(response, retryAfterSeconds);
-		}
-	}
-	if (requiresAdministrator(request) &&
-		identity->role != Auth::Role::Administrator) {
-		reject(response, 403, "insufficient_role",
-			   "Administrator role is required");
-		Logger::API::log("request_rejected code=insufficient_role",
-						 Logger::Level::WARNING);
-		return httplib::Server::HandlerResponse::Handled;
+	if (route->firewallMutation &&
+		(!firewallMutationSourceLimiter.allow(request.remote_addr,
+											  retryAfterSeconds) ||
+		 !firewallMutationIdentityLimiter.allow(identity->id,
+												retryAfterSeconds))) {
+		return rateLimitResponse(response, retryAfterSeconds);
 	}
 
 	return httplib::Server::HandlerResponse::Unhandled;

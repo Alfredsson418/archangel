@@ -1,4 +1,5 @@
 #include "../../include/auth/secret_input.hpp"
+#include "../../include/config/app_config.hpp"
 
 #include <openssl/crypto.h>
 
@@ -73,7 +74,7 @@ class TerminalPasswordPrompt {
 				if (character == '\n' || character == '\r') {
 					break;
 				}
-				if (password.size() < 512) {
+				if (password.size() < AppConfigLimits::MAX_PASSWORD_BYTES) {
 					password.push_back(character);
 				} else {
 					tooLong = true;

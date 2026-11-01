@@ -32,7 +32,7 @@ class HttpServer {
   private:
 	Firewall							 &firewall_;
 	Auth::AuthProvider					 &auth_;
-	HttpApi::LoginAttemptLimiter			  login_limiter_;
+	HttpApi::RateLimiter					  login_limiter_;
 	HttpApi::RateLimiter					  source_rate_limiter_;
 	HttpApi::RateLimiter					  identity_rate_limiter_;
 	HttpApi::RateLimiter firewall_mutation_source_limiter_;

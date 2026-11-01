@@ -1,4 +1,5 @@
 #include "auth_crypto.hpp"
+#include "../../include/config/app_config.hpp"
 
 #include <argon2.h>
 #include <openssl/evp.h>
@@ -12,12 +13,8 @@
 #include <string>
 
 namespace {
-constexpr std::uint32_t MAX_ARGON2_MEMORY_KIB = 1024 * 1024;
-constexpr std::uint32_t MAX_ARGON2_ITERATIONS = 10;
-constexpr std::uint32_t MAX_ARGON2_PARALLELISM = 8;
 constexpr std::size_t ARGON2_SALT_BYTES = 16;
 constexpr std::size_t ARGON2_HASH_BYTES = 32;
-constexpr std::size_t SESSION_TOKEN_BYTES = 32;
 
 std::string hexEncode(const unsigned char *data, std::size_t size) {
 	std::ostringstream encoded;
@@ -83,7 +80,8 @@ std::size_t passwordCodepoints(std::string_view password) {
 namespace Auth::Detail {
 
 std::string normalizeUsername(std::string_view username) {
-	if (username.size() < 3 || username.size() > 64) {
+	if (username.size() < AppConfigLimits::MIN_USERNAME_LENGTH ||
+		username.size() > AppConfigLimits::MAX_USERNAME_LENGTH) {
 		return {};
 	}
 	std::string normalized;
@@ -105,7 +103,7 @@ std::string normalizeUsername(std::string_view username) {
 }
 
 void validatePassword(std::string_view password, const PasswordPolicy &policy) {
-	if (password.size() > 512) {
+	if (password.size() > AppConfigLimits::MAX_PASSWORD_BYTES) {
 		throw std::runtime_error(
 			"Password exceeds the maximum encoded size");
 	}
@@ -149,7 +147,7 @@ bool verifyPassword(std::string_view encoded, std::string_view password) {
 }
 
 std::string createSessionToken() {
-	const auto bytes = secureRandomBytes<SESSION_TOKEN_BYTES>();
+	const auto bytes = secureRandomBytes<AppConfigLimits::TOKEN_BYTES>();
 	return hexEncode(bytes.data(), bytes.size());
 }
 

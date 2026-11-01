@@ -38,7 +38,8 @@ class SecretString {
 /**
  * @brief Reads a password from the controlling terminal without echo.
  * @param prompt Text to display before reading the password.
- * @return The entered password, limited to 512 characters.
+ * @return The entered password, limited to AppConfigLimits::MAX_PASSWORD_BYTES
+ * bytes.
  * @throws std::runtime_error If no terminal is available, terminal setup or
  * I/O fails, or the input exceeds the limit.
  */

@@ -106,6 +106,15 @@ class Nftables : public Firewall, public FirewallConfigProvider {
 	 * @throws std::runtime_error If buffering or command execution fails.
 	 */
 	void			execute(const std::string &command);
+
+	/**
+	 * @brief Executes an nftables JSON command document; callers must hold
+	 * mutex_.
+	 * @param commands Serialized document with an "nftables" command array.
+	 * @return No value.
+	 * @throws std::runtime_error If buffering or command execution fails.
+	 */
+	void			executeJson(const std::string &commands);
 	std::mutex		mutex_;
 	struct nft_ctx *context_;
 };

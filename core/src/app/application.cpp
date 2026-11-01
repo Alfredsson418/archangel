@@ -155,7 +155,9 @@ int runApplication(int argc, char *argv[]) {
 	if (portOption->count() > 0) {
 		if (portOverride < AppConfigLimits::MIN_SERVER_PORT ||
 			portOverride > AppConfigLimits::MAX_SERVER_PORT) {
-			std::cerr << "--port must be between 1 and 65535\n";
+			std::cerr << "--port must be between "
+					  << AppConfigLimits::MIN_SERVER_PORT << " and "
+					  << AppConfigLimits::MAX_SERVER_PORT << '\n';
 			return 2;
 		}
 		appConfig.server.port = static_cast<std::uint16_t>(portOverride);
@@ -214,6 +216,13 @@ int runApplication(int argc, char *argv[]) {
 			"enabled; network traffic is unprotected",
 			Logger::Level::WARNING);
 	}
+#ifdef ARCHANGEL_DEV_BUILD
+	Logger::Program::log(
+		"Development build: local-account passwords may be as short as " +
+			std::to_string(AppConfigLimits::MIN_PASSWORD_LENGTH) +
+			" characters; use a release build outside local testing",
+		Logger::Level::WARNING);
+#endif
 	Logger::Program::log("Starting program");
 
 	try {

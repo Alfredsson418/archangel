@@ -1,5 +1,6 @@
 #include "log_sources.hpp"
 
+#include "../../include/config/app_config.hpp"
 #include "../../lib/json/json.hpp"
 
 #include <algorithm>
@@ -18,8 +19,6 @@
 namespace {
 using BackendLogSources::Source;
 using Json = nlohmann::json;
-constexpr std::size_t MAX_LOG_ENTRIES = 100;
-constexpr std::streamoff MAX_LOG_BYTES = 512 * 1024;
 
 std::string redactSensitiveValues(const std::string &line) {
 	static const std::regex quotedCredentialPattern(
@@ -39,8 +38,18 @@ std::string redactSensitiveValues(const std::string &line) {
 }
 
 Source readArchangelLog() {
+	std::string path;
+	try {
+		path = AppConfigDefaults::applicationLogPath();
+	} catch (const std::exception &) {
+		return {"archangel",
+				"Archangel application",
+				false,
+				"The backend log file location could not be resolved.",
+				{}};
+	}
 	const int file =
-		open("./app.log", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+		open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
 	if (file == -1) {
 		return {"archangel", "Archangel application", false,
 				"The backend log file is not readable or has not been created.",
@@ -54,7 +63,8 @@ Source readArchangelLog() {
 				"The backend log file is not a readable regular file.", {}};
 	}
 	const off_t fileSize = fileInfo.st_size;
-	const off_t bytesToRead = std::min<off_t>(fileSize, MAX_LOG_BYTES);
+	const off_t bytesToRead =
+		std::min<off_t>(fileSize, AppConfigLimits::MAX_LOG_READ_BYTES);
 	const off_t offset = fileSize - bytesToRead;
 	std::string tail(static_cast<std::size_t>(bytesToRead), '\0');
 	ssize_t bytesRead = 0;
@@ -79,11 +89,11 @@ Source readArchangelLog() {
 	std::string line;
 	std::istringstream lines(tail);
 	while (std::getline(lines, line)) {
-		if (line.size() > 4096) {
-			line.resize(4096);
+		if (line.size() > AppConfigLimits::MAX_LOG_LINE_BYTES) {
+			line.resize(AppConfigLimits::MAX_LOG_LINE_BYTES);
 		}
 		entries.push_back(redactSensitiveValues(line));
-		if (entries.size() > MAX_LOG_ENTRIES) {
+		if (entries.size() > AppConfigLimits::MAX_LOG_ENTRIES) {
 			entries.erase(entries.begin());
 		}
 	}
@@ -135,7 +145,7 @@ bool readBoundedLine(FILE *stream, std::string &line) {
 			return readAny;
 		}
 		readAny = true;
-		if (line.size() < 4096) {
+		if (line.size() < AppConfigLimits::MAX_LOG_LINE_BYTES) {
 			line.push_back(static_cast<char>(character));
 		}
 	}
@@ -159,7 +169,7 @@ Source readNftablesLog() {
 			continue;
 		}
 		entries.push_back(redactSensitiveValues(line));
-		if (entries.size() > MAX_LOG_ENTRIES) {
+		if (entries.size() > AppConfigLimits::MAX_LOG_ENTRIES) {
 			entries.erase(entries.begin());
 		}
 	}

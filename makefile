@@ -5,6 +5,10 @@ CC = g++
 NAME = archangel
 
 # Directories
+# The binary is built into OUT. Debug builds keep their private state, including
+# app.log, in OUT/.archangel-dev beside it.
+OUT = bin
+TARGET = $(OUT)/$(NAME)
 CORE = core
 LIB = $(CORE)/lib
 BUILD = build
@@ -20,8 +24,11 @@ endif
 # ------------------------------------------------------
 
 # Flags for compiling
-DEBUG_CFLAGS = -std=c++20 -Wall -g
-RELEASE_CFLAGS = -std=c++20
+DEBUG_CFLAGS = -std=c++20 -Wall -Wextra -g
+# The backend runs privileged and listens on the network, so release builds
+# enable optimization-dependent fortification, stack protection, and full RELRO.
+RELEASE_CFLAGS = -std=c++20 -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE
+RELEASE_LDFLAGS = -pie -Wl,-z,relro,-z,now
 TEST_CFLAGS = -std=c++20 -Wall -O0 -g0
 LDFLAGS = -lnftables -lsqlite3 -largon2 -lcrypto -lrt -ldl -pthread
 # lm is used by argtable3
@@ -40,7 +47,7 @@ RELEASE_LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/release/$(LIB)/%.o, $(L
 TEST_SRCFILES = $(shell find $(CORE)/tests -name '*.cpp')
 TEST_BINARY = $(BUILD)/$(CORE)/tests/backend_tests
 
-.PHONY: debug release test clean FORCE
+.PHONY: debug release test clean clean-dev-state run bootstrap-admin config FORCE
 
 FORCE:
 
@@ -53,15 +60,17 @@ $(BUILD)/debug/$(SRC)/http/server.o $(BUILD)/release/$(SRC)/http/server.o: $(VER
 
 # Target to build the executable with debug flags
 debug: $(DEBUG_OBJFILES) $(DEBUG_LIB_OBJFILES)
-	@echo "Building $(NAME) in debug mode"
-	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD $^ -o $(NAME) $(LDFLAGS)
+	@mkdir -p $(OUT)
+	@echo "Building $(TARGET) in debug mode"
+	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD $^ -o $(TARGET) $(LDFLAGS)
 	@echo "Done!"
 
 
 # Target to build the executable with release flags
 build_release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
-	@echo "Building $(NAME) in release mode"
-	@$(CC) $(RELEASE_CFLAGS) $^ -o $(NAME) $(LDFLAGS)
+	@mkdir -p $(OUT)
+	@echo "Building $(TARGET) in release mode"
+	@$(CC) $(RELEASE_CFLAGS) $(RELEASE_LDFLAGS) $^ -o $(TARGET) $(LDFLAGS)
 	@echo "Done!"
 
 $(TEST_BINARY): $(TEST_SRCFILES) $(SRC)/auth/auth_crypto.cpp $(SRC)/auth/providers/sqlite_auth_provider.cpp $(SRC)/auth/sqlite_auth_storage.cpp $(SRC)/auth/secret_input.cpp $(SRC)/logger.cpp $(SRC)/logs/log_sources.cpp $(SRC)/cli/firewall_config.cpp $(SRC)/network/address.cpp $(SRC)/firewall/config.cpp $(SRC)/config/runtime_config.cpp $(SRC)/http/authentication.cpp $(SRC)/http/api/auth.cpp $(SRC)/http/api/accounts.cpp $(SRC)/http/api/logs.cpp $(SRC)/firewall/providers/nft_import.cpp $(SRC)/firewall/providers/nft_statistics.cpp $(SRC)/http/api/rules.cpp $(SRC)/http/api/stats.cpp
@@ -96,6 +105,35 @@ $(BUILD)/release/$(LIB)/%.o: $(LIB)/%.cpp
 	@$(CC) $(RELEASE_CFLAGS) -I$(BUILD)/generated -c -o $@ $<
 
 
-# Target to clean up generated file
+# ------------------------------------------------------
+# 					Running the debug build
+# ------------------------------------------------------
+
+# nftables requires root, and the private state directory must be owned by
+# the user that runs the binary, so every run target uses the same SUDO
+# command. Set SUDO= when already running as root.
+SUDO ?= sudo
+RUN_ARGS ?= --host 127.0.0.1 --port 8080
+ADMIN_USER ?= admin
+
+# Start the API.
+run: debug
+	@$(SUDO) ./$(TARGET) $(RUN_ARGS)
+
+# Create the initial administrator interactively in OUT/.archangel-dev.
+bootstrap-admin: debug
+	@$(SUDO) ./$(TARGET) user bootstrap-admin --username $(ADMIN_USER)
+
+# Write a default runtime config to OUT/.archangel-dev/config.json.
+config: debug
+	@$(SUDO) ./$(TARGET) config generate
+
+
+# Target to clean up generated file; keeps OUT/.archangel-dev, which holds
+# local accounts.
 clean:
-	@rm -rf $(BUILD) $(NAME)
+	@rm -rf $(BUILD) $(TARGET)
+
+# Delete local accounts, sessions, config, and logs created by the run targets.
+clean-dev-state:
+	@$(SUDO) rm -rf $(OUT)/.archangel-dev
