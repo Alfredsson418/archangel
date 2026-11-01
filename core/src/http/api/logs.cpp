@@ -1,7 +1,7 @@
-#include "../../../include/http/api/logs.hpp"
-#include "../../../include/logger.hpp"
-#include "../../../lib/json/json.hpp"
+#include "http/api/logs.hpp"
 #include "../../logs/log_sources.hpp"
+#include "logger.hpp"
+#include "json/json.hpp"
 
 namespace HttpApi {
 

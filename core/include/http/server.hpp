@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../../lib/cpp-httplib/cpp-httplib.hpp"
-#include "../auth/providers/auth_provider.hpp"
-#include "../config/app_config.hpp"
-#include "../firewall/providers/firewall.hpp"
-#include "authentication.hpp"
+#include "auth/providers/auth_provider.hpp"
+#include "config/app_config.hpp"
+#include "cpp-httplib/cpp-httplib.hpp"
+#include "firewall/providers/firewall.hpp"
+#include "http/authentication.hpp"
 #include <chrono>
 #include <iostream>
 #include <string>

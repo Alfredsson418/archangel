@@ -1,6 +1,6 @@
 #pragma once
 
-#include "providers/firewall_config_provider.hpp"
+#include "firewall/providers/firewall_config_provider.hpp"
 #include <string>
 
 inline constexpr char ARCHANGEL_RULE_COMMENT[] = "archangel-managed";

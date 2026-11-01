@@ -1,6 +1,6 @@
 #pragma once
 
-#include "app_config.hpp"
+#include "config/app_config.hpp"
 
 #include <string>
 

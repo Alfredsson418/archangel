@@ -1,5 +1,5 @@
-#include "../../include/auth/secret_input.hpp"
-#include "../../include/config/app_config.hpp"
+#include "auth/secret_input.hpp"
+#include "config/app_config.hpp"
 
 #include <openssl/crypto.h>
 

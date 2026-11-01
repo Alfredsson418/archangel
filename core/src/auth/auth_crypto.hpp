@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../include/auth/providers/auth_provider.hpp"
+#include "auth/providers/auth_provider.hpp"
 
 #include <string>
 #include <string_view>

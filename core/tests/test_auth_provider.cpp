@@ -1,4 +1,4 @@
-#include "../include/auth/providers/auth_provider.hpp"
+#include "auth/providers/auth_provider.hpp"
 #include "test_support.hpp"
 
 #include <openssl/evp.h>

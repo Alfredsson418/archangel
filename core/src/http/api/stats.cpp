@@ -1,4 +1,4 @@
-#include "../../../include/http/api/stats.hpp"
+#include "http/api/stats.hpp"
 #include "api_common.hpp"
 
 namespace HttpApi {

@@ -1,16 +1,16 @@
-#include "../../include/app/application.hpp"
-#include "../../include/auth/providers/auth_provider.hpp"
-#include "../../include/auth/secret_input.hpp"
-#include "../../include/cli/firewall_config.hpp"
-#include "../../include/config/runtime_config.hpp"
-#include "../../include/firewall/config.hpp"
-#include "../../include/firewall/providers/firewall_config_provider.hpp"
-#include "../../include/firewall/providers/nft.hpp"
-#include "../../include/http/server.hpp"
-#include "../../include/logger.hpp"
-#include "../../include/network/address.hpp"
+#include "app/application.hpp"
+#include "auth/providers/auth_provider.hpp"
+#include "auth/secret_input.hpp"
+#include "cli/firewall_config.hpp"
+#include "config/runtime_config.hpp"
+#include "firewall/config.hpp"
+#include "firewall/providers/firewall_config_provider.hpp"
+#include "firewall/providers/nft.hpp"
+#include "http/server.hpp"
+#include "logger.hpp"
+#include "network/address.hpp"
 
-#include "../../lib/CLI11/CLI11.hpp"
+#include "CLI11/CLI11.hpp"
 
 #include <chrono>
 #include <cstdint>

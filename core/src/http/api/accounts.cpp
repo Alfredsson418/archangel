@@ -1,6 +1,6 @@
-#include "../../../include/http/api/accounts.hpp"
-#include "../../../include/config/app_config.hpp"
+#include "http/api/accounts.hpp"
 #include "api_common.hpp"
+#include "config/app_config.hpp"
 
 #include <string>
 #include <string_view>

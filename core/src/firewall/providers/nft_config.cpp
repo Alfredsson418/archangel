@@ -1,5 +1,5 @@
-#include "../../../include/firewall/config.hpp"
-#include "../../../include/firewall/providers/nft.hpp"
+#include "firewall/config.hpp"
+#include "firewall/providers/nft.hpp"
 
 #include <stdexcept>
 

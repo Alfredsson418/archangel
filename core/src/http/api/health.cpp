@@ -1,4 +1,4 @@
-#include "../../../include/http/api/health.hpp"
+#include "http/api/health.hpp"
 
 namespace HttpApi {
 

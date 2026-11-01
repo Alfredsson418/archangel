@@ -1,5 +1,5 @@
-#include "../include/cli/firewall_config.hpp"
-#include "../include/firewall/config.hpp"
+#include "cli/firewall_config.hpp"
+#include "firewall/config.hpp"
 #include "test_support.hpp"
 
 #include <cstdlib>

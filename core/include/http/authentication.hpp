@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../lib/cpp-httplib/cpp-httplib.hpp"
-#include "../auth/providers/auth_provider.hpp"
-#include "../config/app_config.hpp"
+#include "auth/providers/auth_provider.hpp"
+#include "config/app_config.hpp"
+#include "cpp-httplib/cpp-httplib.hpp"
 
 #include <chrono>
 #include <cstddef>

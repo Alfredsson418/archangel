@@ -1,8 +1,8 @@
-#include "../../include/http/authentication.hpp"
-#include "../../include/config/app_config.hpp"
-#include "../../include/http/api/schema.hpp"
-#include "../../include/logger.hpp"
-#include "../../lib/json/json.hpp"
+#include "http/authentication.hpp"
+#include "config/app_config.hpp"
+#include "http/api/schema.hpp"
+#include "logger.hpp"
+#include "json/json.hpp"
 
 #include <algorithm>
 #include <cctype>

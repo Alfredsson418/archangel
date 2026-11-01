@@ -1,4 +1,4 @@
-#include "../include/network/address.hpp"
+#include "network/address.hpp"
 #include "test_support.hpp"
 
 namespace {

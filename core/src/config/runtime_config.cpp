@@ -1,5 +1,5 @@
-#include "../../include/config/runtime_config.hpp"
-#include "../../lib/json/json.hpp"
+#include "config/runtime_config.hpp"
+#include "json/json.hpp"
 
 #include <cerrno>
 #include <cstddef>

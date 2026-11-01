@@ -1,5 +1,5 @@
 #include "nft_statistics.hpp"
-#include "../../../lib/json/json.hpp"
+#include "json/json.hpp"
 #include <stdexcept>
 
 FirewallStatistics statisticsFromNftRuleset(const std::string &rulesetJson) {

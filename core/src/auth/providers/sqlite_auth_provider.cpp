@@ -1,6 +1,6 @@
-#include "../../../include/auth/providers/auth_provider.hpp"
 #include "../auth_crypto.hpp"
 #include "../sqlite_auth_storage.hpp"
+#include "auth/providers/auth_provider.hpp"
 
 #include <sqlite3.h>
 

@@ -1,5 +1,5 @@
-#include "../include/logger.hpp"
-#include "../include/config/app_config.hpp"
+#include "logger.hpp"
+#include "config/app_config.hpp"
 
 #include <chrono>
 #include <ctime>

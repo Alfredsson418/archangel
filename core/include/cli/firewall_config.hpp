@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../firewall/providers/firewall.hpp"
-#include "../firewall/providers/firewall_config_provider.hpp"
+#include "firewall/providers/firewall.hpp"
+#include "firewall/providers/firewall_config_provider.hpp"
 
 #include <string>
 

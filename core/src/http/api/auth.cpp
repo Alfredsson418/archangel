@@ -1,8 +1,8 @@
-#include "../../../include/http/api/auth.hpp"
-#include "../../../include/auth/secret_input.hpp"
-#include "../../../include/config/app_config.hpp"
-#include "../../../include/http/authentication.hpp"
+#include "http/api/auth.hpp"
 #include "api_common.hpp"
+#include "auth/secret_input.hpp"
+#include "config/app_config.hpp"
+#include "http/authentication.hpp"
 
 #include <cstdint>
 #include <exception>

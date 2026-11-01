@@ -1,6 +1,6 @@
-#include "../include/firewall/config.hpp"
-#include "../lib/json/json.hpp"
+#include "firewall/config.hpp"
 #include "test_support.hpp"
+#include "json/json.hpp"
 
 #include <stdexcept>
 #include <string>

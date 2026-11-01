@@ -14,6 +14,9 @@ LIB = $(CORE)/lib
 BUILD = build
 SRC = $(CORE)/src
 VERSION_HEADER = $(BUILD)/generated/archangel_version.hpp
+# Includes are written relative to these roots, for example
+# "http/server.hpp" or "json/json.hpp".
+INCLUDE_FLAGS = -I$(CORE)/include -I$(LIB) -I$(BUILD)/generated
 GIT_COMMIT = $(shell git rev-parse --verify HEAD 2>/dev/null)
 ifeq ($(strip $(GIT_COMMIT)),)
 $(error Unable to determine the Git commit hash required for the backend version)
@@ -83,7 +86,7 @@ build_release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
 $(TEST_BINARY): $(TEST_SRCFILES) $(TEST_APP_SRCFILES)
 	@mkdir -p $(@D)
 	@echo "Building backend tests"
-	@$(CC) $(TEST_CFLAGS) -I$(CORE)/include -I$(LIB) $^ -o $@ -lsqlite3 -largon2 -lcrypto -lrt -ldl -pthread
+	@$(CC) $(TEST_CFLAGS) $(INCLUDE_FLAGS) $^ -o $@ -lsqlite3 -largon2 -lcrypto -lrt -ldl -pthread
 
 test: $(TEST_BINARY)
 	@$(TEST_BINARY)
@@ -94,22 +97,22 @@ test: $(TEST_BINARY)
 $(BUILD)/debug/$(SRC)/%.o: $(SRC)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD -I$(BUILD)/generated -c -o $@ $<
+	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD $(INCLUDE_FLAGS) -c -o $@ $<
 
 $(BUILD)/debug/$(LIB)/%.o: $(LIB)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD -I$(BUILD)/generated -c -o $@ $<
+	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD $(INCLUDE_FLAGS) -c -o $@ $<
 
 $(BUILD)/release/$(SRC)/%.o: $(SRC)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(RELEASE_CFLAGS) -I$(BUILD)/generated -c -o $@ $<
+	@$(CC) $(RELEASE_CFLAGS) $(INCLUDE_FLAGS) -c -o $@ $<
 
 $(BUILD)/release/$(LIB)/%.o: $(LIB)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(RELEASE_CFLAGS) -I$(BUILD)/generated -c -o $@ $<
+	@$(CC) $(RELEASE_CFLAGS) $(INCLUDE_FLAGS) -c -o $@ $<
 
 
 # ------------------------------------------------------

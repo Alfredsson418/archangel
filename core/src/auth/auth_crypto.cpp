@@ -1,5 +1,5 @@
 #include "auth_crypto.hpp"
-#include "../../include/config/app_config.hpp"
+#include "config/app_config.hpp"
 
 #include <argon2.h>
 #include <openssl/evp.h>

@@ -1,6 +1,6 @@
-#include "../../../include/http/api/status.hpp"
-#include "../../../include/http/api/schema.hpp"
-#include "../../../lib/json/json.hpp"
+#include "http/api/status.hpp"
+#include "http/api/schema.hpp"
+#include "json/json.hpp"
 
 namespace HttpApi {
 

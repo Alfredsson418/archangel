@@ -1,4 +1,4 @@
-#include "../include/http/api/rules.hpp"
+#include "http/api/rules.hpp"
 #include "test_support.hpp"
 
 #include <cstdint>

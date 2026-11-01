@@ -1,7 +1,7 @@
 #include "log_sources.hpp"
 
-#include "../../include/config/app_config.hpp"
-#include "../../lib/json/json.hpp"
+#include "config/app_config.hpp"
+#include "json/json.hpp"
 
 #include <algorithm>
 #include <cerrno>

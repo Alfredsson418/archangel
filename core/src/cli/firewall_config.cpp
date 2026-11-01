@@ -1,6 +1,6 @@
-#include "../../include/cli/firewall_config.hpp"
-#include "../../include/config/app_config.hpp"
-#include "../../include/firewall/config.hpp"
+#include "cli/firewall_config.hpp"
+#include "config/app_config.hpp"
+#include "firewall/config.hpp"
 
 #include <fstream>
 #include <stdexcept>

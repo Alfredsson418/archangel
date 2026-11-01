@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../../../include/error.hpp"
-#include "../../../include/logger.hpp"
-#include "../../../lib/cpp-httplib/cpp-httplib.hpp"
-#include "../../../lib/json/json.hpp"
+#include "cpp-httplib/cpp-httplib.hpp"
+#include "error.hpp"
+#include "logger.hpp"
+#include "json/json.hpp"
 #include <exception>
 #include <string>
 

@@ -1,10 +1,10 @@
-#include "../include/http/api/accounts.hpp"
-#include "../include/http/api/auth.hpp"
-#include "../include/http/api/schema.hpp"
-#include "../include/http/authentication.hpp"
+#include "http/api/accounts.hpp"
+#include "http/api/auth.hpp"
+#include "http/api/schema.hpp"
+#include "http/authentication.hpp"
 #include "test_support.hpp"
 
-#include "../lib/json/json.hpp"
+#include "json/json.hpp"
 
 #include <stdexcept>
 #include <string>

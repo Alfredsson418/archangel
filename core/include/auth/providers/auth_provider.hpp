@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../config/app_config.hpp"
+#include "config/app_config.hpp"
 
 #include <chrono>
 #include <cstdint>

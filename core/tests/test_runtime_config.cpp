@@ -1,4 +1,4 @@
-#include "../include/config/runtime_config.hpp"
+#include "config/runtime_config.hpp"
 #include "test_support.hpp"
 
 #include <filesystem>

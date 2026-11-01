@@ -1,7 +1,7 @@
 #include "nft_import.hpp"
 
-#include "../../../include/firewall/config.hpp"
-#include "../../../lib/json/json.hpp"
+#include "firewall/config.hpp"
+#include "json/json.hpp"
 
 #include <stdexcept>
 #include <string>

@@ -1,6 +1,6 @@
-#include "../lib/json/json.hpp"
 #include "../src/firewall/providers/nft_import.hpp"
 #include "test_support.hpp"
+#include "json/json.hpp"
 
 #include <stdexcept>
 #include <string>

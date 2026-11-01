@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../../lib/cpp-httplib/cpp-httplib.hpp"
+#include "cpp-httplib/cpp-httplib.hpp"
 
 namespace HttpApi {
 /**
