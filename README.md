@@ -123,7 +123,7 @@ export FLASK_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(3
 docker compose up --build -d
 ```
 
-Keep the generated key private and stable across restarts and workers. For a
+Compose refuses to start without `FLASK_SECRET_KEY`; there is no built-in default. Keep the generated key private and stable across restarts and workers. For a
 separate management computer, deploy the Dockerized webapp independently and
 set `ARCHANGEL_API_URL` to the managed server's reachable management address.
 Make both services reachable only on a trusted management network. The

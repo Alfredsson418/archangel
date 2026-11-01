@@ -9,14 +9,15 @@ services:
       WEB_WORKERS: "1"
       WEB_LOG_LEVEL: ${WEB_LOG_LEVEL:-INFO}
       ARCHANGEL_API_URL: ${ARCHANGEL_API_URL:-http://127.0.0.1:8080}
-      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-secret_key}
+      # Required: a stable random key, e.g. python3 -c "import secrets; print(secrets.token_hex(32))"
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?set FLASK_SECRET_KEY to a random value}
       ARCHANGEL_COOKIE_SECURE: ${ARCHANGEL_COOKIE_SECURE:-false}
       # Path inside the container to a private CA bundle for an HTTPS API URL;
       # mount the PEM file read-only, for example ./api-ca.pem:/run/archangel/api-ca.pem:ro
       ARCHANGEL_API_CA_BUNDLE: ${ARCHANGEL_API_CA_BUNDLE:-}
     volumes:
-      - archangel-web-config:/data
+      - archangel-web-data:/data
     restart: unless-stopped
 
 volumes:
-  archangel-web-config:
+  archangel-web-data:
