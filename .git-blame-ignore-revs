@@ -1,3 +1,6 @@
 # Formatting-only commits; use with: git config blame.ignoreRevsFile .git-blame-ignore-revs
 # Apply clang-format to all backend sources
 b628ac9273dce9120807eb17fd0152c43e337b89
+
+# Mechanical move of C++ declarations into per-directory namespaces
+935563e5ed14a2c0cbd8bc851889f4f84a0e5bd2
