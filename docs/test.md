@@ -15,14 +15,14 @@ The GitHub Actions workflow uses Python 3.12 and installs `g++`, `make`, `libnft
 Create a virtual environment and install the dashboard dependencies:
 
 ```sh
-python3 -m venv app/web/.venv
-app/web/.venv/bin/python -m pip install -r app/web/requirements.txt
+python3 -m venv dashboard/.venv
+dashboard/.venv/bin/python -m pip install -r dashboard/requirements.txt
 ```
 
 Run the suite from the dashboard directory:
 
 ```sh
-cd app/web
+cd dashboard
 .venv/bin/python -m unittest -v
 ```
 
@@ -30,12 +30,12 @@ The test modules are organized by responsibility:
 
 | Module | Coverage |
 | --- | --- |
-| `app/web/tests/test_api_client.py` | `ApiClient` contract tests with a fake transport (schema and bearer headers, schema mismatches, error statuses, invalid JSON, unreachable backend), `UrllibTransport` TLS-context use, request IDs, and failure mapping, and TLS 1.2-minimum certificate verification. |
-| `app/web/tests/test_authentication.py` | Protected pages, login/session rotation, server-side token storage, logout revocation, CSRF, same-origin checks, and safe redirects, and skipping writes for unchanged sessions. |
-| `app/web/tests/test_pages.py` | Server-rendered overview and system pages, log-source rendering and escaping, static assets, backend-unavailable messaging, stopping after the backend is unreachable, redirecting to login when the backend rejects the session, and the unauthenticated `/healthz` probe. |
-| `app/web/tests/test_logging.py` | Stdout and backend request logging without query-string values, owner-only JSONL records with request IDs, reopen after rotation, rejection of shared log files, message structuring, actor ID and outcome fields, `unregistered` in place of unknown paths, and fail-closed `503` for every request except health when the audit log is unavailable. |
-| `app/web/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export (including the rule shapes nftables actually lists), and preview/confirmed import behavior. |
-| `app/web/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
+| `dashboard/tests/test_api_client.py` | `ApiClient` contract tests with a fake transport (schema and bearer headers, schema mismatches, error statuses, invalid JSON, unreachable backend), `UrllibTransport` TLS-context use, request IDs, and failure mapping, and TLS 1.2-minimum certificate verification. |
+| `dashboard/tests/test_authentication.py` | Protected pages, login/session rotation, server-side token storage, logout revocation, CSRF, same-origin checks, and safe redirects, and skipping writes for unchanged sessions. |
+| `dashboard/tests/test_pages.py` | Server-rendered overview and system pages, log-source rendering and escaping, static assets, backend-unavailable messaging, stopping after the backend is unreachable, redirecting to login when the backend rejects the session, and the unauthenticated `/healthz` probe. |
+| `dashboard/tests/test_logging.py` | Stdout and backend request logging without query-string values, owner-only JSONL records with request IDs, reopen after rotation, rejection of shared log files, message structuring, actor ID and outcome fields, `unregistered` in place of unknown paths, and fail-closed `503` for every request except health when the audit log is unavailable. |
+| `dashboard/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export (including the rule shapes nftables actually lists), and preview/confirmed import behavior. |
+| `dashboard/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
 Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 28 tests. The exact count and incidental application log lines may change as coverage grows.
 
@@ -47,23 +47,23 @@ Build and run the backend unit tests from the repository root:
 make test
 ```
 
-The test executable is built at `build/core/tests/backend_tests`. The target compiles it when needed and runs it. Its current test modules cover:
+The test executable is built at `build/backend/tests/backend_tests`. The target compiles it when needed and runs it. Its current test modules cover:
 
 | Module | Coverage |
 | --- | --- |
-| `core/tests/test_auth_provider.cpp` | Initial administrator provisioning, normalized and configurable password policy, configurable Argon2id credential verification, API session creation/validation/revocation and expiry, account creation/update/disable and one-time setup-token lifecycle, administrator recovery, rehashing after an Argon2id cost increase, password-blocklist parsing, file checks, and enforcement, token/password non-persistence, and private SQLite file permissions. |
-| `core/tests/test_runtime_config.cpp` | Runtime config defaults and overrides (including the optional password-blocklist path), strict schema/type/value validation, secure file ownership/permissions, missing-file behavior, and symlink rejection. |
-| `core/tests/test_http_authentication.cpp` | Default route authentication, declared route policies (unregistered routes, duplicate declarations, `HEAD` handling), the public health/login/account-setup allowlist, Bearer session validation, viewer/operator/administrator firewall and account permissions, source/identity/mutation rate limits, bounded rate-limit key tracking, and fail-closed session-storage errors. |
-| `core/tests/test_auth_api.cpp` | Login and logout handlers: Bearer session issuance, rejected credentials and unexpected fields, session revocation, and per-source failed-login throttling with `Retry-After`. |
-| `core/tests/test_accounts_api.cpp` | Account lifecycle handlers: creation with a one-time setup token, unknown-field rejection, listing, role updates, disablement, setup-token reissue, and setup-token redemption. |
-| `core/tests/test_logging.cpp` | JSONL sink envelope, owner-only file and directory creation, rejection of symlinked or shared paths, reopen after rotation, structuring of `event key=value` messages and level filtering, request IDs and audit records, fail-closed `503` when an audit record cannot be written, unregistered-path labeling, shared log-source bounds and redaction, JSONL log rendering, and nftables source states. |
-| `core/tests/test_tls.cpp` | TLS file validation (missing, symlinked, group-readable key, writable certificate), context setup with a matching test-only certificate and key, the TLS 1.2 minimum, and rejection of mismatched or invalid files. |
-| `core/tests/auth_test_support.hpp` | Shared mock `AuthProvider` and schema-header request helper for the three authentication test modules. |
-| `core/tests/test_firewall_bundle.cpp` | Firewall bundle v1 parsing and serialization, ownership-section classification, listener-setting exclusion, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
-| `core/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |
-| `core/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |
-| `core/tests/test_rules_api.cpp` | Structured rule creation and deletion, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
-| `core/tests/test_stats_api.cpp` | JSON response shape and content type for firewall statistics. |
+| `backend/tests/test_auth_provider.cpp` | Initial administrator provisioning, normalized and configurable password policy, configurable Argon2id credential verification, API session creation/validation/revocation and expiry, account creation/update/disable and one-time setup-token lifecycle, administrator recovery, rehashing after an Argon2id cost increase, password-blocklist parsing, file checks, and enforcement, token/password non-persistence, and private SQLite file permissions. |
+| `backend/tests/test_runtime_config.cpp` | Runtime config defaults and overrides (including the optional password-blocklist path), strict schema/type/value validation, secure file ownership/permissions, missing-file behavior, and symlink rejection. |
+| `backend/tests/test_http_authentication.cpp` | Default route authentication, declared route policies (unregistered routes, duplicate declarations, `HEAD` handling), the public health/login/account-setup allowlist, Bearer session validation, viewer/operator/administrator firewall and account permissions, source/identity/mutation rate limits, bounded rate-limit key tracking, and fail-closed session-storage errors. |
+| `backend/tests/test_auth_api.cpp` | Login and logout handlers: Bearer session issuance, rejected credentials and unexpected fields, session revocation, and per-source failed-login throttling with `Retry-After`. |
+| `backend/tests/test_accounts_api.cpp` | Account lifecycle handlers: creation with a one-time setup token, unknown-field rejection, listing, role updates, disablement, setup-token reissue, and setup-token redemption. |
+| `backend/tests/test_logging.cpp` | JSONL sink envelope, owner-only file and directory creation, rejection of symlinked or shared paths, reopen after rotation, structuring of `event key=value` messages and level filtering, request IDs and audit records, fail-closed `503` when an audit record cannot be written, unregistered-path labeling, shared log-source bounds and redaction, JSONL log rendering, and nftables source states. |
+| `backend/tests/test_tls.cpp` | TLS file validation (missing, symlinked, group-readable key, writable certificate), context setup with a matching test-only certificate and key, the TLS 1.2 minimum, and rejection of mismatched or invalid files. |
+| `backend/tests/auth_test_support.hpp` | Shared mock `AuthProvider` and schema-header request helper for the three authentication test modules. |
+| `backend/tests/test_firewall_bundle.cpp` | Firewall bundle v1 parsing and serialization, ownership-section classification, listener-setting exclusion, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
+| `backend/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |
+| `backend/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |
+| `backend/tests/test_rules_api.cpp` | Structured rule creation and deletion, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
+| `backend/tests/test_stats_api.cpp` | JSON response shape and content type for firewall statistics. |
 
 Authentication tests use isolated temporary SQLite files. Rule-handler tests use a mock `Firewall::Backend`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.
 
@@ -90,14 +90,14 @@ This produces `bin/archangel` and requires a C++20 compiler plus development pac
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatch. It:
 
-1. Checks that every C++ source under `core/src`, `core/include`, and `core/tests` matches `.clang-format`, using clang-format 18 on Ubuntu 24.04. The vendored `core/lib` is not checked.
+1. Checks that every C++ source under `backend/src`, `backend/include`, and `backend/tests` matches `.clang-format`, using clang-format 18 on Ubuntu 24.04. The vendored `backend/lib` is not checked.
 2. Installs the dashboard dependencies and runs the dashboard unittest suite.
 3. Installs the C++ build dependencies, runs `make test`, then builds the backend with `make debug`.
 
 Run the same formatting check locally before pushing; a different clang-format major version may format some constructs differently:
 
 ```sh
-find core/src core/include core/tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
+find backend/src backend/include backend/tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
   | xargs -0 clang-format --dry-run --Werror
 ```
 

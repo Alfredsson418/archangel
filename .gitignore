@@ -9,7 +9,7 @@ build
 /bin/
 .archangel-dev/
 .venv/
-app/web/.venv/
+dashboard/.venv/
 __pycache__/
 *.py[cod]
 

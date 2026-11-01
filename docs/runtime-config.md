@@ -26,7 +26,7 @@ contain paths to protected files.
 Unknown keys, unsupported versions, incorrect types, and values outside the
 supported ranges are rejected. Sections and individual fields may be omitted;
 omitted settings use the defaults defined by the central `AppConfig` type in
-`core/include/config/app_config.hpp`. Runtime JSON is parsed into that same
+`backend/include/config/app_config.hpp`. Runtime JSON is parsed into that same
 effective-settings object; explicit CLI options then override its values.
 
 | Section and field | Default | Description |

@@ -9,14 +9,14 @@ NAME = archangel
 # backend.jsonl, in OUT/.archangel-dev beside it.
 OUT = bin
 TARGET = $(OUT)/$(NAME)
-CORE = core
-LIB = $(CORE)/lib
+BACKEND = backend
+LIB = $(BACKEND)/lib
 BUILD = build
-SRC = $(CORE)/src
+SRC = $(BACKEND)/src
 VERSION_HEADER = $(BUILD)/generated/archangel_version.hpp
 # Includes are written relative to these roots, for example
 # "http/server.hpp" or "json/json.hpp".
-INCLUDE_FLAGS = -I$(CORE)/include -I$(LIB) -I$(BUILD)/generated
+INCLUDE_FLAGS = -I$(BACKEND)/include -I$(LIB) -I$(BUILD)/generated
 # Enables cpp-httplib's TLS server; it must be defined for every file that
 # includes cpp-httplib so they all see the same class layouts.
 INCLUDE_FLAGS += -DCPPHTTPLIB_OPENSSL_SUPPORT
@@ -50,7 +50,7 @@ DEBUG_OBJFILES = $(patsubst $(SRC)/%.cpp, $(BUILD)/debug/$(SRC)/%.o, $(SRCFILES)
 DEBUG_LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/debug/$(LIB)/%.o, $(LIB_SRCFILES))
 RELEASE_OBJFILES = $(patsubst $(SRC)/%.cpp, $(BUILD)/release/$(SRC)/%.o, $(SRCFILES))
 RELEASE_LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/release/$(LIB)/%.o, $(LIB_SRCFILES))
-TEST_SRCFILES = $(shell find $(CORE)/tests -name '*.cpp')
+TEST_SRCFILES = $(shell find $(BACKEND)/tests -name '*.cpp')
 # The test binary links every backend source except the entry point and
 # composition root, the HTTP server (which needs the generated version header),
 # and the nftables provider (which needs libnftables and a live ruleset).
@@ -58,7 +58,7 @@ TEST_EXCLUDED_SRCFILES = $(SRC)/main.cpp $(SRC)/app/application.cpp \
 	$(SRC)/http/server.cpp $(SRC)/firewall/providers/nft.cpp \
 	$(SRC)/firewall/providers/nft_bundle.cpp
 TEST_APP_SRCFILES = $(filter-out $(TEST_EXCLUDED_SRCFILES),$(SRCFILES))
-TEST_BINARY = $(BUILD)/$(CORE)/tests/backend_tests
+TEST_BINARY = $(BUILD)/$(BACKEND)/tests/backend_tests
 
 .PHONY: debug release test clean clean-dev-state run bootstrap-admin recover-admin config FORCE
 

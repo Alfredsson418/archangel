@@ -16,7 +16,7 @@ Read the [testing and verification guide](docs/test.md) for prerequisites, test 
 ```sh
 make test
 make debug
-(cd app/web && .venv/bin/python -m unittest)
+(cd dashboard && .venv/bin/python -m unittest)
 ```
 
 The backend tests use mocks and controlled fixtures; they must not alter a live firewall. Do not run firewall-changing operations against a live host as part of testing.

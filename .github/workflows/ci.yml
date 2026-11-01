@@ -25,7 +25,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          find core/src core/include core/tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
+          find backend/src backend/include backend/tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
             | xargs -0 clang-format --dry-run --Werror
 
   dashboard-tests:
@@ -41,10 +41,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install dashboard dependencies
-        run: python -m pip install -r app/web/requirements.txt
+        run: python -m pip install -r dashboard/requirements.txt
 
       - name: Run dashboard tests
-        working-directory: app/web
+        working-directory: dashboard
         run: python -m unittest -v
 
   backend-tests-and-build:

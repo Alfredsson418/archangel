@@ -15,7 +15,7 @@
 
 ## Architecture guardrails
 
-- Preserve the service and module boundaries described in [architecture.md](docs/architecture.md). In particular, register C++ API routes only in `core/src/http/server.cpp`; keep handlers in `core/src/http/api/`, backend operations behind the `Firewall::Backend` interface, and HTTP validation/serialization at the API boundary.
+- Preserve the service and module boundaries described in [architecture.md](docs/architecture.md). In particular, register C++ API routes only in `backend/src/http/server.cpp`; keep handlers in `backend/src/http/api/`, backend operations behind the `Firewall::Backend` interface, and HTTP validation/serialization at the API boundary.
 - Favor replaceable implementations for components with meaningful alternative backends or a committed need to support them. Define a narrow, backend-neutral contract around domain behavior; keep vendor/technology-specific code inside the implementation; select implementations at the composition/configuration boundary, following [Selecting an implementation](docs/architecture.md#selecting-an-implementation); and test contract behavior independently of concrete implementations. Do not spread backend-specific conditionals through handlers or domain logic.
 - Do not add interfaces, plugin loading, or generalized frameworks solely for hypothetical future flexibility. First identify a real alternative, portability requirement, or planned provider/sink, and keep abstractions proportional to that need.
 - Keep the dashboard server-rendered and server-side when it calls the C++ API; do not add API passthrough routes or duplicate backend identities in Flask/the browser. Any future authentication and authorization must be enforced by the C++ API.
@@ -32,9 +32,9 @@
 
 ## Implementation conventions
 
-- Follow [development-guidelines.md](docs/development-guidelines.md). In particular, define backend limits, bounds, and built-in defaults once in `core/include/config/app_config.hpp` and reference them, instead of adding local copies or literals.
+- Follow [development-guidelines.md](docs/development-guidelines.md). In particular, define backend limits, bounds, and built-in defaults once in `backend/include/config/app_config.hpp` and reference them, instead of adding local copies or literals.
 - Follow `.clang-format` for C++; use four spaces for Python. Do not put application code in generated directories such as `build/`, `.venv/`, or `__pycache__/`.
-- Keep responsibilities cohesive and use existing module boundaries. Add new C++ implementations under the matching `core/src/` subsystem with public declarations under `core/include/`; keep implementation-only helpers private where practical.
+- Keep responsibilities cohesive and use existing module boundaries. Add new C++ implementations under the matching `backend/src/` subsystem with public declarations under `backend/include/`; keep implementation-only helpers private where practical.
 - Keep API parsing and validation in API handlers, backend behavior behind its interface, and serialization/status codes at the API boundary. Test observable contract changes.
 - Document public or cross-module declarations immediately above the declaration, including purpose and return behavior. Python functions should have docstrings describing return shape and relevant exceptions. Document non-obvious private helpers when needed.
 - Add concise comments only when they explain non-obvious behavior or rationale; do not restate the code.

@@ -7,18 +7,18 @@ These conventions apply to all code changes in Archangel. They complement the [a
 - Keep responsibilities cohesive. Prefer extending an existing module or shared helper over duplicating behavior, and keep interfaces between layers narrow and clear.
 - Extract an abstraction when it removes real duplication or clarifies a boundary. Avoid indirection that makes simple code harder to follow.
 - Keep source files focused and reasonably small, with one clear responsibility per module. Split a file when it accumulates distinct responsibilities or becomes hard to navigate, and place extracted code in the matching existing subsystem. Do not split code into tiny files only to meet a line count.
-- Place C++ implementation files under the matching `core/src/` subsystem and public declarations under the corresponding `core/include/` path. Keep implementation-only helpers private to their `.cpp` file where practical.
-- Include public headers by their path under `core/include` and vendored libraries by their path under `core/lib`, for example `#include "http/server.hpp"` or `#include "json/json.hpp"`; the makefile adds both roots. Include private headers that live beside sources in `core/src` by their path relative to the including file.
+- Place C++ implementation files under the matching `backend/src/` subsystem and public declarations under the corresponding `backend/include/` path. Keep implementation-only helpers private to their `.cpp` file where practical.
+- Include public headers by their path under `backend/include` and vendored libraries by their path under `backend/lib`, for example `#include "http/server.hpp"` or `#include "json/json.hpp"`; the makefile adds both roots. Include private headers that live beside sources in `backend/src` by their path relative to the including file.
 - Put each C++ subsystem directory's declarations in one namespace named after it: `App`, `Auth`, `Cli`, `Config`, `Firewall`, `Http`, `Logs`, and `Network`. Put private helpers shared between files in a nested `Detail` namespace and file-local helpers in an anonymous namespace inside it. Do not repeat the namespace in a name declared inside it, for example `Firewall::Bundle` rather than `Firewall::FirewallBundle`; the firewall contract is `Firewall::Backend` because a class cannot share its namespace's name. Contracts live at the root of their subsystem and implementations in its `providers/` directory.
-- Place dashboard modules in `app/web/webapp/` by responsibility, templates in `app/web/templates/`, shared browser assets in `app/web/static/`, and tests in `app/web/tests/`. Do not add another top-level application directory for functionality that belongs in these areas.
+- Place dashboard modules in `dashboard/webapp/` by responsibility, templates in `dashboard/templates/`, shared browser assets in `dashboard/static/`, and tests in `dashboard/tests/`. Do not add another top-level application directory for functionality that belongs in these areas.
 - Keep a function in the module responsible for its behavior and call it from other modules through the appropriate declaration. Do not create duplicate implementations.
 - Extend the `Firewall::Backend` contract only when a capability is needed across the API and backend boundary, and update every implementation when its virtual contract changes.
 
 ## Limits, bounds, and defaults
 
-- Define each backend limit, bound, and built-in default exactly once in [`core/include/config/app_config.hpp`](../core/include/config/app_config.hpp): limits in `Config::Limits`, and defaults such as paths and session lifetimes in `Config::Defaults` or the `AppConfig` settings object. This covers values such as password, username, and token lengths; Argon2id bounds; request-body and file-size limits; log-read bounds; lifetimes; and rate-limit and tracking bounds.
+- Define each backend limit, bound, and built-in default exactly once in [`backend/include/config/app_config.hpp`](../backend/include/config/app_config.hpp): limits in `Config::Limits`, and defaults such as paths and session lifetimes in `Config::Defaults` or the `AppConfig` settings object. This covers values such as password, username, and token lengths; Argon2id bounds; request-body and file-size limits; log-read bounds; lifetimes; and rate-limit and tracking bounds.
 - Reference these constants wherever the value is needed, including in validation, error messages, and documentation comments. Do not add local `constexpr` copies or repeat the value as a literal.
-- Keep format and contract constants with the module that owns them, not in `app_config.hpp`. Examples are the API schema version and header in `core/include/http/api/schema.hpp`, the `archangel-managed` rule marker in `core/include/firewall/bundle.hpp`, the authentication database migration version, and fixed algorithm output sizes.
+- Keep format and contract constants with the module that owns them, not in `app_config.hpp`. Examples are the API schema version and header in `backend/include/http/api/schema.hpp`, the `archangel-managed` rule marker in `backend/include/firewall/bundle.hpp`, the authentication database migration version, and fixed algorithm output sizes.
 - In the dashboard, define each limit once as a named module constant and derive form attributes and user-facing text from it rather than repeating the number. When a dashboard value mirrors a backend limit, name the backend constant it mirrors in a comment; the backend remains authoritative.
 
 ## Documentation comments
@@ -32,7 +32,7 @@ These conventions apply to all code changes in Archangel. They complement the [a
 - Log at meaningful operational boundaries: service startup and failure, request method and path, response status and duration, backend API call outcomes, validation rejections, configuration changes, and firewall operation success or failure.
 - Include enough non-sensitive context to diagnose failures, such as operation name, error category, status, and duration. Log unexpected exceptions with appropriate severity, and do not swallow them silently.
 - Never log request or response bodies, query-string values, submitted form values, credentials, tokens, secrets, or raw firewall-rule input; log safe event summaries instead.
-- Follow the existing conventions in `core/include/logs/logger.hpp` and `app/web/webapp/audit_log.py`.
+- Follow the existing conventions in `backend/include/logs/logger.hpp` and `dashboard/webapp/audit_log.py`.
 
 ## Keeping documentation synchronized
 
