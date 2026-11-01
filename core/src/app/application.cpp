@@ -8,15 +8,44 @@
 #include "firewall/providers/nft.hpp"
 #include "http/server.hpp"
 #include "logger.hpp"
+#include "logs/providers/application_log_source.hpp"
+#include "logs/providers/jsonl_file_sink.hpp"
+#include "logs/providers/nftables_journal_source.hpp"
 #include "network/address.hpp"
 
 #include "CLI11/CLI11.hpp"
 
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
+
+namespace {
+/**
+ * @brief Opens the configured JSONL log sink and installs it in Logger.
+ *
+ * Startup must fail when the audit log cannot be opened, so callers stop on
+ * a false result.
+ * @param config Validated application settings.
+ * @return True when logging is configured; false after printing the reason.
+ */
+bool startLogging(const AppConfig &config) {
+	try {
+		Logger::configure(std::make_shared<Logging::JsonlFileSink>(
+							  config.logging.path, "backend"),
+						  Logger::parseLevel(config.logging.level));
+	} catch (const std::exception &error) {
+		std::cerr << "Unable to open the backend log: " << error.what() << '\n';
+		return false;
+	}
+	// Reopen the log after external rotation (rename, then SIGHUP).
+	std::signal(SIGHUP, [](int) { Logger::requestReopen(); });
+	return true;
+}
+} // namespace
 
 int runApplication(int argc, char *argv[]) {
 	CLI::App app{"Archangel firewall"};
@@ -112,6 +141,9 @@ int runApplication(int argc, char *argv[]) {
 				appConfig.auth.database_path = authDatabasePathOverride;
 			}
 			validateAppConfig(appConfig);
+			if (!startLogging(appConfig)) {
+				return 1;
+			}
 			Auth::SecretString password(
 				Auth::promptPassword("New administrator password: "));
 			Auth::SecretString confirmation(
@@ -132,6 +164,13 @@ int runApplication(int argc, char *argv[]) {
 										 appConfig.auth.argon2id_parallelism});
 			const Auth::Identity identity = provider.bootstrapAdministrator(
 				bootstrapUsername, password.value());
+			Logger::audit({
+				{},
+				"INFO",
+				"PROGRAM",
+				"account_bootstrapped",
+				{{"actor_id", identity.id}, {"role", "administrator"}}
+			  });
 			std::cout << "Created initial administrator account "
 					  << identity.username << '\n';
 			return 0;
@@ -161,16 +200,12 @@ int runApplication(int argc, char *argv[]) {
 				  << error.what() << '\n';
 		return 2;
 	}
+	if (!startLogging(appConfig)) {
+		return 1;
+	}
 	if (appConfig.tls.enabled) {
 		std::cerr << "Runtime TLS is configured but native TLS is not "
 					 "implemented yet\n";
-		return 1;
-	}
-	const AppConfig defaultAppConfig{};
-	if (appConfig.logging.sink != defaultAppConfig.logging.sink ||
-		appConfig.logging.path != defaultAppConfig.logging.path ||
-		appConfig.logging.level != defaultAppConfig.logging.level) {
-		std::cerr << "Custom runtime logging settings are not supported yet\n";
 		return 1;
 	}
 
@@ -235,6 +270,16 @@ int runApplication(int argc, char *argv[]) {
 									 appConfig.auth.argon2id_iterations,
 									 appConfig.auth.argon2id_parallelism});
 
+		// Sources for GET /api/v1/logs, in display order.
+		const auto logSources = [&] {
+			std::vector<std::unique_ptr<Logging::LogSource>> sources;
+			sources.push_back(std::make_unique<Logging::ApplicationLogSource>(
+				appConfig.logging.path));
+			sources.push_back(
+				std::make_unique<Logging::NftablesJournalSource>(nftables));
+			return sources;
+		};
+
 		if (!importFirewallConfigPath.empty()) {
 			FirewallConfigProvider &configProvider =
 				FirewallConfigCommand::requireProvider(nftables);
@@ -244,15 +289,15 @@ int runApplication(int argc, char *argv[]) {
 				FirewallConfigCommand::readBundle(importFirewallConfigPath),
 				importMode);
 			Logger::Program::log("Imported Archangel firewall config bundle");
-			HttpServer server(nftables, authProvider, appConfig.server,
-							  appConfig.rate_limits);
+			HttpServer server(nftables, authProvider, logSources(),
+							  appConfig.server, appConfig.rate_limits);
 			server.run();
 			Logger::Program::log("Program stopped");
 			return 0;
 		}
 
-		HttpServer server(nftables, authProvider, appConfig.server,
-						  appConfig.rate_limits);
+		HttpServer server(nftables, authProvider, logSources(),
+						  appConfig.server, appConfig.rate_limits);
 
 		server.run();
 		Logger::Program::log("Program stopped");

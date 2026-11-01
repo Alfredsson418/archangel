@@ -47,7 +47,7 @@ make run                # serves on 127.0.0.1:8080
 ```
 
 The build places the binary in `bin/`. A debug build keeps all of its private
-state (accounts, sessions, runtime config, and `app.log`) in
+state (accounts, sessions, runtime config, and the `backend.jsonl` log) in
 `bin/.archangel-dev/`, wherever you run it from. That state directory must be owned by the user that runs
 the binary, and nftables requires root, so the targets run the binary through
 `sudo`. Run every command for one state directory as the same user; set

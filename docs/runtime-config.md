@@ -6,8 +6,8 @@ never imports or changes firewall rules.
 
 Release builds look for `/etc/archangel/config.json` by default. Debug builds
 compiled with `ARCHANGEL_DEV_BUILD` instead use the `.archangel-dev` directory
-next to the executable for `config.json`, `archangel.db`, `backend.jsonl`, and
-the current text log `app.log`. The private directory is created with mode
+next to the executable for `config.json`, `archangel.db`, and the
+`backend.jsonl` log. The private directory is created with mode
 `0700` when it is first needed and must be owned by the user that runs the
 binary.
 `make debug` builds into `bin/`, so the debug state directory is
@@ -45,9 +45,9 @@ effective-settings object; explicit CLI options then override its values.
 | `tls.enabled` | `false` | Native API TLS setting. Enabling TLS currently fails startup because TLS support is not implemented. |
 | `tls.certificate_file` | unset | Operator-provisioned certificate path. |
 | `tls.private_key_file` | unset | Operator-provisioned private-key path; never put key contents in JSON. |
-| `logging.sink` | `jsonl_file` | Planned backend log sink. |
-| `logging.path` | `/var/log/archangel/backend.jsonl` (release); `.archangel-dev/backend.jsonl` beside the executable (debug) | Planned JSONL log destination. |
-| `logging.level` | `INFO` | Planned minimum log level. |
+| `logging.sink` | `jsonl_file` | Backend log sink. Only the JSONL file sink is supported. |
+| `logging.path` | `/var/log/archangel/backend.jsonl` (release); `.archangel-dev/backend.jsonl` beside the executable (debug) | JSONL log destination. |
+| `logging.level` | `INFO` | Minimum level for ordinary log messages: `DEBUG`, `INFO`, `WARNING`, or `ERROR`. Request audit records are always written. |
 | `rate_limits.failed_auth_attempts` | `5` | Maximum failed login attempts per source IP in the configured window. |
 | `rate_limits.failed_auth_window_seconds` | `300` | Login-attempt window in seconds. |
 | `rate_limits.api_requests_per_minute` | `120` | Maximum requests per minute for each source IP and authenticated identity. |
@@ -108,8 +108,8 @@ overwrite an existing destination. Writing the release default under
 `/etc/archangel` may require elevated privileges. It generates defaults
 rather than reading or modifying an existing config. Edit the generated file
 to customize supported settings. Generating TLS paths does
-not enable TLS, and the current backend still rejects enabling TLS or
-non-default custom logging because those capabilities are not implemented.
+not enable TLS, and the current backend still rejects enabling TLS because
+native TLS is not implemented.
 
 Create the initial administrator using the same runtime file. Put `--config`
 before the `user` subcommand:
@@ -117,6 +117,53 @@ before the `user` subcommand:
 ```sh
 ./archangel --config /etc/archangel/config.json user bootstrap-admin --username admin
 ```
+
+## Backend log
+
+The backend writes one JSON object per line to `logging.path`. Every record
+has `timestamp` (UTC, ISO 8601), `level`, `service` (`backend`), `category`,
+and `event`; other keys depend on the event. Every API request produces an
+`api_request_completed` record with `request_id`, `operation`, `source_ip`,
+`actor_id` when the caller is authenticated, `status`, `outcome` (`success`,
+`rejected`, or `error`), and `duration_ms`. Authorized requests to any route
+except `GET /status/health` first produce an `api_request_authorized` record.
+`operation` names the registered route, or `METHOD unregistered` for unknown
+paths. Records never contain request or response bodies, query strings,
+submitted values, credentials, tokens, or raw firewall-rule input.
+
+The log is required. Startup fails if the file cannot be opened. A missing
+parent directory is created with mode `0700`; an existing directory must be
+owned by the service user and not writable by group or others. The file is
+created with mode `0600` and must be a regular file owned by the service user
+with no group or other permissions. If writing an `api_request_authorized`
+record fails at runtime, the request is refused with HTTP `503` and code
+`audit_log_unavailable`, so no protected action proceeds unrecorded;
+`GET /status/health` stays available. Writes resume automatically when the
+log is writable again.
+
+Records contain source IP addresses, which are personal data in many
+jurisdictions. Restrict access to the log and keep compressed rotations for
+30 days unless your policy says otherwise. Rotate by renaming the file and
+then sending `SIGHUP` to the backend, which reopens `logging.path`; do not use
+`copytruncate`. For example, a logrotate entry:
+
+```text
+/var/log/archangel/backend.jsonl {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    create 0600 root root
+    postrotate
+        pkill -HUP -x archangel || true
+    endscript
+}
+```
+
+Plain JSONL files are not tamper-evident; a user who can write the file can
+alter past records. Forward the log to a protected collector if you need an
+append-only audit trail.
 
 ## Current implementation boundary
 
@@ -139,9 +186,8 @@ firewall mutations per source IP and identity are limited using the configured
 thresholds. Rate-limit counters use bounded in-memory state and reset on
 restart. Session settings control API session lifetimes.
 
-Native TLS and configurable logging are not implemented. TLS cannot be
-enabled; unsupported non-default TLS and logging settings are rejected rather
-than silently ignored. The Flask dashboard integrates the backend login
+Native TLS is not implemented. TLS cannot be enabled; an enabled TLS setting
+is rejected rather than silently ignored. The Flask dashboard integrates the backend login
 contract and stores its opaque backend session on the server in a separate
 SQLite session database. Production dashboard deployments must configure
 `FLASK_SECRET_KEY`; see the deployment guidance for its session-store

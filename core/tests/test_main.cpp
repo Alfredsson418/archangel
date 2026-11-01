@@ -13,6 +13,7 @@ void runNetworkAddressTests();
 void runHttpAuthenticationTests();
 void runAuthApiTests();
 void runAccountsApiTests();
+void runLoggingTests();
 
 int main() {
 	try {
@@ -28,6 +29,7 @@ int main() {
 		runHttpAuthenticationTests();
 		runAuthApiTests();
 		runAccountsApiTests();
+		runLoggingTests();
 	} catch (const std::exception &error) {
 		std::cerr << "Backend test failure: " << error.what() << '\n';
 		return 1;

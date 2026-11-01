@@ -1,16 +1,20 @@
 #pragma once
 
 #include "cpp-httplib/cpp-httplib.hpp"
-#include "firewall/providers/firewall.hpp"
+#include "logs/providers/log_source.hpp"
+
+#include <memory>
+#include <vector>
 
 namespace HttpApi {
 /**
- * @brief Returns a bounded set of supported application and firewall logs.
- * @param firewall Backend used to determine whether nftables logging is active.
+ * @brief Returns recent entries from each configured log source.
+ * @param sources Log sources in display order, built at startup.
  * @param request Incoming HTTP request.
  * @param response HTTP response to populate.
- * @return No value; writes the log-source collection as JSON.
+ * @return No value; writes the bounded, redacted log-source collection as
+ * JSON.
  */
-void getLogs(Firewall &firewall, const httplib::Request &request,
-			 httplib::Response &response);
+void getLogs(const std::vector<std::unique_ptr<Logging::LogSource>> &sources,
+			 const httplib::Request &request, httplib::Response &response);
 } // namespace HttpApi

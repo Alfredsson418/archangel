@@ -169,7 +169,8 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 					httplib::Response &response, RateLimiter &sourceRateLimiter,
 					RateLimiter &identityRateLimiter,
 					RateLimiter &firewallMutationSourceLimiter,
-					RateLimiter &firewallMutationIdentityLimiter) {
+					RateLimiter &firewallMutationIdentityLimiter,
+					std::optional<Auth::Identity> *authenticatedIdentity) {
 	const RoutePolicy *route = routes.find(request.method, request.path);
 	if (route != nullptr && route->access == RouteAccess::Liveness) {
 		return httplib::Server::HandlerResponse::Unhandled;
@@ -220,6 +221,9 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 		return httplib::Server::HandlerResponse::Handled;
 	}
 
+	if (authenticatedIdentity != nullptr) {
+		*authenticatedIdentity = identity;
+	}
 	if (route == nullptr) {
 		reject(response, 404, "not_found", "API route not found");
 		Logger::API::log("request_rejected code=not_found",

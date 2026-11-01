@@ -127,15 +127,17 @@ class RoutePolicies {
  * @param routes Policies declared when the routes were registered.
  * @param request Incoming request to authorize.
  * @param response Response to populate when authorization is denied.
+ * @param authenticatedIdentity When non-null, receives the caller's identity
+ * once its session is validated, even if the request is then rejected.
  * @return Unhandled when routing may continue; Handled when rejected.
  */
-httplib::Server::HandlerResponse
-authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
-					const httplib::Request &request,
-					httplib::Response &response, RateLimiter &sourceRateLimiter,
-					RateLimiter &identityRateLimiter,
-					RateLimiter &firewallMutationSourceLimiter,
-					RateLimiter &firewallMutationIdentityLimiter);
+httplib::Server::HandlerResponse authorizeApiRequest(
+	Auth::AuthProvider &auth, const RoutePolicies &routes,
+	const httplib::Request &request, httplib::Response &response,
+	RateLimiter &sourceRateLimiter, RateLimiter &identityRateLimiter,
+	RateLimiter					  &firewallMutationSourceLimiter,
+	RateLimiter					  &firewallMutationIdentityLimiter,
+	std::optional<Auth::Identity> *authenticatedIdentity = nullptr);
 
 /**
  * @brief Extracts the bearer token from exactly one Authorization header.

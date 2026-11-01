@@ -9,10 +9,9 @@
 
 namespace AppConfigDefaults {
 #ifdef ARCHANGEL_DEV_BUILD
-inline constexpr char CONFIG_PATH[]			 = "config.json";
-inline constexpr char AUTH_DATABASE_PATH[]	 = "archangel.db";
-inline constexpr char LOG_PATH[]			 = "backend.jsonl";
-inline constexpr char APPLICATION_LOG_PATH[] = "app.log";
+inline constexpr char CONFIG_PATH[]		   = "config.json";
+inline constexpr char AUTH_DATABASE_PATH[] = "archangel.db";
+inline constexpr char LOG_PATH[]		   = "backend.jsonl";
 
 inline std::string executableRelativePath(const char *path) {
 	std::error_code				error;
@@ -32,21 +31,14 @@ inline std::string authDatabasePath() {
 	return executableRelativePath(AUTH_DATABASE_PATH);
 }
 inline std::string logPath() { return executableRelativePath(LOG_PATH); }
-inline std::string applicationLogPath() {
-	return executableRelativePath(APPLICATION_LOG_PATH);
-}
 #else
 inline constexpr char CONFIG_PATH[]		   = "/etc/archangel/config.json";
 inline constexpr char AUTH_DATABASE_PATH[] = "/var/lib/archangel/archangel.db";
 inline constexpr char LOG_PATH[]		   = "/var/log/archangel/backend.jsonl";
-// The current text logger still writes beside the working directory in
-// release builds until the planned JSONL sink replaces it.
-inline constexpr char APPLICATION_LOG_PATH[] = "./app.log";
 
 inline std::string configPath() { return CONFIG_PATH; }
 inline std::string authDatabasePath() { return AUTH_DATABASE_PATH; }
 inline std::string logPath() { return LOG_PATH; }
-inline std::string applicationLogPath() { return APPLICATION_LOG_PATH; }
 #endif
 
 inline constexpr std::chrono::seconds SESSION_IDLE_TIMEOUT =

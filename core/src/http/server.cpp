@@ -10,59 +10,22 @@
 #include "http/api/status.hpp"
 #include "http/api/system.hpp"
 #include "http/authentication.hpp"
+#include "http/request_audit.hpp"
 #include "logger.hpp"
 #include <chrono>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 
 namespace {
-// Wrap each route at registration so request metrics are consistent and use
-// fixed route paths instead of client-provided targets that may contain query
-// data.
-/**
- * @brief Adds request start, outcome, and duration logging to a route handler.
- * @param method HTTP method registered for the endpoint.
- * @param path Fixed endpoint path, excluding client-supplied query data.
- * @param handler The endpoint-specific request handler.
- * @return A wrapped handler that logs each request outcome.
- */
-httplib::Server::Handler withRequestLogging(const char				*method,
-											const char				*path,
-											httplib::Server::Handler handler) {
-	return [method, path, handler = std::move(handler)](
-			   const httplib::Request &request, httplib::Response &response) {
-		const auto started = std::chrono::steady_clock::now();
-		Logger::API::log(std::string("http_request_started method=") + method +
-						 " path=" + path);
-
-		try {
-			handler(request, response);
-		} catch (...) {
-			// Preserve the server's normal exception handling after recording a
-			// failure; swallowing it here could leave an incomplete HTTP
-			// response.
-			const auto duration =
-				std::chrono::duration<double, std::milli>(
-					std::chrono::steady_clock::now() - started)
-					.count();
-			Logger::API::log(std::string("http_request_failed method=") +
-								 method + " path=" + path + " status=500" +
-								 " duration_ms=" + std::to_string(duration),
-							 Logger::Level::ERROR);
-			throw;
-		}
-
-		const auto duration = std::chrono::duration<double, std::milli>(
-								  std::chrono::steady_clock::now() - started)
-								  .count();
-		Logger::API::log(std::string("http_request_completed method=") +
-						 method + " path=" + path +
-						 " status=" + std::to_string(response.status) +
-						 " duration_ms=" + std::to_string(duration));
-	};
-}
+// Audit context of the request in flight. cpp-httplib runs the pre-routing
+// handler, the route, and the logger for one request on the same worker
+// thread, so the context is kept per thread. It lives at namespace scope
+// because a function-local thread_local is only constructed on threads that
+// reach its declaration, and the worker threads never run HttpServer::run.
+thread_local HttpApi::RequestAudit currentAudit;
 
 /**
  * @brief Registers a route together with its access policy.
@@ -82,10 +45,9 @@ httplib::Server::Handler withRequestLogging(const char				*method,
 void addRoute(httplib::Server &server, HttpApi::RoutePolicies &policies,
 			  const char *method, const char *path, HttpApi::RoutePolicy policy,
 			  httplib::Server::Handler handler) {
-	// Schema negotiation for every route except liveness happens in
-	// authorizeApiRequest before routing, so handlers need no wrapper for it.
+	// Schema negotiation and request auditing happen around every route in
+	// the pre-routing handler and logger, so handlers need no wrapper.
 	policies.add(method, path, policy);
-	handler = withRequestLogging(method, path, std::move(handler));
 	const std::string_view verb(method);
 	if (verb == "GET") {
 		server.Get(path, std::move(handler));
@@ -101,10 +63,11 @@ void addRoute(httplib::Server &server, HttpApi::RoutePolicies &policies,
 }
 } // namespace
 
-HttpServer::HttpServer(Firewall &firewall, Auth::AuthProvider &auth,
-					   AppConfig::Server	 serverConfig,
-					   AppConfig::RateLimits rateLimits)
-	: firewall_(firewall), auth_(auth),
+HttpServer::HttpServer(
+	Firewall &firewall, Auth::AuthProvider &auth,
+	std::vector<std::unique_ptr<Logging::LogSource>> logSources,
+	AppConfig::Server serverConfig, AppConfig::RateLimits rateLimits)
+	: firewall_(firewall), auth_(auth), log_sources_(std::move(logSources)),
 	  login_limiter_(
 		  rateLimits.failed_auth_attempts,
 		  std::chrono::seconds(rateLimits.failed_auth_window_seconds),
@@ -124,14 +87,37 @@ void HttpServer::run() {
 	using HttpApi::RouteAccess;
 	httplib::Server		   server;
 	HttpApi::RoutePolicies routes;
-	server.set_pre_routing_handler(
-		[this, &routes](const httplib::Request &request,
-						httplib::Response	   &response) {
-			return HttpApi::authorizeApiRequest(
-				auth_, routes, request, response, source_rate_limiter_,
-				identity_rate_limiter_, firewall_mutation_source_limiter_,
-				firewall_mutation_identity_limiter_);
-		});
+	server.set_pre_routing_handler([this,
+									&routes](const httplib::Request &request,
+											 httplib::Response		&response) {
+		currentAudit = HttpApi::beginRequestAudit(request, routes, response);
+		std::optional<Auth::Identity> identity;
+		auto						  result = HttpApi::authorizeApiRequest(
+			 auth_, routes, request, response, source_rate_limiter_,
+			 identity_rate_limiter_, firewall_mutation_source_limiter_,
+			 firewall_mutation_identity_limiter_, &identity);
+		if (identity) {
+			currentAudit.actorId = identity->id;
+		}
+		const HttpApi::RoutePolicy *route =
+			routes.find(request.method, request.path);
+		if (result == httplib::Server::HandlerResponse::Unhandled &&
+			route != nullptr && route->access != RouteAccess::Liveness) {
+			result = HttpApi::recordAuthorizedRequest(currentAudit, response);
+		}
+		return result;
+	});
+	server.set_logger([&routes](const httplib::Request	&request,
+								const httplib::Response &response) {
+		// Requests rejected by cpp-httplib before pre-routing, such as
+		// malformed ones, have no context yet.
+		if (currentAudit.requestId.empty()) {
+			httplib::Response unused;
+			currentAudit = HttpApi::beginRequestAudit(request, routes, unused);
+		}
+		HttpApi::recordCompletedRequest(currentAudit, response);
+		currentAudit = {};
+	});
 
 	addRoute(server, routes, "GET", "/status/health", {RouteAccess::Liveness},
 			 [](const auto &request, auto &response) {
@@ -209,7 +195,7 @@ void HttpServer::run() {
 			 });
 	addRoute(server, routes, "GET", "/api/v1/logs", {RouteAccess::Viewer},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::getLogs(firewall_, request, response);
+				 HttpApi::getLogs(log_sources_, request, response);
 			 });
 
 	Logger::Firewall::log("Archangel listening on " +

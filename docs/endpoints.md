@@ -162,6 +162,12 @@ All API calls except `GET /status/health` must send the `X-Archangel-Schema-Vers
 
 The health endpoint is deliberately exempt so basic liveness remains available without schema negotiation or authentication.
 
+## Request IDs and audit logging
+
+Every response carries an `X-Request-ID` header with a random 32-character hexadecimal identifier. The same value appears as `request_id` in the backend's audit records, so a client can correlate its own logs with them.
+
+The backend records every authorized request before running it. If that audit record cannot be written, the request is refused with HTTP `503` and code `audit_log_unavailable`; retry once the log is writable again. `GET /status/health` is never refused for this reason. See the [runtime config guide](runtime-config.md#backend-log) for the record fields.
+
 ## Authentication and authorization
 
 Rate limits return HTTP `429` with a JSON error and `Retry-After`. The backend
@@ -254,7 +260,7 @@ The dashboard determines whether nftables has base chains attached to packet-pro
 
 Returns a `sources` array. Each source has a stable `id`, display `label`, boolean `available`, explanatory `detail`, and an `entries` array containing recent log lines, newest first. Current sources are:
 
-- `archangel`: up to 100 entries from the current C++ logger's output file: `.archangel-dev/app.log` beside a debug binary, or `./app.log` in the working directory for release builds.
+- `archangel`: up to 100 recent records from the backend JSONL log at `logging.path` (see the [runtime config guide](runtime-config.md#backend-log)), each rendered as `timestamp level category event key=value ...`.
 - `nftables`: up to 100 recent kernel-journal lines matching packet-log fields, only when the active ruleset contains nftables `log` statements. This source uses `journalctl`; if logging is not configured or journal access is unavailable, the source reports the reason and returns no entries.
 
 This endpoint does not enable firewall logging. Results are bounded, long lines are truncated, and common credential-like fields are redacted. Logs may still contain sensitive system or network details. This endpoint requires a valid backend session; keep the API and dashboard on localhost or a trusted, isolated management network because API traffic is plain HTTP and the dashboard uses backend login with protected server-side sessions. Add future sources as separate source objects with explicit availability and failure details.
