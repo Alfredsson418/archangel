@@ -24,7 +24,7 @@ Peer enrollment is intended to begin with an enrollment token that bootstraps a 
 | --- | --- |
 | `core/src/main.cpp` | Minimal process entry point delegating to `runApplication`. |
 | `core/include/app/application.hpp`, `core/src/app/application.cpp` | CLI setup, command workflows, configuration overrides, dependency construction, and service startup. |
-| `core/include/config/app_config.hpp` | Central application settings object and built-in defaults. |
+| `core/include/config/app_config.hpp` | Central application settings object, built-in defaults, and the single definitions of backend limits (`AppConfigLimits`), such as password, username, token, Argon2id, request-body, file-size, log-read, and rate-limiter bounds. Modules reference these instead of keeping local copies; format and contract constants such as the API schema version stay with their owners. |
 | `core/include/config/runtime_config.hpp` | Runtime JSON parser and protected-file loader contract. |
 | `core/src/config/runtime_config.cpp` | Strict runtime JSON parsing, effective-setting validation, and protected-file loading. |
 | `core/src/cli/firewall_config.cpp` | CLI support for firewall config bundle file I/O and optional backend capability checks. |
@@ -54,9 +54,9 @@ Where a capability has a real alternative implementation or a defined need to su
 Provider contracts and implementations are grouped in `providers/` beneath their owning domain layers. The firewall is structured this way: API code uses the backend-neutral `Firewall` contract, while nftables-specific operations live in the nftables provider implementation. Native firewall config import/export is an optional `FirewallConfigProvider` capability rather than part of `Firewall`; backends that cannot consume the native bundle do not need to implement it. The CLI checks for the capability and reports unsupported use. The backend-owned `AuthProvider` contract and SQLite/Argon2id local provider are also implemented and used by global API authentication middleware. All routes require a valid session by default except health, login, and one-time account setup; firewall mutation routes require Operator or Administrator, and account-management routes require Administrator. The dashboard login/token integration, CSRF protections, and source/identity API and firewall-mutation rate limits are implemented. TLS and other service contracts remain planned.
 
 - **Authentication providers and logging sinks:** Local accounts use SQLite and Argon2id behind `AuthProvider`. SQLite file safety, connection ownership, and migrations are separated from provider-level login/session workflows; password hashing, token generation, and username validation are isolated in auth cryptographic helpers. The API login/logout/account lifecycle contract, session validation, default authentication, role enforcement, and configured login/API/firewall-mutation rate limits are implemented. The Flask dashboard uses a separate server-side SQLite session store and sends the backend credential with protected API calls. Logging-sink contracts and initial JSONL file sinks are planned, not implemented. Keep backend and dashboard sinks independently configured; OIDC and alternate sinks remain future implementations behind the provider contract.
-- **Log sources:** A backend log-source module reads the Archangel application log and nftables packet logs, bounds and redacts entries, and returns source data independently of HTTP response serialization. The API handler maps those source records into the JSON contract.
+- **Log sources:** A backend log-source module reads the Archangel application log and nftables packet logs, bounds and redacts entries, and returns source data independently of HTTP response serialization. The API handler maps those source records into the JSON contract. Keep logs grouped by independently identified sources: each source reports its availability and a safe explanation when unavailable, returns a bounded number of entries, and redacts common secrets. Do not read arbitrary host paths or return the entire system journal. Add new sources through the backend log-source module and API contract, and render them through the dashboard's generic source-based logs page rather than source-specific pages.
 - **System metrics:** The current collector reads Linux-specific sources such as `/proc` and `statvfs`. Phase 4 will introduce a platform-neutral system-information provider contract, initially implemented by the existing Linux collector. This keeps a path open for future operating-system providers but does not make non-Linux support a current priority or commitment.
-- **Dashboard API and settings:** The API client and settings module are current boundaries but are not yet replaceable contracts. Phase 2 will formalize a narrow HTTP transport contract and an API-settings provider contract. Preserve the current JSON-file settings provider for the existing unauthenticated workflow; the secured deployment uses a deployment-config provider through `ARCHANGEL_API_URL`, not a browser-editable destination. This prevents user-controlled redirection of backend-held credentials. Keep deployment-specific configuration separate from credential/session storage.
+- **Dashboard API and settings:** The API client and settings module are current boundaries but are not yet replaceable contracts. Phase 2 will formalize a narrow HTTP transport contract and an API-settings provider contract. The API destination comes only from the deployment through `ARCHANGEL_API_URL` (defaulting to `http://127.0.0.1:8080`), not from a settings file or a browser-editable value. This prevents user-controlled redirection of backend-held credentials. Keep deployment-specific configuration separate from credential/session storage.
 
 Select implementations at startup or configuration boundaries. Avoid plugin loading or generalized frameworks; compile-time implementations selected at composition time are sufficient for the currently planned backends. Contract tests should exercise behavior independently of concrete implementations, using fakes where integration with a real service or host would be unsafe or unavailable.
 
@@ -71,6 +71,8 @@ Select implementations at startup or configuration boundaries. Avoid plugin load
 | `app/web/tests/` | Dashboard tests grouped by responsibility. |
 
 The dashboard uses ordinary HTTP form submissions and server-rendered HTML. Page-specific content belongs in the relevant template, not a duplicated layout. Dashboard pages that need backend data call the configured C++ API from Flask.
+
+The dashboard must not restart, stop, or otherwise control the managed host or the Archangel service directly. Any future operational action must be a backend API operation, authenticated and authorized for that specific action, and limited to an explicitly designed service-manager integration (an open roadmap decision). Until then, system-management pages stay read-only and label unavailable actions clearly, as the disabled restart control does today.
 
 See the [frontend design guide](frontend-design.md) for visual and accessibility guidance.
 
@@ -87,7 +89,10 @@ Neither format is an implicit boot-time restore mechanism. The CLI firewall conf
 
 - [Project overview and quickstart](../README.md)
 - [Project goal and broader vision](goal.md)
+- [Development guidelines](development-guidelines.md)
+- [Frontend design guide](frontend-design.md)
 - [API and dashboard endpoints](endpoints.md)
+- [Backend runtime configuration](runtime-config.md)
 - [Current security posture and planned controls](security-concerns.md)
 - [Development roadmap](roadmap.md)
 - [Tests and verification](test.md)

@@ -30,12 +30,12 @@ The test modules are organized by responsibility:
 
 | Module | Coverage |
 | --- | --- |
-| `app/web/tests/test_api_client.py` | Backend connectivity and errors, schema-version handling, health checks, and request headers. |
-| `app/web/tests/test_dashboard_authentication.py` | Protected pages, login/session rotation, server-side token storage, logout revocation, CSRF, same-origin checks, and safe redirects. |
-| `app/web/tests/test_dashboard_pages.py` | Server-rendered overview and system pages, log-source rendering and escaping, static assets, and backend-unavailable messaging. |
+| `app/web/tests/test_api_client.py` | Backend connectivity and errors, schema-version handling, and request headers. |
+| `app/web/tests/test_dashboard_authentication.py` | Protected pages, login/session rotation, server-side token storage, logout revocation, CSRF, same-origin checks, and safe redirects, and skipping writes for unchanged sessions. |
+| `app/web/tests/test_dashboard_pages.py` | Server-rendered overview and system pages, log-source rendering and escaping, static assets, backend-unavailable messaging, stopping after the backend is unreachable, redirecting to login when the backend rejects the session, and the unauthenticated `/healthz` probe. |
 | `app/web/tests/test_logging.py` | Dashboard and backend request logging, including omission of query-string values. |
-| `app/web/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export, and preview/confirmed import behavior. |
-| `app/web/tests/test_settings.py` | API URL settings display, validation, persistence, connection tests, and absence of API passthrough routes. |
+| `app/web/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export (including the rule shapes nftables actually lists), and preview/confirmed import behavior. |
+| `app/web/tests/test_settings.py` | Read-only API URL display, API URL validation, and absence of API passthrough routes. |
 
 Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 28 tests. The exact count and incidental application log lines may change as coverage grows.
 
@@ -53,7 +53,7 @@ The test executable is built at `build/core/tests/backend_tests`. The target com
 | --- | --- |
 | `core/tests/test_auth_provider.cpp` | Initial administrator provisioning, normalized and configurable password policy, configurable Argon2id credential verification, API session creation/validation/revocation and expiry, account creation/update/disable and one-time setup-token lifecycle, token/password non-persistence, and private SQLite file permissions. |
 | `core/tests/test_runtime_config.cpp` | Runtime config defaults and overrides, strict schema/type/value validation, secure file ownership/permissions, missing-file behavior, and symlink rejection. |
-| `core/tests/test_http_authentication.cpp` | Default route authentication, public health/login/account-setup allowlist, Bearer session validation, viewer/operator/admin firewall and account permissions, login/logout API behavior, source/identity/mutation rate limits, and fail-closed storage errors. |
+| `core/tests/test_http_authentication.cpp` | Default route authentication, declared route policies (unregistered routes, duplicate declarations, `HEAD` handling), public health/login/account-setup allowlist, Bearer session validation, viewer/operator/admin firewall and account permissions, login/logout API behavior, source/identity/mutation rate limits, bounded rate-limit key tracking, and fail-closed storage errors. |
 | `core/tests/test_firewall_config.cpp` | Firewall bundle v1 parsing and serialization, ownership-section classification, listener-setting exclusion, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
 | `core/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |
 | `core/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |
@@ -79,7 +79,7 @@ The unit-test target is separate from the application build. To compile and link
 make debug
 ```
 
-This produces `./archangel` and requires a C++20 compiler plus development packages for libnftables, SQLite, Argon2, and OpenSSL. A successful build ends with `Done!`. Building the executable does not run tests.
+This produces `bin/archangel` and requires a C++20 compiler plus development packages for libnftables, SQLite, Argon2, and OpenSSL. A successful build ends with `Done!`. Building the executable does not run tests.
 
 ## Continuous integration
 

@@ -32,8 +32,9 @@ account interactively:
 ```
 
 It reads and confirms the password through an interactive terminal and stores
-the account under `/var/lib/archangel/archangel.db` by default. Use
-`--database PATH` to select another private database location.
+the account under `/var/lib/archangel/archangel.db` for release builds, or
+`.archangel-dev/archangel.db` beside a debug binary. Use `--database PATH` to
+select another private database location.
 
 ## Run
 
@@ -41,8 +42,23 @@ Build and run the C++ API (requires a C++20 compiler and the libnftables, SQLite
 
 ```sh
 make debug
-./archangel --host 127.0.0.1 --port 8080
+make bootstrap-admin    # once; prompts for the administrator password
+make run                # serves on 127.0.0.1:8080
 ```
+
+The build places the binary in `bin/`. A debug build keeps all of its private
+state (accounts, sessions, runtime config, and `app.log`) in
+`bin/.archangel-dev/`, wherever you run it from. That state directory must be owned by the user that runs
+the binary, and nftables requires root, so the targets run the binary through
+`sudo`. Run every command for one state directory as the same user; set
+`SUDO=` when you are already root. Pass other options with
+`make run RUN_ARGS="--host 127.0.0.1 --port 9090"`, choose the bootstrap
+username with `ADMIN_USER=name`, and write a default runtime config with
+`make config`. `make clean` keeps `bin/.archangel-dev`; `make clean-dev-state`
+deletes it, including local accounts. Other `./archangel` commands below refer
+to `bin/archangel`, for example `sudo bin/archangel --help`.
+
+For deployment, `make build_release` builds an optimized binary with fortification, stack protection, PIE, and full RELRO.
 
 See the [test and verification guide](docs/test.md) for prerequisites, test coverage, commands, expected output, and GitHub Actions behavior.
 
@@ -105,7 +121,7 @@ Make both services reachable only on a trusted management network. The
 Compose file's localhost defaults and host-network setup are for the
 same-computer quickstart, not a remote deployment recipe. The dashboard uses
 backend authentication and stores its session data under the private `/data`
-volume. Set `ARCHANGEL_COOKIE_SECURE=true` when dashboard HTTPS is provided by
+volume. The container health check probes the unauthenticated `/healthz` route on the configured `WEB_HOST` and `WEB_PORT`; it does not contact the API or create sessions. Set `ARCHANGEL_COOKIE_SECURE=true` when dashboard HTTPS is provided by
 an operator-managed reverse proxy. The C++ API still uses plain HTTP, so do
 not expose either service to the public internet.
 

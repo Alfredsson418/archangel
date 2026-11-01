@@ -6,9 +6,14 @@ never imports or changes firewall rules.
 
 Release builds look for `/etc/archangel/config.json` by default. Debug builds
 compiled with `ARCHANGEL_DEV_BUILD` instead use the `.archangel-dev` directory
-next to the executable for `config.json`, `archangel.db`, and `backend.jsonl`.
-The private directory is created with mode `0700` when the authentication
-database is initialized. If the default config file is absent, built-in
+next to the executable for `config.json`, `archangel.db`, `backend.jsonl`, and
+the current text log `app.log`. The private directory is created with mode
+`0700` when it is first needed and must be owned by the user that runs the
+binary.
+`make debug` builds into `bin/`, so the debug state directory is
+`bin/.archangel-dev`; the `make run`, `make bootstrap-admin`, and `make config`
+targets run the binary as one consistent user (through `sudo` by
+default). If the default config file is absent, built-in
 defaults are used; if it exists but cannot be read or is invalid, startup
 fails. `--config PATH` selects an explicit required file in either build.
 The file must be a regular file owned by root or the service user, must not be
@@ -30,7 +35,7 @@ effective-settings object; explicit CLI options then override its values.
 | `server.port` | `8080` | API listener port, 1–65535. |
 | `auth.provider` | `local` | Currently only the local provider is supported. |
 | `auth.database_path` | `/var/lib/archangel/archangel.db` (release); `.archangel-dev/archangel.db` beside the executable (debug) | Private SQLite account/session store path. |
-| `auth.password_min_length` | `15` | Minimum Unicode code points; cannot be lower than 15. |
+| `auth.password_min_length` | `15` (release); `1` (debug) | Minimum Unicode code points; cannot be lower than 15 in release builds or 1 in debug builds. |
 | `auth.password_max_length` | `128` | Maximum Unicode code points; cannot exceed 128. |
 | `auth.argon2id.memory_kib` | `19456` | Argon2id memory cost; cannot be lower than 19 MiB or higher than 1 GiB. |
 | `auth.argon2id.iterations` | `2` | Argon2id time cost; range 2–10. |

@@ -167,10 +167,10 @@ Failed login attempts have a separate configurable per-source limit. Limits
 use bounded in-memory state, reset on backend restart, and use the direct peer
 address rather than forwarded headers. `GET /status/health` is exempt.
 
-The backend applies authentication globally before route handling: all endpoints, including `/status/info` and future routes, require a valid Bearer session unless explicitly added to the narrow public allowlist. Currently `GET /status/health`, `POST /api/v1/auth/login`, and
+The backend applies authentication globally before route handling: all endpoints, including `/status/info` and future routes, require a valid Bearer session unless explicitly added to the narrow public allowlist. Each route declares its required access level where it is registered in `core/src/http/server.cpp`. An authenticated request to an unregistered method or path receives HTTP `404` with code `not_found`; unauthenticated requests to such paths receive `401`, so route existence is not disclosed. `HEAD` requests use the matching `GET` route's policy. Currently `GET /status/health`, `POST /api/v1/auth/login`, and
 `POST /api/v1/auth/setup` are public. Missing, invalid, or expired sessions receive HTTP `401`; session-store failures fail closed with HTTP `500`.
 
-All authenticated roles can use read endpoints. `POST /api/v1/rules` and `DELETE /api/v1/rules` require the `operator` or `administrator` role; viewers receive HTTP `403`. Bootstrap creates the initial administrator through `user bootstrap-admin`. The dashboard authenticates through the backend login route and keeps the backend credential in a server-side SQLite session store; all backend API calls except the health check include that credential. Bearer credentials travel over plain HTTP in the current backend; do not expose the API outside localhost or a trusted, isolated management network. Mutating endpoints apply changes immediately. See [Security](../SECURITY.md).
+All authenticated roles can use read endpoints. `POST /api/v1/rules` and `DELETE /api/v1/rules` require the `operator` or `administrator` role; viewers receive HTTP `403`. Bootstrap creates the initial administrator through `user bootstrap-admin`. The dashboard authenticates through the backend login route and keeps the backend credential in a server-side SQLite session store; every backend API call it makes includes that credential. When the backend rejects that credential with HTTP `401`, the dashboard clears its browser session and redirects to the login page. Bearer credentials travel over plain HTTP in the current backend; do not expose the API outside localhost or a trusted, isolated management network. Mutating endpoints apply changes immediately. See [Security](../SECURITY.md).
 
 ## Firewall ruleset bundle
 
@@ -250,7 +250,7 @@ The dashboard determines whether nftables has base chains attached to packet-pro
 
 Returns a `sources` array. Each source has a stable `id`, display `label`, boolean `available`, explanatory `detail`, and an `entries` array containing recent log lines, newest first. Current sources are:
 
-- `archangel`: up to 100 entries from `./app.log`, the current C++ logger's working-directory-relative output file.
+- `archangel`: up to 100 entries from the current C++ logger's output file: `.archangel-dev/app.log` beside a debug binary, or `./app.log` in the working directory for release builds.
 - `nftables`: up to 100 recent kernel-journal lines matching packet-log fields, only when the active ruleset contains nftables `log` statements. This source uses `journalctl`; if logging is not configured or journal access is unavailable, the source reports the reason and returns no entries.
 
 This endpoint does not enable firewall logging. Results are bounded, long lines are truncated, and common credential-like fields are redacted. Logs may still contain sensitive system or network details. This endpoint requires a valid backend session; keep the API and dashboard on localhost or a trusted, isolated management network because API traffic is plain HTTP and the dashboard uses backend login with protected server-side sessions. Add future sources as separate source objects with explicit availability and failure details.

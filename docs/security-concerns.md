@@ -100,6 +100,10 @@ The [security-control roadmap](roadmap.md#phase-2-backend-owned-security-control
 
 ## Design Principles
 
+Security is a design concern throughout the project, not a final add-on. When introducing or changing a security control, assess it against the CIA triad (confidentiality, integrity, and availability) and the IAAA access-control principles: identification, authentication, authorization, and accounting. State the threats it addresses and its tradeoffs, enforce it at the backend trust boundary rather than in the dashboard or browser, and verify its behavior with tests.
+
+Choices that change trust boundaries, identity or credential handling, authorization policy, deployment, or operational burden are material design decisions. Discuss them before implementation, with the reasonable options and their tradeoffs, and record the outcome in the [roadmap](roadmap.md); do not infer them from a general security goal.
+
 Security controls should be proportionate to the threats they address. New components can add attack surface, configuration hazards, and maintenance burden; complexity can itself increase risk. Prefer the simplest effective control, state residual risk, and consider operational recovery and availability as well as access prevention.
 
 The thesis [Zero Trust i isolerade komplexa miljöer](../assets/Zero_Trust_i_Komplexa_Isolerade_Miljöer.pdf) provides long-term architectural context, including mutually authenticated gateway links, policy decision and enforcement points, microsegmentation, session review, and protected security logging. Those ideas are not current controls or evidence of compliance. Any future design must account for availability, recovery, key and certificate lifecycle, control-plane protection, and log integrity.

@@ -3,8 +3,15 @@
 ## Source of truth
 
 - This file contains repository-specific instructions for coding agents. It is not the source of truth for the product overview, API contract, security posture, roadmap, or test catalog; use the linked reader-facing documents for those.
-- Read [architecture.md](docs/architecture.md) before changing service boundaries or module ownership, [frontend-design.md](docs/frontend-design.md) before changing dashboard presentation, [endpoints.md](docs/endpoints.md) before changing API behavior, [security-concerns.md](docs/security-concerns.md) before network/security changes, and [roadmap.md](docs/roadmap.md) before implementing planned work.
-- Keep documentation synchronized with code. Update only the relevant documents: API contract in `docs/endpoints.md`; current security posture in `docs/security-concerns.md`; planned work/design decisions in `docs/roadmap.md`; build/test coverage and commands in `docs/test.md`; project overview or run instructions in `README.md`; purpose/vision in `docs/goal.md`.
+- Read the design and requirements documents relevant to a change before making it:
+  - [development-guidelines.md](docs/development-guidelines.md) before any code change: code organization, limits and defaults, documentation comments, and logging.
+  - [architecture.md](docs/architecture.md) before changing service boundaries or module ownership.
+  - [frontend-design.md](docs/frontend-design.md) before changing dashboard presentation.
+  - [endpoints.md](docs/endpoints.md) before changing API behavior.
+  - [runtime-config.md](docs/runtime-config.md) before changing backend runtime settings.
+  - [security-concerns.md](docs/security-concerns.md) before network or security changes.
+  - [roadmap.md](docs/roadmap.md) before implementing planned work, and [goal.md](docs/goal.md) for the project's purpose and long-term direction.
+- Keep documentation synchronized with code. Update only the relevant documents, as listed in the documentation table in [development-guidelines.md](docs/development-guidelines.md#keeping-documentation-synchronized). Update this file only for agent-specific workflow rules; put project conventions in the reader-facing documents.
 
 ## Architecture guardrails
 
@@ -25,6 +32,7 @@
 
 ## Implementation conventions
 
+- Follow [development-guidelines.md](docs/development-guidelines.md). In particular, define backend limits, bounds, and built-in defaults once in `core/include/config/app_config.hpp` and reference them, instead of adding local copies or literals.
 - Follow `.clang-format` for C++; use four spaces for Python. Do not put application code in generated directories such as `build/`, `.venv/`, or `__pycache__/`.
 - Keep responsibilities cohesive and use existing module boundaries. Add new C++ implementations under the matching `core/src/` subsystem with public declarations under `core/include/`; keep implementation-only helpers private where practical.
 - Keep API parsing and validation in API handlers, backend behavior behind its interface, and serialization/status codes at the API boundary. Test observable contract changes.

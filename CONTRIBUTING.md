@@ -23,7 +23,7 @@ The backend tests use mocks and controlled fixtures; they must not alter a live 
 
 ## Implementation expectations
 
-- Follow the repository's [agent and project guidelines](AGENTS.md), including source layout, formatting, security, and logging conventions.
+- Follow the [development guidelines](docs/development-guidelines.md) for code organization, limits and defaults, documentation comments, and logging, and the [architecture](docs/architecture.md) for service and module boundaries.
 - Keep HTTP parsing and validation in the API layer, firewall operations behind the `Firewall` abstraction, and response serialization at the API boundary.
 - Use the existing versioned JSON API contract. Do not add raw nftables command execution from request data or introduce a second transport without prior design discussion.
 - Keep deployment-specific addresses configurable. Do not assume the dashboard and managed backend share a host.
@@ -34,14 +34,7 @@ The backend tests use mocks and controlled fixtures; they must not alter a live 
 
 ## Documentation and pull requests
 
-Keep documentation synchronized with behavior:
-
-- Update [docs/endpoints.md](docs/endpoints.md) when routes, payloads, status codes, or API behavior change.
-- Update [docs/endpoints.md](docs/endpoints.md) when backend CLI config schemas or import/export semantics change.
-- Update [README.md](README.md) for project overview or build/run changes.
-- Update [docs/test.md](docs/test.md) when tests, prerequisites, commands, or expected output change.
-- Update [docs/security-concerns.md](docs/security-concerns.md) when current security limitations or planned controls change.
-- Update [docs/roadmap.md](docs/roadmap.md) when scope, sequencing, status, or exit criteria change.
+Keep documentation synchronized with behavior. The [development guidelines](docs/development-guidelines.md#keeping-documentation-synchronized) list which document to update for each kind of change.
 
 Pull requests should explain the problem and solution, list observable behavior changes, link the discussion issue where applicable, and report the checks run and their outcomes. Call out tests that could not be run and why. Include screenshots for material dashboard changes when useful, but do not include sensitive data.
 
