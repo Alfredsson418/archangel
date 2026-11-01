@@ -89,37 +89,56 @@ The API currently has no authentication or authorization. As a planned security 
 
 ## Backend CLI configuration
 
-The backend supports one-shot export and startup import using a versioned JSON config. A config contains:
+The backend supports one-shot export and startup import using version 2 JSON configs. Config v2 separates rules marked as Archangel-managed from other native nftables rules and objects:
 
 ```json
 {
   "format": "archangel-backend-config",
-  "version": 1,
+  "version": 2,
   "server": {
     "interface": "127.0.0.1",
     "port": 8080
   },
   "firewall": {
-    "ruleset": {
+    "other_ruleset": {
       "nftables": [
         { "metainfo": { "json_schema_version": 1 } },
         { "table": { "family": "inet", "name": "filter" } },
         { "chain": { "family": "inet", "table": "filter", "name": "input" } },
         { "rule": { "family": "inet", "table": "filter", "chain": "input", "expr": [{ "accept": null }] } }
       ]
-    }
+    },
+    "archangel_rules": []
   }
 }
 ```
 
-The example shows the structure only; exported configs contain the complete ruleset objects and expressions. `server.interface` is the backend bind hostname/address used by `--host` (not necessarily a network-device name). The `--port` and `--host` command-line options override the imported values when explicitly supplied.
+Exported configs contain the complete ruleset objects and expressions, divided by the `archangel-managed` rule comment. `server.interface` is the backend bind hostname/address used by `--host` (not necessarily a network-device name). The `--port` and `--host` command-line options override the imported values when explicitly supplied.
 
-- `--export-config PATH` writes the current bind settings and complete active nftables JSON ruleset to PATH, then exits. Unlike the dashboard's rules-only portable bundle, it preserves rules outside Archangel's structured API subset.
+- `--export-config PATH` writes config v2 with `firewall.other_ruleset` and `firewall.archangel_rules`. Rules created through Archangel's structured API have the nftables comment `archangel-managed` and are placed in `archangel_rules`; all other rules and nftables objects are placed in `other_ruleset`. This comment is a reserved ownership marker, not an access-control mechanism.
 - `--import-config PATH --rules-mode merge` imports the config before the API starts and adds its objects/rules to the active ruleset.
-- `--import-config PATH --rules-mode replace` flushes the entire active nftables ruleset, including tables not created by Archangel, then applies the imported ruleset.
-- Import mode is required for each import; accepted values are `merge` and `replace`. Import and export cannot be combined. Imported and exported files are limited to 16 MiB.
+- `--import-config PATH --rules-mode replace` atomically replaces only currently marked Archangel rules and leaves unmarked rules and other objects untouched; the referenced tables and chains must already exist.
+- `--import-config PATH --rules-mode replace-all` explicitly flushes the entire active nftables ruleset, including tables not created by Archangel, then applies all imported objects and rules. This is destructive and can disconnect clients or lock out administrators.
+- Import mode is required for each import; accepted values are `merge`, `replace`, and `replace-all`. Only config version 2 is supported. Import and export cannot be combined. Imported and exported files are limited to 16 MiB.
 
-Both modes apply the nftables operations in one libnftables input transaction; a rejected transaction is reported as a failure. Merge may fail if imported objects conflict with current objects or elements. Replace is destructive and may disconnect clients or lock out administrators; review the JSON file and ensure recovery access before use. The input must follow the supported nftables JSON output schema; arbitrary nftables command strings are not executed by the application.
+The v2 firewall section has this shape:
+
+```json
+{
+  "other_ruleset": {
+    "nftables": [
+      { "table": { "family": "inet", "name": "filter" } },
+      { "chain": { "family": "inet", "table": "filter", "name": "input" } },
+      { "rule": { "family": "inet", "table": "filter", "chain": "input", "expr": [{ "accept": null }] } }
+    ]
+  },
+  "archangel_rules": [
+    { "rule": { "family": "inet", "table": "filter", "chain": "input", "comment": "archangel-managed", "expr": [{ "drop": null }] } }
+  ]
+}
+```
+
+Merge and replacement operations apply nftables changes through libnftables transactions; a rejected transaction is reported as a failure. Merge may fail if imported objects conflict with current objects or elements. Review all config files before import and ensure recovery access before using `replace-all`. The input must follow the supported nftables JSON output schema; arbitrary nftables command strings are not executed by the application.
 
 ### `GET /api/v1/rules`
 

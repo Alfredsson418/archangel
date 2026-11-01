@@ -1,6 +1,6 @@
 # Current Security Concerns
 
-This document summarizes security limitations visible in the current Archangel implementation and deployment configuration, reviewed on 2026-10-16. It is a living status document, not a penetration-test report, vulnerability disclosure, compliance claim, or complete threat assessment. Risk labels are relative priorities for addressing the concerns, not CVSS ratings.
+This document summarizes security limitations visible in the current Archangel implementation and deployment configuration, reviewed on 2026-11-01. It is a living status document, not a penetration-test report, vulnerability disclosure, compliance claim, or complete threat assessment. Risk labels are relative priorities for addressing the concerns, not CVSS ratings.
 
 ## At a Glance
 
@@ -9,7 +9,7 @@ This document summarizes security limitations visible in the current Archangel i
 | Critical | Unauthenticated firewall control API and dashboard | No user authentication or authorization is implemented. API schema-version checks are not access controls. |
 | High | Unprotected network transport | The C++ API serves plain HTTP; the project does not configure TLS termination. |
 | High | Browser-accessible configuration and mutation surfaces | Dashboard routes have no login; the connection-settings form has no CSRF token. |
-| High | Privileged, immediate firewall changes | Rule changes take effect immediately; imports consist of separate, non-atomic API calls. |
+| High | Privileged, immediate firewall changes | Rule changes take effect immediately; dashboard bundle imports consist of separate, non-atomic API calls. CLI config import uses nftables transactions but remains privileged. |
 | Medium | Log confidentiality and audit limitations | The unauthenticated logs endpoint exposes bounded application and packet logs; redaction is partial. |
 | Medium | Availability controls and verification gaps | No API rate limiting is implemented. Automated C++ unit tests cover selected parsing and HTTP-handler behavior but do not constitute broad integration, fuzz, or security testing. |
 | Medium | Session and deployment configuration | The Flask session key defaults to a per-process random value; the session cookie is not explicitly marked Secure. |
@@ -46,7 +46,7 @@ The C++ backend can add and delete active firewall rules. The effective operatin
 
 Rule updates take effect immediately and are not automatically rolled back. The dashboard portable-rules importer validates and previews the bundle, then submits rules individually. If a later request fails, earlier rules remain applied; there is no batch transaction or rollback. Its export omits rules that the structured API cannot represent.
 
-The backend CLI can export the complete active nftables ruleset and bind settings with `--export-config PATH`, and apply a versioned JSON config with `--import-config PATH --rules-mode merge|replace` before serving. Merge can fail on conflicting objects. Replace flushes the entire active ruleset, including tables not created by Archangel, and may disconnect clients or lock out administrators. Review imported files and confirm recovery access before choosing replace. Neither the dashboard bundle nor the CLI JSON config is automatically restored after reboot unless an operator configures the startup command or service accordingly.
+The backend CLI exports and imports version 2 JSON configs containing the complete active nftables ruleset and bind settings. Config v2 separates rules bearing the reserved `archangel-managed` nftables comment from other rules and objects. `--rules-mode replace` atomically replaces marked rules only, leaving external rules and objects untouched; referenced tables and chains must already exist. `--rules-mode replace-all` explicitly flushes the entire active ruleset and may disconnect clients or lock out administrators. Review imported files and confirm recovery access before using full replacement. The ownership comment is a categorization marker, not an authentication or authorization control. Neither the dashboard bundle nor the CLI JSON config is automatically restored after reboot unless an operator configures the startup command or service accordingly.
 
 The System Management page is currently read-only. It does not restart or otherwise control the host.
 
@@ -60,7 +60,7 @@ The current API request logs record method, fixed path, status, duration, and so
 
 The API does not implement request rate limiting or per-identity quotas. This is especially relevant while endpoints are unauthenticated: a reachable service can be repeatedly queried or asked to perform privileged operations. No security or capacity guarantee should be inferred from the liveness endpoint.
 
-The dashboard has an automated unittest suite, but the repository currently has no automated C++ test target. This limits repeatable coverage of API parsing, authorization (which is not implemented), and host-operation behavior. Ordinary tests must remain isolated from privileged host firewall state; security-sensitive changes need focused tests and an appropriate non-production integration environment.
+The dashboard unittest suite and `make test` provide automated coverage for selected frontend behavior, config parsing/serialization, nftables statistics parsing, and API handlers. They do not provide broad integration, fuzz, authorization, or live nftables tests. Ordinary tests must remain isolated from privileged host firewall state; security-sensitive changes need focused tests and an appropriate non-production integration environment.
 
 ### 7. Listener exposure depends on deployment configuration
 

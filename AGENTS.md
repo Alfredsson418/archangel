@@ -58,7 +58,7 @@
 - Do not implement user authentication or authorization solely in the frontend, and do not maintain a separate dashboard/browser user-authentication database. A login screen is only an interface: every API call except `/status/health` must be authenticated and authorized by the backend using credentials or a backend-verifiable credential. Display and submit authentication through the backend's contract when backend authentication is implemented.
 - Build pages from the shared `base.html` layout and its Jinja blocks. Put page-specific content in the relevant template instead of duplicating the shell or navigation.
 - Keep firewall rule import/export aligned with the versioned structured-rule contract: validate a complete bundle before mutation, preview and explicitly confirm imports, preserve additive/non-atomic behavior unless the backend gains a transaction contract, and disclose unsupported rules omitted from exports. Do not imply bundles include arbitrary nftables configurations or provide boot-time restore.
-- Keep the backend CLI's versioned JSON config (bind settings plus the complete native nftables JSON ruleset) distinct from the dashboard's structured portable bundle. Require an explicit per-import merge/replace mode; describe replace as flushing the entire active ruleset, and preserve CLI-over-config bind precedence. Imports are privileged and must be reviewed.
+- Keep the backend CLI's version 2 JSON config distinct from the dashboard's structured portable bundle. V2 separates rules bearing the reserved `archangel-managed` comment from other rules and nftables objects. Require an explicit per-import mode: `replace` replaces marked rules only, while `replace-all` flushes the entire active ruleset. Preserve CLI-over-config bind precedence. Imports are privileged and must be reviewed.
 
 ## Build and Test
 
@@ -83,6 +83,7 @@
   - Update `docs/roadmap.md` when planned work, sequencing, status, exit criteria, or material design decisions change. Keep exploratory ideas distinct from committed work and implemented features.
   - Update `docs/goal.md` when project purpose or long-term architectural direction changes. Keep it descriptive and reader-facing; distinguish implemented capabilities from aspirations and state unresolved assumptions as open questions rather than settled requirements.
   - Update `docs/test.md` when test suites, commands, prerequisites, or expected output change.
+  - Update `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` when contribution or conduct guidance changes.
   - Keep `docs/security-concerns.md` as the reader-facing source of truth for current security limitations and planned controls; link to it from `SECURITY.md` rather than duplicating the concern register.
   - Update `AGENTS.md` when agent-facing conventions, design rules, source layout, or build/test workflows change. Do not update it for unrelated feature details.
   - Keep this list updated for new documentation files in the future.

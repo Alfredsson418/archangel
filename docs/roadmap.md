@@ -100,25 +100,27 @@ The thesis also discusses KSF-related concepts, but the project should not claim
 
 ## Phase 1: Testing and Contribution Readiness
 
-**Status: In progress**
+**Status: Implemented; first hosted CI run pending**
 
 1. **Add automated C++ tests.**
-   - **Status: In progress.** Focused unit tests now cover nftables statistics parsing and structured rule API handlers, using controlled fixtures and a mock firewall.
+   - **Status: Implemented.** Unit tests cover nftables statistics parsing, config v2 parsing and serialization, managed-rule replacement transaction planning, and structured API handlers, using controlled fixtures and a mock firewall.
    - Test API request parsing and validation, status codes, and JSON responses without changing the host firewall.
    - Test backend-neutral behavior and nftables statistics parsing using controlled fixtures.
    - Keep tests isolated from privileged host state; destructive operations must never run in ordinary test suites.
-   - **Exit criteria:** broaden contract coverage, and keep `make test` returning a failing status when a test fails; the debug build and dashboard tests continue to pass.
+   - **Exit criteria:** `make test` runs the backend suite and returns a failing status for a failing test; the debug build and dashboard tests continue to pass.
 2. **Add a repeatable project verification workflow.**
-   - **Status: In progress.** GitHub Actions now runs the dashboard tests, backend unit tests, and C++ debug build.
+   - **Status: Implemented.** `docs/test.md` documents prerequisites, commands, coverage, and expected output; GitHub Actions runs dashboard tests, backend unit tests, and the C++ debug build. The first hosted workflow run remains pending.
    - Document the build and test commands, required system dependencies, and any tests that require special environments.
    - Extend CI when additional supported build or test environments are selected.
    - **Exit criteria:** a clean checkout can follow the documented local verification steps, and CI reports build and test outcomes.
 3. **Publish contribution guidance.**
-   - Add `CONTRIBUTING.md` with issue-first feature discussion, build/test steps, code and documentation expectations, and security reporting guidance.
-   - Add a Code of Conduct and explain how to report conduct concerns.
+   - **Status: Implemented.** [CONTRIBUTING.md](../CONTRIBUTING.md) provides issue-first contribution, verification, implementation, documentation, and security-reporting guidance.
+   - **Status: Implemented.** [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) describes expected behavior and private reporting to maintainers.
    - **Exit criteria:** contribution and conduct documents are linked from the README and state clear reporting paths.
-4. **Other**
-   - For export/import system/firewall config, seperate firewall rules in the config between other rules and archangel rules
+4. **Separate Archangel-managed rules from other rules in backend config export/import.**
+   - **Status: Implemented.** Config v2 uses the reserved `archangel-managed` nftables comment on rules created through the structured API; v2 is the only supported import/export format.
+   - `replace` updates only marked rules; `replace-all` explicitly flushes the full ruleset.
+   - **Exit criteria:** ownership behavior is documented; tests cover managed/unmanaged classification, v2 round-tripping, unsupported-version rejection, and merge/replace mode selection and transaction planning.
 
 ## Phase 2: Backend-Owned Security Controls
 

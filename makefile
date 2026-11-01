@@ -63,7 +63,7 @@ build_release: $(OBJFILES) $(LIB_OBJFILES)
 	@$(CC) $(CFLAGS) $^ -o $(NAME) $(LDFLAGS)
 	@echo "Done!"
 
-$(TEST_BINARY): $(TEST_SRCFILES) $(SRC)/firewall/nft_statistics.cpp $(SRC)/http/api/rules.cpp
+$(TEST_BINARY): $(TEST_SRCFILES) $(SRC)/config.cpp $(SRC)/firewall/nft_import.cpp $(SRC)/firewall/nft_statistics.cpp $(SRC)/http/api/rules.cpp $(SRC)/http/api/stats.cpp
 	@mkdir -p $(@D)
 	@echo "Building backend tests"
 	@$(CC) $(DEBUG_CFLAGS) -I$(CORE)/include -I$(LIB) $^ -o $@ -pthread

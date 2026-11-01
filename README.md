@@ -36,21 +36,23 @@ See the [test and verification guide](docs/test.md) for prerequisites, test cove
 
 The backend can export the complete active nftables ruleset together with its
 bind settings in a versioned JSON config, or import a config before starting
-the API:
+the API. Config v2 is the supported format and separates rules created through
+the structured API from other rules and nftables objects:
 
 ```sh
 ./archangel --export-config archangel-config.json
 ./archangel --import-config archangel-config.json --rules-mode merge
 ```
 
-The JSON includes the API bind interface/address, port, and the full nftables
-ruleset, including expressions the dashboard's structured portable bundle cannot
-represent. Every import must explicitly select `--rules-mode merge` or
-`--rules-mode replace`. Merge adds the imported configuration to the current
-ruleset; replace flushes the entire active nftables ruleset, including tables
-unrelated to Archangel, before applying the config. Replace can sever network
-access or lock out administrators. Review configs before importing. CLI `--host`
-and `--port` values override the corresponding JSON settings.
+V2 contains the full native nftables ruleset, including expressions the
+dashboard's structured portable bundle cannot represent, and separates rules
+marked `archangel-managed` from other rules and nftables objects. `merge` adds
+the imported configuration. `replace` replaces only marked Archangel rules
+and leaves the rest of the active ruleset untouched. Use
+`--rules-mode replace-all` to explicitly flush the entire active ruleset; this
+can sever network access or lock out administrators. Review configs before
+importing. CLI `--host` and `--port` values override the corresponding JSON
+settings.
 
 ### Run the frontend in Docker
 
@@ -71,6 +73,10 @@ See [docs/goal.md](docs/goal.md) for the project's purpose, long-term architectu
 # Development roadmap
 
 See the [development roadmap](docs/roadmap.md) for the current implementation baseline, sequenced work, completion criteria, and longer-term exploratory ideas.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidance, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations and reporting concerns.
 
 ## FaQ
 - Is this vibe coded?

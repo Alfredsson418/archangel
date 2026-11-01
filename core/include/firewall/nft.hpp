@@ -43,6 +43,16 @@ class Nftables : public Firewall {
 	void importRuleset(const std::string &ruleset, bool replaceAll);
 
 	/**
+	 * @brief Atomically replaces only rules carrying the Archangel marker.
+	 * @param rules Serialized nftables array containing only marked rule
+	 * objects.
+	 * @return No value.
+	 * @throws std::runtime_error If the input or active ruleset is invalid or
+	 * the transaction fails.
+	 */
+	void replaceArchangelRuleset(const std::string &rules);
+
+	/**
 	 * @brief Implements Firewall::getStatistics.
 	 * @return Aggregated statistics for the active ruleset.
 	 */

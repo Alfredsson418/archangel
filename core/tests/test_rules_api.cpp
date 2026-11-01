@@ -72,12 +72,34 @@ void createsStructuredRule() {
 		"creation response should use the expected JSON shape");
 }
 
+void acceptsMaximumDestinationPortAndNullOptionalAddresses() {
+	MockFirewall		   firewall;
+	const httplib::Request request = requestWithBody(
+		R"({"family":"ip","table":"filter","chain":"input","protocol":"udp","destination_port":65535,"action":"drop","source_address":null,"destination_address":null})");
+	httplib::Response response;
+
+	HttpApi::createRule(firewall, request, response);
+
+	TestSupport::require(response.status == 201,
+						 "valid maximum port should return 201");
+	TestSupport::require(firewall.add_calls == 1,
+						 "valid maximum port should reach backend");
+	TestSupport::require(firewall.added_rule.destination_port == 65535,
+						 "maximum destination port should be preserved");
+	TestSupport::require(!firewall.added_rule.source_address &&
+							 !firewall.added_rule.destination_address,
+						 "null optional addresses should be treated as absent");
+}
+
 void rejectsInvalidRuleRequestsBeforeBackendMutation() {
 	for (
 		const std::string body :
 		{R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","destination_port":0,"action":"accept"})",
 		 R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","destination_port":65536,"action":"accept"})",
 		 R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","destination_port":1.5,"action":"accept"})",
+		 R"({"table":"filter","chain":"input","protocol":"tcp","action":"accept"})",
+		 R"({"family":"inet","table":"","chain":"input","protocol":"tcp","action":"accept"})",
+		 R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","action":"accept","source_address":7})",
 		 "[]", "{invalid"}) {
 		MockFirewall	  firewall;
 		httplib::Response response;
@@ -134,6 +156,23 @@ void rejectsInvalidDeleteHandlesBeforeBackendMutation() {
 	}
 }
 
+void rejectsDeleteRequestsMissingRequiredFields() {
+	for (const std::string body :
+		 {R"({"table":"filter","chain":"input","handle":42})",
+		  R"({"family":"inet","chain":"input","handle":42})",
+		  R"({"family":"inet","table":"filter","handle":42})",
+		  R"({"family":"inet","table":"filter","chain":"input"})"}) {
+		MockFirewall	  firewall;
+		httplib::Response response;
+		HttpApi::deleteRule(firewall, requestWithBody(body), response);
+
+		TestSupport::require(response.status == 400,
+							 "missing delete fields should return 400");
+		TestSupport::require(firewall.delete_calls == 0,
+							 "incomplete delete must not reach the backend");
+	}
+}
+
 void hidesBackendFailureDetails() {
 	MockFirewall firewall;
 	firewall.fail_list = true;
@@ -154,8 +193,10 @@ void hidesBackendFailureDetails() {
 
 void runRulesApiTests() {
 	createsStructuredRule();
+	acceptsMaximumDestinationPortAndNullOptionalAddresses();
 	rejectsInvalidRuleRequestsBeforeBackendMutation();
 	deletesRuleByPositiveHandle();
 	rejectsInvalidDeleteHandlesBeforeBackendMutation();
+	rejectsDeleteRequestsMissingRequiredFields();
 	hidesBackendFailureDetails();
 }

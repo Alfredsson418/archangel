@@ -50,8 +50,11 @@ The test executable is built at `build/core/tests/backend_tests`. The target com
 
 | Module | Coverage |
 | --- | --- |
+| `core/tests/test_config.cpp` | Config v2 parsing and serialization, ownership-section classification, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
+| `core/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |
 | `core/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |
-| `core/tests/test_rules_api.cpp` | Structured rule creation and deletion, input validation and HTTP responses, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
+| `core/tests/test_rules_api.cpp` | Structured rule creation and deletion, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
+| `core/tests/test_statistics_api.cpp` | JSON response shape and content type for firewall statistics. |
 
 Rule-handler tests use a mock `Firewall`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.
 
@@ -62,6 +65,7 @@ Backend tests passed
 ```
 
 A failed assertion prints `Backend test failure: ...` and returns a nonzero exit status.
+The invalid-input tests intentionally trigger `request_rejected code=invalid_request` warning log entries before the success message.
 
 ## Build the backend
 
