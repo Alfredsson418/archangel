@@ -103,6 +103,22 @@ class AuthProvider {
 											std::string_view password) = 0;
 
 	/**
+	 * @brief Restores administrator access to an existing account.
+	 *
+	 * A privileged local recovery operation: it sets a new password, makes the
+	 * account an enabled administrator, and revokes its sessions and setup
+	 * tokens, bypassing the last-administrator safeguards of the account APIs.
+	 * @param username Existing account name.
+	 * @param password New password meeting the configured local-account policy.
+	 * @return The recovered administrator identity.
+	 * @throws AccountOperationError If the account does not exist or the
+	 * username or password is invalid.
+	 * @throws std::runtime_error If persistent storage fails.
+	 */
+	virtual Identity recoverAdministrator(std::string_view username,
+										  std::string_view password) = 0;
+
+	/**
 	 * @brief Lists backend-owned accounts without returning credential data.
 	 * @return Account identities, roles, and enabled/setup status.
 	 * @throws std::runtime_error If persistent authentication storage fails.

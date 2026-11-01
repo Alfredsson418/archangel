@@ -15,11 +15,12 @@ namespace Auth::Detail {
 std::string normalizeUsername(std::string_view username);
 
 /**
- * @brief Validates a password against the configured code-point policy.
+ * @brief Validates a new password against the configured policy.
  * @param password Password text to validate.
- * @param policy Accepted minimum and maximum character counts.
+ * @param policy Accepted character counts and optional blocklist.
  * @return No value.
- * @throws std::runtime_error If encoding, size, or policy validation fails.
+ * @throws std::runtime_error If the password's size or length is outside the
+ * policy or it is on the blocklist.
  */
 void validatePassword(std::string_view password, const PasswordPolicy &policy);
 
@@ -41,6 +42,16 @@ std::string hashPassword(std::string_view		   password,
  * @throws std::runtime_error If the encoded hash cannot be verified.
  */
 bool verifyPassword(std::string_view encoded, std::string_view password);
+
+/**
+ * @brief Checks whether a hash was made with weaker settings than configured.
+ * @param encoded Encoded Argon2id hash that has already verified.
+ * @param parameters Currently configured Argon2id parameters.
+ * @return True when any stored cost parameter is below the configured value
+ * or the parameters cannot be read.
+ */
+bool needsRehash(std::string_view		   encoded,
+				 const Argon2idParameters &parameters);
 
 /**
  * @brief Creates a cryptographically random opaque API session token.

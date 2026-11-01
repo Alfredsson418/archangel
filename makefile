@@ -60,7 +60,7 @@ TEST_EXCLUDED_SRCFILES = $(SRC)/main.cpp $(SRC)/app/application.cpp \
 TEST_APP_SRCFILES = $(filter-out $(TEST_EXCLUDED_SRCFILES),$(SRCFILES))
 TEST_BINARY = $(BUILD)/$(CORE)/tests/backend_tests
 
-.PHONY: debug build_release test clean clean-dev-state run bootstrap-admin config FORCE
+.PHONY: debug build_release test clean clean-dev-state run bootstrap-admin recover-admin config FORCE
 
 FORCE:
 
@@ -136,6 +136,10 @@ run: debug
 # Create the initial administrator interactively in OUT/.archangel-dev.
 bootstrap-admin: debug
 	@$(SUDO) ./$(TARGET) user bootstrap-admin --username $(ADMIN_USER)
+
+# Restore administrator access to ADMIN_USER interactively in OUT/.archangel-dev.
+recover-admin: debug
+	@$(SUDO) ./$(TARGET) user recover --username $(ADMIN_USER)
 
 # Write a default runtime config to OUT/.archangel-dev/config.json.
 config: debug

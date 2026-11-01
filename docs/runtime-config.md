@@ -11,8 +11,8 @@ next to the executable for `config.json`, `archangel.db`, and the
 `0700` when it is first needed and must be owned by the user that runs the
 binary.
 `make debug` builds into `bin/`, so the debug state directory is
-`bin/.archangel-dev`; the `make run`, `make bootstrap-admin`, and `make config`
-targets run the binary as one consistent user (through `sudo` by
+`bin/.archangel-dev`; the `make run`, `make bootstrap-admin`,
+`make recover-admin`, and `make config` targets run the binary as one consistent user (through `sudo` by
 default). If the default config file is absent, built-in
 defaults are used; if it exists but cannot be read or is invalid, startup
 fails. `--config PATH` selects an explicit required file in either build.
@@ -37,7 +37,8 @@ effective-settings object; explicit CLI options then override its values.
 | `auth.database_path` | `/var/lib/archangel/archangel.db` (release); `.archangel-dev/archangel.db` beside the executable (debug) | Private SQLite account/session store path. |
 | `auth.password_min_length` | `15` (release); `1` (debug) | Minimum Unicode code points; cannot be lower than 15 in release builds or 1 in debug builds. |
 | `auth.password_max_length` | `128` | Maximum Unicode code points; cannot exceed 128. |
-| `auth.argon2id.memory_kib` | `19456` | Argon2id memory cost; cannot be lower than 19 MiB or higher than 1 GiB. |
+| `auth.password_blocklist_path` | unset | Optional file of passwords that may not be chosen, one per line. See [Password blocklist](#password-blocklist). |
+| `auth.argon2id.memory_kib` | `19456` | Argon2id memory cost; cannot be lower than 19 MiB or higher than 1 GiB. Raising any Argon2id value upgrades each password hash at that user's next successful login. |
 | `auth.argon2id.iterations` | `2` | Argon2id time cost; range 2–10. |
 | `auth.argon2id.parallelism` | `1` | Argon2id parallelism; range 1–8. |
 | `sessions.idle_timeout_seconds` | `900` | API session idle lifetime. |
@@ -117,6 +118,42 @@ before the `user` subcommand:
 ./archangel --config /etc/archangel/config.json user bootstrap-admin --username admin
 ```
 
+## Account recovery
+
+`user recover` restores administrator access when no administrator can sign
+in. Run it on the backend host as the service user (or root), with the same
+runtime config as the service:
+
+```sh
+./archangel --config /etc/archangel/config.json user recover --username admin
+```
+
+It prompts twice for a new password on an interactive terminal, then sets it
+on the existing account, makes the account an enabled administrator (also
+re-enabling a disabled account), and revokes its API sessions and outstanding
+setup tokens. Unlike the account APIs, it does not apply the
+last-administrator safeguards; access to the backend host and its database is
+the authorization. The account keeps its immutable ID, and an
+`account_recovered` record is written to the backend log. The command can run
+while the service is running; the revoked sessions stop working on their next
+request.
+
+## Password blocklist
+
+Set `auth.password_blocklist_path` to reject common or compromised passwords
+whenever a password is set: by `user bootstrap-admin`, `user recover`, and
+account setup or reset through `POST /api/v1/auth/setup`. Existing passwords
+are not checked at login.
+
+The file holds one password per line in UTF-8; empty lines are ignored, a
+trailing carriage return is removed, and matching ignores ASCII letter case.
+Publicly available lists of common or breached passwords can be used as-is.
+The file must be a regular file owned by root or the service user, must not
+be group/world writable, cannot be a symbolic link, and is limited to 64 MiB.
+It is read into memory once at startup; restart the service after changing it.
+A configured file that is missing, unsafe, too large, or contains no entries
+fails startup.
+
 ## TLS
 
 With `tls.enabled` set to `true`, the API listener serves HTTPS only, requires
@@ -194,9 +231,9 @@ The configuration loader and validation are implemented. The running service
 uses the central application settings object, populated by runtime JSON and
 then overridden by explicit CLI options. It uses the configured bind address
 and port unless overridden by `--host` or `--port`. `user bootstrap-admin`
-uses the configured local database path, password-length policy, and Argon2id
-parameters; `--database PATH` overrides
-the database path for that command. Argon2id settings have upper bounds to
+and `user recover` use the configured local database path, password policy,
+blocklist, and Argon2id parameters; `--database PATH` overrides the database
+path for those commands. Argon2id settings have upper bounds to
 avoid unbounded CPU and memory consumption.
 
 The C++ API uses the local authentication provider to issue and validate
@@ -220,7 +257,8 @@ restricted to localhost or a trusted, isolated management network.
 
 `--host` and `--port` override runtime-config values. The firewall bundle
 contains no listener settings and does not affect service binding.
-`--database` overrides `auth.database_path` only for `user bootstrap-admin`.
+`--database` overrides `auth.database_path` only for `user bootstrap-admin`
+and `user recover`.
 
 Firewall import/export remain explicit operations:
 

@@ -129,7 +129,7 @@ The thesis also discusses KSF-related concepts, but the project should not claim
 
 ## Phase 2: Backend-Owned Security Controls
 
-**Status: Implemented. Backend authentication and roles, account lifecycle APIs, dashboard login and sessions, rate limits, native TLS, JSONL audit logging, and the Phase 2 service contracts are in place; the security review is recorded in [security concerns](security-concerns.md#phase-2-security-review). Open follow-ups before Phase 3: the `user recover` command, rehashing passwords after login when the configured Argon2id cost increases, and rejecting common or compromised passwords. MFA and tamper-evident log storage remain deferred.**
+**Status: Implemented. Backend authentication and roles, account lifecycle APIs, dashboard login and sessions, rate limits, native TLS, JSONL audit logging, and the Phase 2 service contracts are in place; the security review is recorded in [security concerns](security-concerns.md#phase-2-security-review). The follow-ups identified after the review are implemented: the `user recover` command, rehashing passwords after login when the configured Argon2id cost increases, an operator-provided password blocklist, and dashboard audit records with the actor and outcome that fail closed for every non-health request. MFA and tamper-evident log storage remain deferred.**
 
 Security controls must be enforced at the backend/API trust boundary. The backend is authoritative for identity, authentication, and authorization. Do not create a separate Flask dashboard or browser user-authentication database. `GET /status/health` remains unauthenticated and returns only a status code for liveness. Authentication operations may accept credentials to establish a backend session and must be narrowly scoped and rate-limited; they must not disclose protected data. `GET /status/info` and every protected API route require backend authentication. Retain the deployment restrictions in [SECURITY.md](../SECURITY.md): TLS is optional and off by default, and controls such as MFA and tamper-evident audit storage are not implemented.
 
@@ -159,7 +159,7 @@ Security controls must be enforced at the backend/API trust boundary. The backen
    - OIDC claim-to-role mapping is deferred until OIDC is selected for implementation.
    - **Exit criteria — met:** document the threat model and selected design, including remaining risks and operational recovery; settle persistence, credential, TLS, rate-limit, logging, identity, authorization, API-destination, and replaceable-contract decisions. No design may depend on frontend-only access checks.
 2. **Implement backend authentication and authorization.**
-   - **Status: Implemented for the backend and dashboard authentication flow.** The backend-owned `AuthProvider` contract and SQLite/Argon2id local provider include private account/session persistence, interactive initial-administrator bootstrap, API login/logout, default authentication, firewall role enforcement, account lifecycle APIs, and per-source login-attempt limiting. The dashboard authenticates with the backend, keeps the token server-side, and sends it with protected API calls. A dashboard account-management UI remains future work.
+   - **Status: Implemented for the backend and dashboard authentication flow.** The backend-owned `AuthProvider` contract and SQLite/Argon2id local provider include private account/session persistence, interactive initial-administrator bootstrap and local administrator recovery, rehashing on login after an Argon2id cost increase, an optional operator-provided password blocklist, API login/logout, default authentication, firewall role enforcement, account lifecycle APIs, and per-source login-attempt limiting. The dashboard authenticates with the backend, keeps the token server-side, and sends it with protected API calls. A dashboard account-management UI remains future work.
    - Require credentials or a verifiable backend-issued credential on every API call except `GET /status/health`. Authenticate and authorize each request independently in the C++ API; do not infer API access from having passed a frontend login screen or from frontend-only session state.
    - Flask may present the login experience and account-management pages, but each call it makes to the C++ API other than the liveness check must include a credential the API can validate. Apply the agreed role policy to every other API route and deny access by default when the caller is unauthenticated or lacks permission.
    - Protect browser form submissions and session handling against request forgery and session misuse as appropriate to the chosen design.
@@ -183,7 +183,7 @@ Security controls must be enforced at the backend/API trust boundary. The backen
 
 ## Phase 3: Safe Firewall Management in the Dashboard
 
-**Status: Planned; starts after the Phase 2 follow-ups are complete**
+**Status: Planned; next phase**
 
 The API already supports structured rule creation and deletion. The dashboard can already apply rules through the confirmed, additive bundle import on the Firewall Configuration page; it has no workflow for creating or deleting an individual rule.
 

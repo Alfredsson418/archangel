@@ -138,6 +138,10 @@ void validateConfig(const AppConfig &config) {
 		throw std::runtime_error(
 			"Runtime config auth.database_path is invalid");
 	}
+	if (config.auth.password_blocklist_path.find('\0') != std::string::npos) {
+		throw std::runtime_error(
+			"Runtime config auth.password_blocklist_path is invalid");
+	}
 	if (config.auth.password_min_length <
 			AppConfigLimits::MIN_PASSWORD_LENGTH ||
 		config.auth.password_max_length >
@@ -252,7 +256,8 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 	if (const Json *auth = optionalObject(document, "auth")) {
 		rejectUnknownKeys(*auth,
 						  {"provider", "database_path", "password_min_length",
-						   "password_max_length", "argon2id"},
+						   "password_max_length", "password_blocklist_path",
+						   "argon2id"},
 						  "Runtime config auth");
 		config.auth.provider =
 			requiredString(*auth, "provider", config.auth.provider, "auth");
@@ -268,6 +273,10 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 				*auth, "password_max_length", config.auth.password_max_length,
 				config.auth.password_min_length,
 				AppConfigLimits::MAX_PASSWORD_LENGTH, "auth"));
+		if (auth->contains("password_blocklist_path")) {
+			config.auth.password_blocklist_path =
+				requiredString(*auth, "password_blocklist_path", {}, "auth");
+		}
 		if (const Json *argon = optionalObject(*auth, "argon2id")) {
 			rejectUnknownKeys(*argon,
 							  {"memory_kib", "iterations", "parallelism"},
@@ -391,6 +400,10 @@ std::string generateRuntimeConfig(const AppConfig &config) {
 		  {"firewall_mutations_per_minute",
 		   config.rate_limits.firewall_mutations_per_minute}}	 }
 	  };
+	if (!config.auth.password_blocklist_path.empty()) {
+		document["auth"]["password_blocklist_path"] =
+			config.auth.password_blocklist_path;
+	}
 	if (!config.tls.certificate_file.empty()) {
 		document["tls"]["certificate_file"] = config.tls.certificate_file;
 	}

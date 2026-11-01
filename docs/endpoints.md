@@ -129,6 +129,10 @@ The request requires the API schema header and a JSON body:
 Success returns HTTP `204` with no body. Setup tokens are single-use, expire
 after one hour, and are stored by the backend only as hashes. An account is
 enabled after setup and must then sign in through `/api/v1/auth/login`.
+An invalid, expired, or used token returns HTTP `400` with error
+`invalid_setup_token`. A password outside the configured length policy, or on
+the operator's password blocklist, returns HTTP `400` with error
+`invalid_request` and a reason; the token remains valid for another attempt.
 
 ### Account management
 

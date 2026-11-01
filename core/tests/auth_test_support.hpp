@@ -58,6 +58,11 @@ class MockAuthProvider final : public Auth::AuthProvider {
 		throw std::runtime_error("not used");
 	}
 
+	Auth::Identity recoverAdministrator(std::string_view,
+										std::string_view) override {
+		throw std::runtime_error("not used");
+	}
+
 	std::vector<Auth::Account> listAccounts() override {
 		return {
 			Auth::Account{

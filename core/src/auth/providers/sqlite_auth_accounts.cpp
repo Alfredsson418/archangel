@@ -78,6 +78,64 @@ Identity SqliteAuthProvider::bootstrapAdministrator(std::string_view username,
 	return Identity{userId, normalized, Role::Administrator};
 }
 
+Identity SqliteAuthProvider::recoverAdministrator(std::string_view username,
+												  std::string_view password) {
+	if (!impl_) {
+		throw std::runtime_error("Authentication provider is not initialized");
+	}
+	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
+	const std::string			normalized = normalizeUsername(username);
+	if (normalized.empty()) {
+		throw AccountOperationError(AccountOperationError::Code::Invalid,
+									INVALID_USERNAME_MESSAGE);
+	}
+	try {
+		validatePassword(password, impl_->passwordPolicy);
+	} catch (const std::runtime_error &error) {
+		throw AccountOperationError(AccountOperationError::Code::Invalid,
+									error.what());
+	}
+	const std::string passwordHash =
+		hashPassword(password, impl_->argon2idParameters);
+
+	Transaction transaction(impl_->database);
+	Statement	current(
+		  impl_->database,
+		  "SELECT id, username FROM users WHERE normalized_username = ?1");
+	current.bindText(1, normalized);
+	const int currentResult = sqlite3_step(current.get());
+	if (currentResult == SQLITE_DONE) {
+		throw AccountOperationError(AccountOperationError::Code::NotFound,
+									"Account was not found");
+	}
+	if (currentResult != SQLITE_ROW) {
+		throw std::runtime_error(std::string("Unable to query account: ") +
+								 sqlite3_errmsg(impl_->database));
+	}
+	const std::string userId(
+		reinterpret_cast<const char *>(sqlite3_column_text(current.get(), 0)));
+	const std::string storedUsername(
+		reinterpret_cast<const char *>(sqlite3_column_text(current.get(), 1)));
+	Statement update(
+		impl_->database,
+		"UPDATE users SET password_hash = ?1, role = 2, enabled = 1, "
+		"setup_pending = 0, updated_at = ?2 WHERE id = ?3");
+	update.bindText(1, passwordHash);
+	update.bindInteger(2, unixTimeNow());
+	update.bindText(3, userId);
+	update.execute();
+	Statement sessions(impl_->database,
+					   "DELETE FROM api_sessions WHERE user_id = ?1");
+	sessions.bindText(1, userId);
+	sessions.execute();
+	Statement tokens(impl_->database,
+					 "DELETE FROM account_setup_tokens WHERE user_id = ?1");
+	tokens.bindText(1, userId);
+	tokens.execute();
+	transaction.commit();
+	return Identity{userId, storedUsername, Role::Administrator};
+}
+
 std::vector<Account> SqliteAuthProvider::listAccounts() {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
@@ -410,7 +468,12 @@ Identity SqliteAuthProvider::completeAccountSetup(std::string_view token,
 		throw AccountOperationError(AccountOperationError::Code::InvalidToken,
 									"Setup token is invalid or expired");
 	}
-	validatePassword(password, impl_->passwordPolicy);
+	try {
+		validatePassword(password, impl_->passwordPolicy);
+	} catch (const std::runtime_error &error) {
+		throw AccountOperationError(AccountOperationError::Code::Invalid,
+									error.what());
+	}
 	const std::string passwordHash =
 		hashPassword(password, impl_->argon2idParameters);
 	Statement update(

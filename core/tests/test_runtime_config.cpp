@@ -46,7 +46,8 @@ void parsesDefaultsAndOverrides() {
 						 "runtime config should provide server defaults");
 	TestSupport::require(defaults.auth.database_path ==
 								 AppConfigDefaults::AUTH_DATABASE_PATH &&
-							 defaults.auth.argon2id_memory_kib == 19 * 1024,
+							 defaults.auth.argon2id_memory_kib == 19 * 1024 &&
+							 defaults.auth.password_blocklist_path.empty(),
 						 "runtime config should provide local-auth defaults");
 	TestSupport::require(defaults.sessions.idle_timeout_seconds == 900 &&
 							 defaults.sessions.absolute_timeout_seconds ==
@@ -65,6 +66,7 @@ void parsesDefaultsAndOverrides() {
 		"auth":{
 			"database_path":"/tmp/auth.db",
 			"password_min_length":18,
+			"password_blocklist_path":"/etc/archangel/blocked-passwords.txt",
 			"argon2id":{"memory_kib":20480,"iterations":3}
 		},
 		"sessions":{"idle_timeout_seconds":600,"absolute_timeout_seconds":7200},
@@ -79,7 +81,9 @@ void parsesDefaultsAndOverrides() {
 	TestSupport::require(config.auth.database_path == "/tmp/auth.db" &&
 							 config.auth.password_min_length == 18 &&
 							 config.auth.password_max_length == 128 &&
-							 config.auth.argon2id_iterations == 3,
+							 config.auth.argon2id_iterations == 3 &&
+							 config.auth.password_blocklist_path ==
+								 "/etc/archangel/blocked-passwords.txt",
 						 "auth settings should override only specified values");
 	TestSupport::require(
 		config.tls.enabled &&
@@ -111,6 +115,7 @@ void generatesAndWritesRuntimeConfig() {
 	config.server.bind_address				   = "127.0.0.1";
 	config.server.port						   = 9443;
 	config.auth.database_path				   = "/tmp/generated-auth.db";
+	config.auth.password_blocklist_path		   = "/etc/archangel/blocked.txt";
 	config.tls.certificate_file				   = "/etc/archangel/cert.pem";
 	config.tls.private_key_file				   = "/etc/archangel/key.pem";
 	config.rate_limits.api_requests_per_minute = 60;
@@ -121,6 +126,8 @@ void generatesAndWritesRuntimeConfig() {
 		parsed.server.bind_address == config.server.bind_address &&
 			parsed.server.port == config.server.port &&
 			parsed.auth.database_path == config.auth.database_path &&
+			parsed.auth.password_blocklist_path ==
+				config.auth.password_blocklist_path &&
 			parsed.tls.certificate_file == config.tls.certificate_file &&
 			parsed.tls.private_key_file == config.tls.private_key_file &&
 			parsed.rate_limits.api_requests_per_minute == 60,

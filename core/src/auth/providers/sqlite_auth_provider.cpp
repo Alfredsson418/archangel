@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -88,6 +89,12 @@ std::optional<Session> SqliteAuthProvider::login(std::string_view username,
 		return std::nullopt;
 	}
 	const Identity identity = impl_->identityFrom(userQuery.get());
+	// Upgrade hashes made before the configured Argon2id cost was raised.
+	const std::optional<std::string> upgradedHash =
+		Auth::Detail::needsRehash(passwordHash, impl_->argon2idParameters)
+			? std::optional<std::string>(
+				  hashPassword(boundedPassword, impl_->argon2idParameters))
+			: std::nullopt;
 
 	const auto now = std::chrono::duration_cast<std::chrono::seconds>(
 						 std::chrono::system_clock::now().time_since_epoch())
@@ -104,6 +111,13 @@ std::optional<Session> SqliteAuthProvider::login(std::string_view username,
 		removeExpired.bindInteger(1, now);
 		removeExpired.bindInteger(2, now - impl_->idleTimeout.count());
 		removeExpired.execute();
+	}
+	if (upgradedHash) {
+		Statement rehash(impl_->database,
+						 "UPDATE users SET password_hash = ?1 WHERE id = ?2");
+		rehash.bindText(1, *upgradedHash);
+		rehash.bindText(2, identity.id);
+		rehash.execute();
 	}
 	{
 		Statement insert(

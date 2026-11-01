@@ -1,5 +1,6 @@
 #pragma once
 
+#include "auth/password_blocklist.hpp"
 #include "auth/providers/auth_provider.hpp"
 #include "config/app_config.hpp"
 
@@ -15,6 +16,8 @@ namespace Auth {
 struct PasswordPolicy {
 	std::uint16_t minimumCharacters = AppConfigLimits::MIN_PASSWORD_LENGTH;
 	std::uint16_t maximumCharacters = AppConfigLimits::MAX_PASSWORD_LENGTH;
+	// Optional list of passwords that may not be chosen; null disables it.
+	std::shared_ptr<const PasswordBlocklist> blocklist;
 };
 
 struct Argon2idParameters {
@@ -92,6 +95,22 @@ class SqliteAuthProvider final : public AuthProvider {
 	 */
 	Identity bootstrapAdministrator(std::string_view username,
 									std::string_view password) override;
+
+	/**
+	 * @brief Restores administrator access to an existing local account.
+	 *
+	 * Sets the password, makes the account an enabled administrator, and
+	 * revokes its sessions and setup tokens. Bypasses the last-administrator
+	 * safeguards that apply to API account changes.
+	 * @param username Existing account name.
+	 * @param password New password meeting the configured policy.
+	 * @return The recovered administrator identity.
+	 * @throws AccountOperationError If the account does not exist or the
+	 * username or password is invalid.
+	 * @throws std::runtime_error If persistent storage fails.
+	 */
+	Identity recoverAdministrator(std::string_view username,
+								  std::string_view password) override;
 
 	std::vector<Account> listAccounts() override;
 	AccountSetup createAccount(std::string_view username, Role role) override;

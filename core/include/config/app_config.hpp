@@ -98,6 +98,8 @@ inline constexpr std::size_t  MAX_ACCOUNT_BODY_BYTES		   = 16 * 1024;
 inline constexpr std::int64_t MAX_RUNTIME_CONFIG_BYTES		   = 1024 * 1024;
 inline constexpr std::size_t  MAX_RUNTIME_CONFIG_STRING_LENGTH = 4096;
 inline constexpr std::int64_t MAX_FIREWALL_CONFIG_BYTES = 16 * 1024 * 1024;
+// Operator-provided list of common or compromised passwords, held in memory.
+inline constexpr std::int64_t MAX_PASSWORD_BLOCKLIST_BYTES = 64 * 1024 * 1024;
 
 // Bounds for log sources returned by GET /api/v1/logs.
 inline constexpr std::size_t  MAX_LOG_ENTRIES	 = 100;
@@ -130,6 +132,8 @@ struct AppConfig {
 			AppConfigLimits::MIN_ARGON2ID_ITERATIONS;
 		std::uint32_t argon2id_parallelism =
 			AppConfigLimits::MIN_ARGON2ID_PARALLELISM;
+		// Empty disables the blocklist check.
+		std::string password_blocklist_path;
 	} auth;
 
 	struct Sessions {

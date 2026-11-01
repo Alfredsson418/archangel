@@ -46,6 +46,30 @@ bool startLogging(const AppConfig &config) {
 	std::signal(SIGHUP, [](int) { Logger::requestReopen(); });
 	return true;
 }
+
+/**
+ * @brief Builds the local authentication provider from validated settings.
+ * @param config Validated application settings.
+ * @return The SQLite provider with the configured policy and blocklist.
+ * @throws std::runtime_error If the password blocklist or database cannot be
+ * loaded safely.
+ */
+Auth::SqliteAuthProvider makeAuthProvider(const AppConfig &config) {
+	Auth::PasswordPolicy policy;
+	policy.minimumCharacters = config.auth.password_min_length;
+	policy.maximumCharacters = config.auth.password_max_length;
+	if (!config.auth.password_blocklist_path.empty()) {
+		policy.blocklist = std::make_shared<const Auth::PasswordBlocklist>(
+			Auth::PasswordBlocklist::load(config.auth.password_blocklist_path));
+	}
+	return Auth::SqliteAuthProvider(
+		config.auth.database_path,
+		std::chrono::seconds(config.sessions.idle_timeout_seconds),
+		std::chrono::seconds(config.sessions.absolute_timeout_seconds), policy,
+		Auth::Argon2idParameters{config.auth.argon2id_memory_kib,
+								 config.auth.argon2id_iterations,
+								 config.auth.argon2id_parallelism});
+}
 } // namespace
 
 int runApplication(int argc, char *argv[]) {
@@ -62,6 +86,16 @@ int runApplication(int argc, char *argv[]) {
 	auto *databaseOption =
 		bootstrapAdmin->add_option("--database", authDatabasePathOverride,
 								   "Private authentication database path");
+	auto *recoverAdmin = userCommand->add_subcommand(
+		"recover", "Restore administrator access to an existing account");
+	std::string recoverUsername;
+	recoverAdmin
+		->add_option("--username", recoverUsername,
+					 "Existing account to make an active administrator")
+		->required();
+	auto *recoverDatabaseOption =
+		recoverAdmin->add_option("--database", authDatabasePathOverride,
+								 "Private authentication database path");
 	userCommand->require_subcommand(1);
 
 	auto *configCommand =
@@ -133,50 +167,52 @@ int runApplication(int argc, char *argv[]) {
 	}
 
 	if (userCommand->parsed()) {
-		if (!bootstrapAdmin->parsed()) {
+		const bool recovering = recoverAdmin->parsed();
+		if (!bootstrapAdmin->parsed() && !recovering) {
 			std::cerr << "Unsupported user command\n";
 			return 2;
 		}
 		try {
-			if (databaseOption->count() > 0) {
+			if (databaseOption->count() > 0 ||
+				recoverDatabaseOption->count() > 0) {
 				appConfig.auth.database_path = authDatabasePathOverride;
 			}
 			validateAppConfig(appConfig);
 			if (!startLogging(appConfig)) {
 				return 1;
 			}
-			Auth::SecretString password(
-				Auth::promptPassword("New administrator password: "));
+			Auth::SqliteAuthProvider provider = makeAuthProvider(appConfig);
+			Auth::SecretString		 password(
+				  Auth::promptPassword("New administrator password: "));
 			Auth::SecretString confirmation(
 				Auth::promptPassword("Confirm administrator password: "));
 			if (password.value() != confirmation.value()) {
 				std::cerr << "Passwords do not match\n";
 				return 2;
 			}
-			Auth::SqliteAuthProvider provider(
-				appConfig.auth.database_path,
-				std::chrono::seconds(appConfig.sessions.idle_timeout_seconds),
-				std::chrono::seconds(
-					appConfig.sessions.absolute_timeout_seconds),
-				Auth::PasswordPolicy{appConfig.auth.password_min_length,
-									 appConfig.auth.password_max_length},
-				Auth::Argon2idParameters{appConfig.auth.argon2id_memory_kib,
-										 appConfig.auth.argon2id_iterations,
-										 appConfig.auth.argon2id_parallelism});
-			const Auth::Identity identity = provider.bootstrapAdministrator(
-				bootstrapUsername, password.value());
-			Logger::audit({
-				{},
-				"INFO",
-				"PROGRAM",
-				"account_bootstrapped",
-				{{"actor_id", identity.id}, {"role", "administrator"}}
-			  });
-			std::cout << "Created initial administrator account "
+			const Auth::Identity identity =
+				recovering ? provider.recoverAdministrator(recoverUsername,
+														   password.value())
+						   : provider.bootstrapAdministrator(bootstrapUsername,
+															 password.value());
+			if (!Logger::audit({
+					{},
+					"INFO",
+					"PROGRAM",
+					recovering ? "account_recovered" : "account_bootstrapped",
+					{{"actor_id", identity.id}, {"role", "administrator"}}
+			  })) {
+				std::cerr << "Warning: the account change could not be "
+							 "recorded in the backend log\n";
+			}
+			std::cout << (recovering ? "Restored administrator access for "
+									 : "Created initial administrator account ")
 					  << identity.username << '\n';
 			return 0;
 		} catch (const std::exception &error) {
-			std::cerr << "Account bootstrap failed: " << error.what() << '\n';
+			std::cerr << (recovering ? "Account recovery failed: "
+									 : "Account bootstrap failed: ")
+					  << error.what() << '\n';
 			return 1;
 		}
 	}
@@ -266,15 +302,7 @@ int runApplication(int argc, char *argv[]) {
 			return 0;
 		}
 
-		Auth::SqliteAuthProvider authProvider(
-			appConfig.auth.database_path,
-			std::chrono::seconds(appConfig.sessions.idle_timeout_seconds),
-			std::chrono::seconds(appConfig.sessions.absolute_timeout_seconds),
-			Auth::PasswordPolicy{appConfig.auth.password_min_length,
-								 appConfig.auth.password_max_length},
-			Auth::Argon2idParameters{appConfig.auth.argon2id_memory_kib,
-									 appConfig.auth.argon2id_iterations,
-									 appConfig.auth.argon2id_parallelism});
+		Auth::SqliteAuthProvider authProvider = makeAuthProvider(appConfig);
 
 		// Sources for GET /api/v1/logs, in display order.
 		const auto logSources = [&] {

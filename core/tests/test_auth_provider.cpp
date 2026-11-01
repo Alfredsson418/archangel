@@ -1,6 +1,8 @@
 #include "auth/providers/sqlite_auth_provider.hpp"
 #include "test_support.hpp"
 
+#include <sqlite3.h>
+
 #include <openssl/evp.h>
 
 #include <array>
@@ -317,6 +319,193 @@ void managesAccountsAndOneTimeSetupTokens() {
 		[&] { provider.disableAccount(secondAdmin.account.identity.id); },
 		"the final active administrator cannot be disabled");
 }
+std::string storedPasswordHash(const std::filesystem::path &database,
+							   const std::string		   &username) {
+	sqlite3 *connection = nullptr;
+	if (sqlite3_open_v2(database.c_str(), &connection, SQLITE_OPEN_READONLY,
+						nullptr) != SQLITE_OK) {
+		sqlite3_close(connection);
+		throw std::runtime_error("Unable to open test database");
+	}
+	sqlite3_stmt *statement = nullptr;
+	sqlite3_prepare_v2(connection,
+					   "SELECT password_hash FROM users WHERE username = ?1",
+					   -1, &statement, nullptr);
+	sqlite3_bind_text(statement, 1, username.c_str(), -1, SQLITE_TRANSIENT);
+	std::string hash;
+	if (sqlite3_step(statement) == SQLITE_ROW) {
+		hash =
+			reinterpret_cast<const char *>(sqlite3_column_text(statement, 0));
+	}
+	sqlite3_finalize(statement);
+	sqlite3_close(connection);
+	return hash;
+}
+
+void recoversAdministratorAccess() {
+	TemporaryDirectory		 directory;
+	Auth::SqliteAuthProvider provider(
+		(directory.path() / "recover.db").string());
+	const Auth::Identity first = provider.bootstrapAdministrator(
+		"first-admin", "first administrator secure passphrase");
+	const auto second =
+		provider.createAccount("second-admin", Auth::Role::Administrator);
+	provider.completeAccountSetup(second.setup_token,
+								  "second administrator secure passphrase");
+	const auto viewer = provider.createAccount("viewer", Auth::Role::Viewer);
+	provider.completeAccountSetup(viewer.setup_token,
+								  "viewer account secure passphrase");
+	const auto viewerSession =
+		provider.login("viewer", "viewer account secure passphrase");
+	provider.disableAccount(first.id);
+
+	const Auth::Identity recovered = provider.recoverAdministrator(
+		"FIRST-ADMIN", "recovered administrator passphrase");
+	TestSupport::require(recovered.id == first.id &&
+							 recovered.username == "first-admin" &&
+							 recovered.role == Auth::Role::Administrator,
+						 "recovery should keep the account's immutable ID");
+	TestSupport::require(
+		!provider.login("first-admin", "first administrator secure passphrase"),
+		"recovery should replace the previous password");
+	TestSupport::require(
+		provider.login("first-admin", "recovered administrator passphrase")
+			.has_value(),
+		"recovery should re-enable a disabled account with the new password");
+
+	const Auth::Identity promoted = provider.recoverAdministrator(
+		"viewer", "promoted viewer secure passphrase");
+	TestSupport::require(promoted.role == Auth::Role::Administrator,
+						 "recovery should grant the administrator role");
+	TestSupport::require(
+		viewerSession.has_value() &&
+			!provider.authenticateSession(viewerSession->token),
+		"recovery should revoke the account's sessions");
+
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.recoverAdministrator("missing-user",
+										  "recovered administrator passphrase");
+		},
+		"recovery should refuse unknown accounts");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] { provider.recoverAdministrator("first-admin", "too short"); },
+		"recovery should enforce the password policy");
+}
+
+void rehashesPasswordsWhenArgonCostIncreases() {
+	TemporaryDirectory directory;
+	const auto		   database = directory.path() / "rehash.db";
+	{
+		Auth::SqliteAuthProvider baseline(database.string());
+		baseline.bootstrapAdministrator("rehash-admin",
+										"a sufficiently long passphrase");
+	}
+	TestSupport::require(storedPasswordHash(database, "rehash-admin")
+								 .rfind("$argon2id$v=19$m=19456,t=2,p=1$", 0) ==
+							 0,
+						 "bootstrap should use the baseline Argon2id cost");
+
+	Auth::SqliteAuthProvider stronger(
+		database.string(), std::chrono::minutes(15), std::chrono::hours(8),
+		Auth::PasswordPolicy{}, Auth::Argon2idParameters{20 * 1024, 3, 1});
+	TestSupport::require(
+		!stronger.login("rehash-admin", "wrong passphrase value"),
+		"failed logins should not authenticate");
+	TestSupport::require(storedPasswordHash(database, "rehash-admin")
+								 .rfind("$argon2id$v=19$m=19456,t=2,p=1$", 0) ==
+							 0,
+						 "failed logins must not rehash the password");
+	TestSupport::require(
+		stronger.login("rehash-admin", "a sufficiently long passphrase")
+			.has_value(),
+		"hashes made at a lower cost should still verify");
+	const std::string upgraded = storedPasswordHash(database, "rehash-admin");
+	TestSupport::require(
+		upgraded.rfind("$argon2id$v=19$m=20480,t=3,p=1$", 0) == 0,
+		"a successful login should rehash at the configured cost");
+	TestSupport::require(
+		stronger.login("rehash-admin", "a sufficiently long passphrase")
+			.has_value(),
+		"the upgraded hash should verify");
+	TestSupport::require(
+		storedPasswordHash(database, "rehash-admin") == upgraded,
+		"hashes at the configured cost should not be rehashed");
+}
+
+void rejectsBlocklistedPasswords() {
+	const Auth::PasswordBlocklist parsed = Auth::PasswordBlocklist::fromContent(
+		"Correct Horse Battery Staple\r\n\nletmein-letmein-letmein\n"
+		"letmein-letmein-letmein\n" +
+		std::string(AppConfigLimits::MAX_PASSWORD_BYTES + 1, 'x'));
+	TestSupport::require(
+		parsed.size() == 2,
+		"blocklists should skip empty, duplicate, and oversized "
+		"lines");
+	TestSupport::require(parsed.contains("correct horse battery staple") &&
+							 parsed.contains("CORRECT HORSE BATTERY STAPLE"),
+						 "blocklist matches should ignore ASCII case");
+	TestSupport::require(!parsed.contains("correct horse battery"),
+						 "blocklist matches should be exact");
+
+	TemporaryDirectory directory;
+	const auto		   listPath = directory.path() / "blocked.txt";
+	{
+		std::ofstream output(listPath);
+		output << "Correct Horse Battery Staple\n";
+	}
+	chmod(listPath.c_str(), 0644);
+	TestSupport::require(Auth::PasswordBlocklist::load(listPath.string())
+							 .contains("correct horse battery staple"),
+						 "readable private blocklists should load");
+	chmod(listPath.c_str(), 0664);
+	TestSupport::requireThrows<std::runtime_error>(
+		[&] { Auth::PasswordBlocklist::load(listPath.string()); },
+		"group-writable blocklists must be rejected");
+	chmod(listPath.c_str(), 0644);
+	const auto linkPath = directory.path() / "linked.txt";
+	std::filesystem::create_symlink(listPath, linkPath);
+	TestSupport::requireThrows<std::runtime_error>(
+		[&] { Auth::PasswordBlocklist::load(linkPath.string()); },
+		"blocklist symlinks must be rejected");
+	const auto emptyPath = directory.path() / "empty.txt";
+	{
+		std::ofstream output(emptyPath);
+		output << "\n\n";
+	}
+	TestSupport::requireThrows<std::runtime_error>(
+		[&] { Auth::PasswordBlocklist::load(emptyPath.string()); },
+		"blocklists without entries must be rejected");
+
+	Auth::PasswordPolicy policy;
+	policy.blocklist = std::make_shared<const Auth::PasswordBlocklist>(parsed);
+	Auth::SqliteAuthProvider provider(
+		(directory.path() / "blocked.db").string(), std::chrono::minutes(15),
+		std::chrono::hours(8), policy);
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.bootstrapAdministrator("blocked-admin",
+											"Correct Horse Battery Staple");
+		},
+		"bootstrap should reject blocklisted passwords");
+	provider.bootstrapAdministrator("blocked-admin",
+									"an unlisted secure passphrase");
+	const auto pending = provider.createAccount("pending", Auth::Role::Viewer);
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.completeAccountSetup(pending.setup_token,
+										  "letmein-letmein-letmein");
+		},
+		"account setup should reject blocklisted passwords");
+	provider.completeAccountSetup(pending.setup_token,
+								  "another unlisted secure passphrase");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.recoverAdministrator("pending",
+										  "correct horse battery staple");
+		},
+		"recovery should reject blocklisted passwords");
+}
 } // namespace
 
 void runAuthProviderTests() {
@@ -326,4 +515,7 @@ void runAuthProviderTests() {
 	rejectsUnsafeDatabaseFiles();
 	expiresIdleSessions();
 	managesAccountsAndOneTimeSetupTokens();
+	recoversAdministratorAccess();
+	rehashesPasswordsWhenArgonCostIncreases();
+	rejectsBlocklistedPasswords();
 }

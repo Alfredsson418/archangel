@@ -36,6 +36,14 @@ the account under `/var/lib/archangel/archangel.db` for release builds, or
 `.archangel-dev/archangel.db` beside a debug binary. Use `--database PATH` to
 select another private database location.
 
+If every administrator is locked out, restore access locally on the backend
+host. This sets a new password for an existing account, makes it an enabled
+administrator, and signs out its existing sessions:
+
+```sh
+./archangel user recover --username admin
+```
+
 ## Run
 
 Build and run the C++ API (requires a C++20 compiler and the libnftables, SQLite, Argon2, and OpenSSL development files):
@@ -43,6 +51,7 @@ Build and run the C++ API (requires a C++20 compiler and the libnftables, SQLite
 ```sh
 make debug
 make bootstrap-admin    # once; prompts for the administrator password
+make recover-admin      # only if locked out; resets ADMIN_USER (default admin)
 make run                # serves on 127.0.0.1:8080
 ```
 

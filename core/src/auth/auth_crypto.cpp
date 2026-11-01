@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
@@ -110,6 +111,10 @@ void validatePassword(std::string_view password, const PasswordPolicy &policy) {
 		throw std::runtime_error(
 			"Password does not meet the configured length policy");
 	}
+	if (policy.blocklist && policy.blocklist->contains(password)) {
+		throw std::runtime_error(
+			"Password is too common or known to be compromised");
+	}
 }
 
 std::string hashPassword(std::string_view		   password,
@@ -141,6 +146,20 @@ bool verifyPassword(std::string_view encoded, std::string_view password) {
 	throw std::runtime_error(
 		std::string("Argon2id password verification failed: ") +
 		argon2_error_message(result));
+}
+
+bool needsRehash(std::string_view		   encoded,
+				 const Argon2idParameters &parameters) {
+	// Encoded form: $argon2id$v=19$m=<KiB>,t=<iterations>,p=<lanes>$salt$hash
+	const std::string hash(encoded);
+	unsigned int	  memoryKiB = 0, iterations = 0, parallelism = 0;
+	if (std::sscanf(hash.c_str(), "$argon2id$v=%*u$m=%u,t=%u,p=%u$", &memoryKiB,
+					&iterations, &parallelism) != 3) {
+		return true;
+	}
+	return memoryKiB < parameters.memoryKiB ||
+		   iterations < parameters.iterations ||
+		   parallelism < parameters.parallelism;
 }
 
 std::string createSessionToken() {
