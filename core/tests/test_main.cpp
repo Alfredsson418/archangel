@@ -1,19 +1,29 @@
 #include <exception>
 #include <iostream>
 
-void runConfigTests();
+void runFirewallConfigTests();
+void runAuthProviderTests();
+void runRuntimeConfigTests();
 void runNftStatisticsTests();
 void runNftImportTests();
 void runRulesApiTests();
 void runStatisticsApiTests();
+void runFirewallConfigCommandTests();
+void runNetworkAddressTests();
+void runHttpAuthenticationTests();
 
 int main() {
 	try {
-		runConfigTests();
+		runAuthProviderTests();
+		runRuntimeConfigTests();
+		runFirewallConfigTests();
 		runNftStatisticsTests();
 		runNftImportTests();
 		runRulesApiTests();
 		runStatisticsApiTests();
+		runFirewallConfigCommandTests();
+		runNetworkAddressTests();
+		runHttpAuthenticationTests();
 	} catch (const std::exception &error) {
 		std::cerr << "Backend test failure: " << error.what() << '\n';
 		return 1;

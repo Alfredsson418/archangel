@@ -6,9 +6,9 @@ This guide describes the automated tests currently in the repository, how to run
 
 - Python 3 and `pip` for the Flask dashboard tests.
 - A C++20 compiler and `make` for backend tests.
-- `libnftables` development files for building the backend executable with `make debug`.
+- `libnftables`, SQLite, Argon2, and OpenSSL development files for building and testing backend authentication code.
 
-The GitHub Actions workflow uses Python 3.12 and installs `g++`, `make`, and `libnftables-dev` on Ubuntu.
+The GitHub Actions workflow uses Python 3.12 and installs `g++`, `make`, `libnftables-dev`, `libsqlite3-dev`, `libargon2-dev`, and `libssl-dev` on Ubuntu.
 
 ## Dashboard tests
 
@@ -50,13 +50,16 @@ The test executable is built at `build/core/tests/backend_tests`. The target com
 
 | Module | Coverage |
 | --- | --- |
-| `core/tests/test_config.cpp` | Config v2 parsing and serialization, ownership-section classification, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
+| `core/tests/test_auth_provider.cpp` | Initial administrator provisioning, normalized and configurable password policy, configurable Argon2id credential verification, API session creation/validation/revocation and expiry, token/password non-persistence, and private SQLite file permissions. |
+| `core/tests/test_runtime_config.cpp` | Runtime config defaults and overrides, strict schema/type/value validation, secure file ownership/permissions, missing-file behavior, and symlink rejection. |
+| `core/tests/test_http_authentication.cpp` | Default route authentication, public health/login allowlist, Bearer session validation, viewer/operator/admin firewall permissions, login/logout API behavior, and fail-closed storage errors. |
+| `core/tests/test_firewall_config.cpp` | Firewall bundle v1 parsing and serialization, ownership-section classification, listener-setting exclusion, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
 | `core/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |
 | `core/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |
 | `core/tests/test_rules_api.cpp` | Structured rule creation and deletion, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
 | `core/tests/test_statistics_api.cpp` | JSON response shape and content type for firewall statistics. |
 
-Rule-handler tests use a mock `Firewall`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.
+Authentication tests use isolated temporary SQLite files. Rule-handler tests use a mock `Firewall`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.
 
 Expected result: the command exits with status 0 and prints:
 
@@ -75,7 +78,7 @@ The unit-test target is separate from the application build. To compile and link
 make debug
 ```
 
-This produces `./archangel` and requires a C++20 compiler plus the `libnftables` development package. A successful build ends with `Done!`. Building the executable does not run tests.
+This produces `./archangel` and requires a C++20 compiler plus development packages for libnftables, SQLite, Argon2, and OpenSSL. A successful build ends with `Done!`. Building the executable does not run tests.
 
 ## Continuous integration
 

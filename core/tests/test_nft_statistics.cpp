@@ -1,4 +1,4 @@
-#include "../src/firewall/nft_statistics.hpp"
+#include "../src/firewall/providers/nft_statistics.hpp"
 #include "test_support.hpp"
 
 #include <stdexcept>

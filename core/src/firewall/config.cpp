@@ -1,5 +1,5 @@
-#include "../include/config.hpp"
-#include "../lib/json/json.hpp"
+#include "../../include/firewall/config.hpp"
+#include "../../lib/json/json.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -37,43 +37,23 @@ Json parseJson(const std::string &content) {
 }
 } // namespace
 
-BackendConfig parseBackendConfig(const std::string &content) {
+FirewallConfig parseFirewallConfig(const std::string &content) {
 	const Json document = parseJson(content);
 	if (!document.is_object() || !document.contains("format") ||
 		!document["format"].is_string() ||
-		document["format"] != "archangel-backend-config" ||
+		document["format"] != "archangel-firewall-config" ||
 		!document.contains("version") ||
 		!document["version"].is_number_integer() ||
-		!document.contains("server") || !document["server"].is_object() ||
 		!document.contains("firewall") || !document["firewall"].is_object() ||
-		document.size() != 4) {
+		document.size() != 3) {
 		throw std::runtime_error(
-			"Config must use format archangel-backend-config version 2");
+			"Firewall bundle must use format archangel-firewall-config version 1");
 	}
 
 	const int version = document["version"].get<int>();
-	if (version != 2) {
+	if (version != 1) {
 		throw std::runtime_error(
-			"Config must use format archangel-backend-config version 2");
-	}
-
-	const Json &server = document["server"];
-	if (!server.contains("interface") || !server["interface"].is_string() ||
-		!server.contains("port") || !server["port"].is_number_integer() ||
-		server.size() != 2) {
-		throw std::runtime_error(
-			"Config server requires a string interface and integer port");
-	}
-	const std::string interface = server["interface"].get<std::string>();
-	const Json		 &port		= server["port"];
-	if (port < 1 || port > 65535) {
-		throw std::runtime_error("Config server interface or port is invalid");
-	}
-	const unsigned int portValue = port.get<unsigned int>();
-	if (interface.empty() || interface.size() > 255 ||
-		interface.find_first_of(" \t\r\n") != std::string::npos ||
-		interface.find('\0') != std::string::npos) {
-		throw std::runtime_error("Config server interface or port is invalid");
+			"Firewall bundle must use format archangel-firewall-config version 1");
 	}
 
 	const Json &firewall = document["firewall"];
@@ -81,7 +61,7 @@ BackendConfig parseBackendConfig(const std::string &content) {
 		!firewall.contains("archangel_rules") || firewall.size() != 2 ||
 		!firewall["archangel_rules"].is_array()) {
 		throw std::runtime_error(
-			"Version 2 config requires firewall.other_ruleset and "
+			"Version 1 firewall bundle requires firewall.other_ruleset and "
 			"firewall.archangel_rules");
 	}
 
@@ -105,27 +85,24 @@ BackendConfig parseBackendConfig(const std::string &content) {
 	for (const Json &entry : archangelRules) {
 		combined["nftables"].push_back(entry);
 	}
-	return {interface, static_cast<std::uint16_t>(portValue), combined.dump(),
-			archangelRules.dump()};
+	return {combined.dump(), archangelRules.dump()};
 }
 
-BackendConfigImportMode
-resolveBackendConfigImportMode(const std::string &mode) {
+FirewallConfigImportMode
+resolveFirewallConfigImportMode(const std::string &mode) {
 	if (mode == "merge") {
-		return BackendConfigImportMode::Merge;
+		return FirewallConfigImportMode::Merge;
 	}
 	if (mode == "replace-all") {
-		return BackendConfigImportMode::ReplaceAll;
+		return FirewallConfigImportMode::ReplaceAll;
 	}
 	if (mode == "replace") {
-		return BackendConfigImportMode::ReplaceArchangel;
+		return FirewallConfigImportMode::ReplaceArchangel;
 	}
 	throw std::runtime_error("Unsupported config import mode");
 }
 
-std::string serializeBackendConfig(const std::string &interface,
-								   std::uint16_t	  port,
-								   const std::string &ruleset) {
+std::string serializeFirewallConfig(const std::string &ruleset) {
 	const Json documentRuleset = parseRuleset(parseJson(ruleset), "Ruleset");
 	Json otherRuleset{{"nftables", Json::array()}};
 	Json archangelRules = Json::array();
@@ -140,9 +117,8 @@ std::string serializeBackendConfig(const std::string &interface,
 				  {"archangel_rules", std::move(archangelRules)}};
 
 	return Json{
-			   {  "format",					"archangel-backend-config"},
-			   { "version",											2},
-			   {  "server", {{"interface", interface}, {"port", port}}},
+			   {  "format",					"archangel-firewall-config"},
+			   { "version",											1},
 			   {"firewall",						   std::move(firewall)}
 	}
 			   .dump(2) +

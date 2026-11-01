@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../../lib/cpp-httplib/cpp-httplib.hpp"
-#include "../../firewall/firewall.hpp"
+#include "../../firewall/providers/firewall.hpp"
 
 namespace HttpApi {
 /**

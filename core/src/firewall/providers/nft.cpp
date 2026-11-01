@@ -1,8 +1,8 @@
-#include "../../include/firewall/nft.hpp"
-#include "../../include/config.hpp"
-#include "../../include/error.hpp"
-#include "../../include/logger.hpp"
-#include "../../lib/json/json.hpp"
+#include "../../../include/firewall/providers/nft.hpp"
+#include "../../../include/firewall/config.hpp"
+#include "../../../include/error.hpp"
+#include "../../../include/logger.hpp"
+#include "../../../lib/json/json.hpp"
 #include "nft_import.hpp"
 #include "nft_statistics.hpp"
 #include <arpa/inet.h>

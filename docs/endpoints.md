@@ -1,5 +1,5 @@
 # Exposed Endpoints
-The C++ API runs separately from the Flask dashboard. The intended deployment places the privileged API binary on the server whose firewall it manages and allows the portable, Dockerized dashboard to run on a separate management computer. Configure the dashboard with an API base URL routable to that server; do not assume localhost refers to the same machine in a split-host setup. Flask reads the API directly while rendering pages and does not expose API passthrough routes. This separation is an architectural goal; the current API lacks authentication and HTTPS, so deployments must remain on localhost or a trusted, isolated management network.
+The C++ API runs separately from the Flask dashboard. The intended deployment places the privileged API binary on the server whose firewall it manages and allows the portable, Dockerized dashboard to run on a separate management computer. Configure the dashboard with an API base URL routable to that server; do not assume localhost refers to the same machine in a split-host setup. Flask reads the API directly while rendering pages and does not expose API passthrough routes. The C++ API requires backend-issued Bearer sessions for every route except health and login. The dashboard does not yet have a login flow to obtain and send those sessions, and API traffic is plain HTTP; keep both services on localhost or a trusted, isolated management network.
 
 ## Flask Dashboard
 
@@ -75,30 +75,61 @@ Returns diagnostic status information as JSON:
 }
 ```
 
-`backend_version` is the Git commit hash embedded when the backend binary is built; the example hash above is the current commit and will change with later builds from different commits. `uptime_seconds` is the number of seconds since the backend process started. This endpoint currently has no authentication, like the rest of the API, but is intended to require backend authentication and authorization in the future. Unlike `/status/health`, it must not be treated as a public liveness endpoint.
+`backend_version` is the Git commit hash embedded when the backend binary is built; the example hash above is the current commit and will change with later builds from different commits. `uptime_seconds` is the number of seconds since the backend process started. Unlike `/status/health`, this endpoint requires an authenticated Bearer session.
 
-## API schema version
+### `POST /api/v1/auth/login`
 
-All API calls except `GET /status/health` must send the `X-Archangel-Schema-Version` request header. The backend validates it and returns the supported schema version in the same response header. The current schema version is `1`; a missing or unsupported version is rejected with HTTP `400` and a JSON error response. JSON response bodies retain their documented shapes; the header versions those shapes independently of the `/api/v1` API route version.
-
-The health endpoint is deliberately exempt so basic liveness remains available without schema negotiation or authentication.
-
-## Current authentication status
-
-The API currently has no authentication or authorization. As a planned security control, backend authentication and authorization will be enforced on every API call other than `/status/health`, including `/status/info`, reads, and mutations. The frontend login alone must never grant API access; every other request must carry credentials or a verifiable backend-issued credential. Mutating endpoints apply changes immediately. See [Security](../SECURITY.md) before enabling access beyond localhost.
-
-## Backend CLI configuration
-
-The backend supports one-shot export and startup import using version 2 JSON configs. Config v2 separates rules marked as Archangel-managed from other native nftables rules and objects:
+Public endpoint for exchanging local account credentials for an opaque backend session. It requires the API schema header and a JSON body:
 
 ```json
 {
-  "format": "archangel-backend-config",
-  "version": 2,
-  "server": {
-    "interface": "127.0.0.1",
-    "port": 8080
-  },
+  "username": "admin",
+  "password": "operator-entered-password"
+}
+```
+
+Success returns HTTP `200` with the token and identity:
+
+```json
+{
+  "access_token": "opaque-session-token",
+  "token_type": "Bearer",
+  "identity": {
+    "id": "backend-user-id",
+    "username": "admin",
+    "role": "administrator"
+  }
+}
+```
+
+Invalid credentials return HTTP `401`; malformed, oversized, or extra-field requests return HTTP `400`. Credentials are never included in responses or logs. Treat the token as a secret. The backend stores only a hash of the token.
+
+### `POST /api/v1/auth/logout`
+
+Requires a valid Bearer session and the API schema header. Revokes the caller's session and returns HTTP `204` with no body.
+
+## API schema version
+
+All API calls except `GET /status/health` must send the `X-Archangel-Schema-Version` request header, including the public login endpoint. The backend validates it and returns the supported schema version in the same response header. The current schema version is `1`; a missing or unsupported version is rejected with HTTP `400` and a JSON error response. JSON response bodies retain their documented shapes; the header versions those shapes independently of the `/api/v1` API route version.
+
+The health endpoint is deliberately exempt so basic liveness remains available without schema negotiation or authentication.
+
+## Authentication and authorization
+
+Login attempts are limited per source IP and return HTTP `429` with `Retry-After` when the configured threshold is exceeded. This is the only implemented API rate limit; general request and firewall-mutation limits remain planned.
+
+The backend applies authentication globally before route handling: all endpoints, including `/status/info` and future routes, require a valid Bearer session unless explicitly added to the narrow public allowlist. Currently only `GET /status/health` and `POST /api/v1/auth/login` are public. Missing, invalid, or expired sessions receive HTTP `401`; session-store failures fail closed with HTTP `500`.
+
+All authenticated roles can use read endpoints. `POST /api/v1/rules` and `DELETE /api/v1/rules` require the `operator` or `administrator` role; viewers receive HTTP `403`. Bootstrap creates the initial administrator through `user bootstrap-admin`. The dashboard login/client integration is not implemented yet, so dashboard API-backed views cannot use the protected endpoints until that integration is added. Bearer credentials travel over plain HTTP in the current backend; do not expose the API outside localhost or a trusted, isolated management network. Mutating endpoints apply changes immediately. See [Security](../SECURITY.md).
+
+## Firewall ruleset bundle
+
+The backend supports one-shot export and startup import using version 1 firewall config bundles. The bundle format is `archangel-firewall-config`; it contains firewall rules only and is independent of listener and other runtime settings described in the [runtime-config guide](runtime-config.md). V1 separates rules marked as Archangel-managed from other native nftables rules and objects:
+
+```json
+{
+  "format": "archangel-firewall-config",
+  "version": 1,
   "firewall": {
     "other_ruleset": {
       "nftables": [
@@ -113,15 +144,15 @@ The backend supports one-shot export and startup import using version 2 JSON con
 }
 ```
 
-Exported configs contain the complete ruleset objects and expressions, divided by the `archangel-managed` rule comment. `server.interface` is the backend bind hostname/address used by `--host` (not necessarily a network-device name). The `--port` and `--host` command-line options override the imported values when explicitly supplied.
+Exported firewall bundles contain the complete ruleset objects and expressions, divided by the `archangel-managed` rule comment. Listener settings come only from the backend runtime config and `--host`/`--port`.
 
-- `--export-config PATH` writes config v2 with `firewall.other_ruleset` and `firewall.archangel_rules`. Rules created through Archangel's structured API have the nftables comment `archangel-managed` and are placed in `archangel_rules`; all other rules and nftables objects are placed in `other_ruleset`. This comment is a reserved ownership marker, not an access-control mechanism.
-- `--import-config PATH --rules-mode merge` imports the config before the API starts and adds its objects/rules to the active ruleset.
-- `--import-config PATH --rules-mode replace` atomically replaces only currently marked Archangel rules and leaves unmarked rules and other objects untouched; the referenced tables and chains must already exist.
-- `--import-config PATH --rules-mode replace-all` explicitly flushes the entire active nftables ruleset, including tables not created by Archangel, then applies all imported objects and rules. This is destructive and can disconnect clients or lock out administrators.
-- Import mode is required for each import; accepted values are `merge`, `replace`, and `replace-all`. Only config version 2 is supported. Import and export cannot be combined. Imported and exported files are limited to 16 MiB.
+- `--export-firewall-config PATH` writes firewall bundle v1 with `firewall.other_ruleset` and `firewall.archangel_rules`. Rules created through Archangel's structured API have the nftables comment `archangel-managed` and are placed in `archangel_rules`; all other rules and nftables objects are placed in `other_ruleset`. This comment is a reserved ownership marker, not an access-control mechanism.
+- `--import-firewall-config PATH --firewall-rules-mode merge` imports the bundle before the API starts and adds its objects/rules to the active ruleset.
+- `--import-firewall-config PATH --firewall-rules-mode replace` atomically replaces only currently marked Archangel rules and leaves unmarked rules and other objects untouched; the referenced tables and chains must already exist.
+- `--import-firewall-config PATH --firewall-rules-mode replace-all` explicitly flushes the entire active nftables ruleset, including tables not created by Archangel, then applies all imported objects and rules. This is destructive and can disconnect clients or lock out administrators.
+- Import mode is required for each import; accepted values are `merge`, `replace`, and `replace-all`. Only firewall bundle format `archangel-firewall-config` version 1 is supported; older formats and versions are rejected. Import and export cannot be combined. Imported and exported files are limited to 16 MiB.
 
-The v2 firewall section has this shape:
+The v1 firewall section has this shape:
 
 ```json
 {
@@ -172,7 +203,7 @@ Returns a `sources` array. Each source has a stable `id`, display `label`, boole
 - `archangel`: up to 100 entries from `./app.log`, the current C++ logger's working-directory-relative output file.
 - `nftables`: up to 100 recent kernel-journal lines matching packet-log fields, only when the active ruleset contains nftables `log` statements. This source uses `journalctl`; if logging is not configured or journal access is unavailable, the source reports the reason and returns no entries.
 
-This endpoint does not enable firewall logging. Results are bounded, long lines are truncated, and common credential-like fields are redacted. Logs may still contain sensitive system or network details. The API currently has no authentication, so keep it and the dashboard on localhost or a trusted, isolated management network. Add future sources as separate source objects with explicit availability and failure details.
+This endpoint does not enable firewall logging. Results are bounded, long lines are truncated, and common credential-like fields are redacted. Logs may still contain sensitive system or network details. This endpoint requires a valid backend session; keep the API and dashboard on localhost or a trusted, isolated management network because API traffic is plain HTTP and the dashboard does not yet integrate backend login. Add future sources as separate source objects with explicit availability and failure details.
 
 ### `POST /api/v1/rules`
 

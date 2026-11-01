@@ -1,4 +1,6 @@
 #include "../../include/http/server.hpp"
+#include "../../include/http/authentication.hpp"
+#include "../../include/http/api/auth.hpp"
 #include "../../include/http/api/health.hpp"
 #include "../../include/http/api/logs.hpp"
 #include "../../include/http/api/rules.hpp"
@@ -6,6 +8,7 @@
 #include "../../include/http/api/stats.hpp"
 #include "../../include/http/api/status.hpp"
 #include "../../include/http/api/system.hpp"
+#include "../../include/config/app_config.hpp"
 #include "../../include/logger.hpp"
 #include "../../lib/json/json.hpp"
 #include "archangel_version.hpp"
@@ -90,11 +93,22 @@ httplib::Server::Handler withRequestLogging(const char				*method,
 }
 } // namespace
 
-HttpServer::HttpServer(Firewall &firewall)
-	: firewall_(firewall), started_at_(std::chrono::steady_clock::now()) {}
+HttpServer::HttpServer(Firewall &firewall, Auth::AuthProvider &auth,
+					   AppConfig::Server serverConfig,
+					   AppConfig::RateLimits rateLimits)
+	: firewall_(firewall), auth_(auth),
+	  login_limiter_(rateLimits.failed_auth_attempts,
+					 std::chrono::seconds(
+						 rateLimits.failed_auth_window_seconds)),
+	  server_config_(std::move(serverConfig)),
+	  started_at_(std::chrono::steady_clock::now()) {}
 
 void HttpServer::run() {
 	httplib::Server server;
+	server.set_pre_routing_handler(
+		[this](const httplib::Request &request, httplib::Response &response) {
+			return HttpApi::authorizeApiRequest(auth_, request, response);
+		});
 
 	server.Get("/status/health",
 			   withRequestLogging("GET", "/status/health",
@@ -111,6 +125,20 @@ void HttpServer::run() {
 						std::chrono::steady_clock::now() - started_at_);
 				HttpApi::getStatus(request, response, ARCHANGEL_GIT_COMMIT,
 								   static_cast<std::uint64_t>(uptime.count()));
+			})));
+	server.Post(
+		"/api/v1/auth/login",
+		withRequestLogging(
+			"POST", "/api/v1/auth/login",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::login(auth_, login_limiter_, request, response);
+			})));
+	server.Post(
+		"/api/v1/auth/logout",
+		withRequestLogging(
+			"POST", "/api/v1/auth/logout",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::logout(auth_, request, response);
 			})));
 	server.Get(
 		"/api/v1/rules",
@@ -154,10 +182,12 @@ void HttpServer::run() {
 				HttpApi::getLogs(firewall_, request, response);
 			})));
 
-	Logger::Firewall::log("Archangel listening on " + CLI_ARGS::http_hostname +
-						  ":" + std::to_string(CLI_ARGS::http_port));
+	Logger::Firewall::log("Archangel listening on " +
+						  server_config_.bind_address + ":" +
+						  std::to_string(server_config_.port));
 
-	if (!server.listen(CLI_ARGS::http_hostname.c_str(), CLI_ARGS::http_port)) {
+	if (!server.listen(server_config_.bind_address.c_str(),
+					   server_config_.port)) {
 		throw std::runtime_error("Failed to start HTTP server");
 	}
 }

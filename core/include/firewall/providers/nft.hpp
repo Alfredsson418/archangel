@@ -1,12 +1,13 @@
 #pragma once
 
 #include "firewall.hpp"
+#include "firewall_config_provider.hpp"
 #include <mutex>
 #include <nftables/libnftables.h>
 #include <stdexcept>
 #include <string>
 
-class Nftables : public Firewall {
+class Nftables : public Firewall, public FirewallConfigProvider {
   public:
 	/**
 	 * @brief Creates an nftables context configured for buffered JSON output.
@@ -27,30 +28,21 @@ class Nftables : public Firewall {
 	std::string listRules() override;
 
 	/**
-	 * @brief Exports the complete active nftables ruleset as nftables JSON.
-	 * @return Serialized native nftables JSON ruleset.
-	 * @throws std::runtime_error If the ruleset cannot be read.
+	 * @brief Exports the active ruleset in the versioned firewall bundle.
+	 * @return Versioned firewall bundle JSON.
+	 * @throws std::exception If the active configuration cannot be exported.
 	 */
-	std::string exportRuleset();
+	std::string exportFirewallConfig() override;
 
 	/**
-	 * @brief Applies a native nftables JSON ruleset through libnftables.
-	 * @param ruleset Serialized native nftables JSON ruleset.
-	 * @param replaceAll Whether to flush the entire active ruleset first.
+	 * @brief Validates and applies a versioned firewall bundle.
+	 * @param bundle Versioned firewall bundle JSON.
+	 * @param mode Explicit merge or replacement operation.
 	 * @return No value.
-	 * @throws std::runtime_error If the configuration cannot be applied.
+	 * @throws std::exception If the bundle is invalid or cannot be applied.
 	 */
-	void importRuleset(const std::string &ruleset, bool replaceAll);
-
-	/**
-	 * @brief Atomically replaces only rules carrying the Archangel marker.
-	 * @param rules Serialized nftables array containing only marked rule
-	 * objects.
-	 * @return No value.
-	 * @throws std::runtime_error If the input or active ruleset is invalid or
-	 * the transaction fails.
-	 */
-	void replaceArchangelRuleset(const std::string &rules);
+	void importFirewallConfig(const std::string &bundle,
+							  FirewallConfigImportMode mode) override;
 
 	/**
 	 * @brief Implements Firewall::getStatistics.
@@ -81,6 +73,32 @@ class Nftables : public Firewall {
 					const std::string &chain, std::uint64_t handle) override;
 
   private:
+	/**
+	 * @brief Exports the complete active nftables ruleset as nftables JSON.
+	 * @return Serialized native nftables JSON ruleset.
+	 * @throws std::runtime_error If the ruleset cannot be read.
+	 */
+	std::string exportRuleset();
+
+	/**
+	 * @brief Applies a native nftables JSON ruleset through libnftables.
+	 * @param ruleset Serialized native nftables JSON ruleset.
+	 * @param replaceAll Whether to flush the entire active ruleset first.
+	 * @return No value.
+	 * @throws std::runtime_error If the configuration cannot be applied.
+	 */
+	void importRuleset(const std::string &ruleset, bool replaceAll);
+
+	/**
+	 * @brief Atomically replaces only rules carrying the Archangel marker.
+	 * @param rules Serialized nftables array containing only marked rule
+	 * objects.
+	 * @return No value.
+	 * @throws std::runtime_error If the input or active ruleset is invalid or
+	 * the transaction fails.
+	 */
+	void replaceArchangelRuleset(const std::string &rules);
+
 	/**
 	 * @brief Executes one command through the owned libnftables context.
 	 * @param command Validated nftables command string.

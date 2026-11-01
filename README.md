@@ -17,15 +17,27 @@
 
 The firewall API is implemented in C++ under `core/src` with dependencies under `core/lib`. The Flask dashboard lives in `app/web` and reads C++ API data server-side when rendering pages, including a system overview, firewall configuration, and source-grouped system logs. These are independently deployable services: the privileged `archangel` binary is intended to run on the server whose firewall it manages, while the Dockerized webapp can run on a separate management computer and connect to that server's API. Keeping the webapp portable is an important design goal; its API base address must be configurable and reachable over the management network rather than tied to the managed server's local filesystem or loopback. See the [architecture guide](docs/architecture.md) for component boundaries and the [frontend design guide](docs/frontend-design.md) for dashboard styling and accessibility conventions.
 
-The Firewall Configuration page can filter and sort active rules, and can export or preview-import versioned rules-only bundles. Import is additive and applies rules one at a time; it is not atomic and does not provide boot-time restoration. The API exposes an unauthenticated, bodyless `/status/health` liveness endpoint and a separate diagnostic `/status/info` endpoint. The latter reports the Git commit hash embedded into the binary during the Make build.
+The Firewall Configuration page can filter and sort active rules, and can export or preview-import versioned rules-only bundles. Import is additive and applies rules one at a time; it is not atomic and does not provide boot-time restoration. The API exposes an unauthenticated, bodyless `/status/health` liveness endpoint; `/status/info` is protected and reports the Git commit hash embedded into the binary during the Make build.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) to report a suspected security flaw and [docs/security-concerns.md](docs/security-concerns.md) for the current security posture, deployment constraints, and planned controls. The API and dashboard do not currently provide authentication or authorization; keep them on localhost or a trusted, isolated management network.
+See [SECURITY.md](SECURITY.md) to report a suspected security flaw and [docs/security-concerns.md](docs/security-concerns.md) for the current security posture, deployment constraints, and planned controls. The C++ API now authenticates protected requests and enforces firewall roles, but the Flask dashboard has no login integration and the API does not provide TLS. Keep both services on localhost or a trusted, isolated management network.
+
+The backend has local-account storage, API authentication, firewall role
+enforcement, and an administrator bootstrap command. Bootstrap the initial
+account interactively:
+
+```sh
+./archangel user bootstrap-admin --username admin
+```
+
+It reads and confirms the password through an interactive terminal and stores
+the account under `/var/lib/archangel/archangel.db` by default. Use
+`--database PATH` to select another private database location.
 
 ## Run
 
-Build and run the C++ API (requires a C++20 compiler and libnftables development files):
+Build and run the C++ API (requires a C++20 compiler and the libnftables, SQLite, Argon2, and OpenSSL development files):
 
 ```sh
 make debug
@@ -34,25 +46,42 @@ make debug
 
 See the [test and verification guide](docs/test.md) for prerequisites, test coverage, commands, expected output, and GitHub Actions behavior.
 
-The backend can export the complete active nftables ruleset together with its
-bind settings in a versioned JSON config, or import a config before starting
-the API. Config v2 is the supported format and separates rules created through
+Backend runtime settings use a separate versioned JSON file at
+`/etc/archangel/config.json`. If the implicit file is absent, built-in defaults
+are used; `--config PATH` selects an explicit required file. The runtime config
+does not import or modify firewall rules. Its format, file permissions,
+supported settings, defaults, and current implementation limits are described
+in the [backend runtime configuration guide](docs/runtime-config.md).
+
+For local development, the API can be configured through command-line flags:
+
+```sh
+./archangel --config /etc/archangel/config.json --host 127.0.0.1 --port 8080
+```
+
+CLI bind settings override runtime-config values. `--import-firewall-config`
+and `--export-firewall-config` are separate explicit firewall-bundle
+operations.
+
+The backend can export the complete active nftables ruleset in a versioned
+firewall config bundle, or import a bundle before starting the API. Firewall
+bundle v1 contains ruleset data only and separates rules created through
 the structured API from other rules and nftables objects:
 
 ```sh
-./archangel --export-config archangel-config.json
-./archangel --import-config archangel-config.json --rules-mode merge
+./archangel --export-firewall-config firewall-config.json
+./archangel --import-firewall-config firewall-config.json --firewall-rules-mode merge
 ```
 
-V2 contains the full native nftables ruleset, including expressions the
+V1 contains the full native nftables ruleset, including expressions the
 dashboard's structured portable bundle cannot represent, and separates rules
 marked `archangel-managed` from other rules and nftables objects. `merge` adds
-the imported configuration. `replace` replaces only marked Archangel rules
+the imported firewall config. `replace` replaces only marked Archangel rules
 and leaves the rest of the active ruleset untouched. Use
-`--rules-mode replace-all` to explicitly flush the entire active ruleset; this
+`--firewall-rules-mode replace-all` to explicitly flush the entire active ruleset; this
 can sever network access or lock out administrators. Review configs before
 importing. CLI `--host` and `--port` values override the corresponding JSON
-settings.
+settings; firewall bundles do not contain listener settings.
 
 ### Run the frontend in Docker
 
@@ -62,7 +91,7 @@ For a same-computer development setup on Linux, with the C++ API running on `127
 docker compose up --build -d
 ```
 
-For a separate management computer, deploy the Dockerized webapp independently, configure the dashboard's API connection to the managed server's reachable management address, and make both services reachable only on a trusted management network. The Compose file's localhost defaults and host-network setup are for the same-computer quickstart, not a remote deployment recipe. The current API has no authentication or HTTPS, so do not expose either service to the public internet.
+For a separate management computer, deploy the Dockerized webapp independently, configure the dashboard's API connection to the managed server's reachable management address, and make both services reachable only on a trusted management network. The Compose file's localhost defaults and host-network setup are for the same-computer quickstart, not a remote deployment recipe. The C++ API authenticates protected requests, but the dashboard does not yet provide login integration and API traffic is not protected by project-configured HTTPS. Do not expose either service to the public internet.
 
 The web app writes request, backend, and configuration events to stdout. View them with `docker compose logs -f web`; set `WEB_LOG_LEVEL=DEBUG` before starting Compose for more detail. Request logs omit query strings and form values.
 

@@ -1,5 +1,5 @@
 #include "../lib/json/json.hpp"
-#include "../src/firewall/nft_import.hpp"
+#include "../src/firewall/providers/nft_import.hpp"
 #include "test_support.hpp"
 
 #include <stdexcept>
