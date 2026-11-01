@@ -1,7 +1,7 @@
 """Loading C++ API resources for rendered pages with the session credential."""
 from flask import current_app, session
 
-from .api_client import ApiConnectionError, ApiResponseError, fetch_json
+from .api_client import ApiConnectionError, ApiResponseError
 
 
 class BackendSessionExpired(Exception):
@@ -21,8 +21,7 @@ def fetch(path):
         ApiResponseError: For other unsuccessful or invalid responses.
     """
     try:
-        return fetch_json(
-            current_app.config["API_URL"],
+        return current_app.config["API_CLIENT"].fetch_json(
             path,
             bearer_token=session.get("access_token"),
         )

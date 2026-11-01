@@ -1,5 +1,8 @@
 from server import app
-from webapp.settings import valid_api_url
+import tempfile
+from pathlib import Path
+
+from webapp.settings import load_api_settings, valid_api_url
 
 from .helpers import DashboardTestCase
 
@@ -25,6 +28,27 @@ class SettingsPageTests(DashboardTestCase):
         ):
             with self.subTest(value=value):
                 self.assertIsNone(valid_api_url(value))
+
+    def test_api_settings_come_from_the_deployment_environment(self):
+        settings = load_api_settings({})
+        self.assertEqual(settings.base_url, "http://127.0.0.1:8080")
+        self.assertFalse(settings.from_environment)
+        self.assertIsNone(settings.ca_bundle)
+
+        bundle = Path(tempfile.mkdtemp()) / "ca.pem"
+        bundle.write_text("placeholder")
+        settings = load_api_settings(
+            {"ARCHANGEL_API_URL": "https://api.example:8443/", "ARCHANGEL_API_CA_BUNDLE": str(bundle)}
+        )
+        self.assertEqual(settings.base_url, "https://api.example:8443")
+        self.assertTrue(settings.from_environment)
+        self.assertEqual(settings.ca_bundle, bundle)
+
+    def test_api_settings_reject_invalid_values(self):
+        with self.assertRaises(RuntimeError):
+            load_api_settings({"ARCHANGEL_API_URL": "ftp://api.example"})
+        with self.assertRaises(RuntimeError):
+            load_api_settings({"ARCHANGEL_API_CA_BUNDLE": "/nonexistent/ca.pem"})
 
     def test_browser_cannot_change_backend_destination(self):
         response = self.client.post(

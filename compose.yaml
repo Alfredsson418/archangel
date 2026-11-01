@@ -11,6 +11,9 @@ services:
       ARCHANGEL_API_URL: ${ARCHANGEL_API_URL:-http://127.0.0.1:8080}
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-secret_key}
       ARCHANGEL_COOKIE_SECURE: ${ARCHANGEL_COOKIE_SECURE:-false}
+      # Path inside the container to a private CA bundle for an HTTPS API URL;
+      # mount the PEM file read-only, for example ./api-ca.pem:/run/archangel/api-ca.pem:ro
+      ARCHANGEL_API_CA_BUNDLE: ${ARCHANGEL_API_CA_BUNDLE:-}
     volumes:
       - archangel-web-config:/data
     restart: unless-stopped

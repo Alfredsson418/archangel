@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     WEB_WORKERS=1 \
     WEB_LOG_LEVEL=INFO \
     ARCHANGEL_API_URL=http://127.0.0.1:8080 \
-    ARCHANGEL_SESSION_DATABASE=/data/sessions.db
+    ARCHANGEL_SESSION_DATABASE=/data/sessions.db \
+    ARCHANGEL_WEB_LOG_PATH=/data/archangel-frontend.jsonl
 
 WORKDIR /app
 

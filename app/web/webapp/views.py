@@ -17,7 +17,6 @@ from .api_client import (
     API_SCHEMA_VERSION,
     ApiConnectionError,
     ApiResponseError,
-    request_backend,
 )
 from .backend import BackendSessionExpired, load, load_all
 from .firewall_rules import (
@@ -154,8 +153,7 @@ def login():
             error = "Enter a valid username and password."
         else:
             try:
-                response = request_backend(
-                    current_app.config["API_URL"],
+                response = current_app.config["API_CLIENT"].request(
                     "/api/v1/auth/login",
                     method="POST",
                     body=json.dumps(
@@ -203,8 +201,7 @@ def logout():
     logout_failed = False
     if isinstance(token, str):
         try:
-            response = request_backend(
-                current_app.config["API_URL"],
+            response = current_app.config["API_CLIENT"].request(
                 "/api/v1/auth/logout",
                 method="POST",
                 bearer_token=token,
@@ -323,8 +320,7 @@ def import_rules():
         failure = None
         for index, rule in enumerate(rules, start=1):
             try:
-                result = request_backend(
-                    current_app.config["API_URL"],
+                result = current_app.config["API_CLIENT"].request(
                     "/api/v1/rules",
                     method="POST",
                     body=json.dumps(rule).encode("utf-8"),
