@@ -42,7 +42,11 @@ void sendLoginError(httplib::Response &response, int status, const char *code,
 					const char *message) {
 	response.status = status;
 	response.set_content(
-		Detail::Json{{"error", message}, {"code", code}}.dump(),
+		Detail::Json{
+			{"error", message},
+			{ "code",	 code}
+	  }
+			.dump(),
 		"application/json");
 }
 } // namespace
@@ -69,13 +73,12 @@ void login(Auth::AuthProvider &auth, RateLimiter &limiter,
 		return;
 	}
 
-	const std::string username = credentials["username"].get<std::string>();
+	const std::string  username = credentials["username"].get<std::string>();
 	Auth::SecretString password(
 		std::move(credentials["password"].get_ref<std::string &>()));
 	std::uint32_t retryAfterSeconds = 0;
 	if (!limiter.allow(request.remote_addr, retryAfterSeconds)) {
-		response.set_header("Retry-After",
-							std::to_string(retryAfterSeconds));
+		response.set_header("Retry-After", std::to_string(retryAfterSeconds));
 		sendLoginError(response, 429, "rate_limited",
 					   "Too many login attempts; try again later");
 		return;
@@ -92,12 +95,13 @@ void login(Auth::AuthProvider &auth, RateLimiter &limiter,
 		response.status = 200;
 		response.set_content(
 			Detail::Json{
-				{"access_token", session->token},
-				{"token_type", "Bearer"},
-				{"identity",
+				{"access_token",session->token								   },
+				{	 "token_type",					   "Bearer"},
+				{	 "identity",
 				 {{"id", session->identity.id},
 				  {"username", session->identity.username},
-				  {"role", roleName(session->identity.role)}}}}
+				  {"role", roleName(session->identity.role)}} }
+		  }
 				.dump(),
 			"application/json");
 	} catch (const std::exception &error) {
@@ -113,8 +117,10 @@ void logout(Auth::AuthProvider &auth, const httplib::Request &request,
 	if (!token) {
 		response.status = 401;
 		response.set_content(
-			Detail::Json{{"error", "A valid Bearer session is required"},
-						 {"code", "authentication_required"}}
+			Detail::Json{
+				{"error", "A valid Bearer session is required"},
+				{ "code",			 "authentication_required"}
+		   }
 				.dump(),
 			"application/json");
 		return;
@@ -124,14 +130,13 @@ void logout(Auth::AuthProvider &auth, const httplib::Request &request,
 		response.status = 204;
 	} catch (const std::exception &error) {
 		Detail::sendOperationError(response, "POST /api/v1/auth/logout", error,
-								   "authentication_error",
-								   "Logout failed");
+								   "authentication_error", "Logout failed");
 	}
 }
 
-void completeAccountSetup(Auth::AuthProvider &auth,
+void completeAccountSetup(Auth::AuthProvider	 &auth,
 						  const httplib::Request &request,
-						  httplib::Response &response) {
+						  httplib::Response		 &response) {
 	if (request.body.size() > AppConfigLimits::MAX_LOGIN_BODY_BYTES) {
 		sendLoginError(response, 400, "invalid_request",
 					   "Account setup request is invalid");
@@ -146,15 +151,14 @@ void completeAccountSetup(Auth::AuthProvider &auth,
 		return;
 	}
 	if (!document.is_object() || document.size() != 2 ||
-		!document.contains("setup_token") ||
-		!document.contains("password") ||
+		!document.contains("setup_token") || !document.contains("password") ||
 		!document["setup_token"].is_string() ||
 		!document["password"].is_string()) {
 		sendLoginError(response, 400, "invalid_request",
 					   "Account setup request is invalid");
 		return;
 	}
-	const std::string token = document["setup_token"].get<std::string>();
+	const std::string  token = document["setup_token"].get<std::string>();
 	Auth::SecretString password(
 		std::move(document["password"].get_ref<std::string &>()));
 	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||

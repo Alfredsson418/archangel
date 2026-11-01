@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 
 namespace {
-std::ofstream logStream;
+std::ofstream			logStream;
 std::mutex				logMutex;
 constexpr Logger::Level minimumLevel = Logger::Level::DEBUG;
 
@@ -68,9 +68,9 @@ void openLogStream() {
 }
 
 std::string currentTime() {
-	const auto now = std::chrono::system_clock::now();
-	const std::time_t time = std::chrono::system_clock::to_time_t(now);
-	std::string timestamp = std::ctime(&time);
+	const auto		  now		= std::chrono::system_clock::now();
+	const std::time_t time		= std::chrono::system_clock::to_time_t(now);
+	std::string		  timestamp = std::ctime(&time);
 	if (!timestamp.empty() && timestamp.back() == '\n') {
 		timestamp.pop_back();
 	}
@@ -88,9 +88,8 @@ void Logger::log(const std::string &message, Level level, Type type) {
 		openLogStream();
 	}
 
-	const std::string entry = "[" + currentTime() + "] << " +
-							  levelName(level) + ":" + typeName(type) +
-							  " >> " + message;
+	const std::string entry = "[" + currentTime() + "] << " + levelName(level) +
+							  ":" + typeName(type) + " >> " + message;
 	std::cout << entry << std::endl;
 	if (logStream.is_open()) {
 		logStream << entry << std::endl;

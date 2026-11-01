@@ -4,24 +4,20 @@
 #include <openssl/crypto.h>
 
 #include <cerrno>
+#include <fcntl.h>
 #include <stdexcept>
 #include <string>
-#include <utility>
-#include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
+#include <utility>
 
 namespace Auth {
 
 SecretString::SecretString(std::string value) : value_(std::move(value)) {}
 
-SecretString::~SecretString() {
-	OPENSSL_cleanse(value_.data(), value_.size());
-}
+SecretString::~SecretString() { OPENSSL_cleanse(value_.data(), value_.size()); }
 
-const std::string &SecretString::value() const {
-	return value_;
-}
+const std::string &SecretString::value() const { return value_; }
 
 namespace {
 class TerminalPasswordPrompt {
@@ -42,7 +38,8 @@ class TerminalPasswordPrompt {
 		if (tcsetattr(file_, TCSAFLUSH, &hidden) != 0) {
 			close(file_);
 			file_ = -1;
-			throw std::runtime_error("Unable to disable terminal password echo");
+			throw std::runtime_error(
+				"Unable to disable terminal password echo");
 		}
 		echoDisabled_ = true;
 	}
@@ -58,12 +55,12 @@ class TerminalPasswordPrompt {
 
 	std::string read(const char *prompt) {
 		std::string password;
-		bool tooLong = false;
+		bool		tooLong = false;
 		try {
 			writeAll(prompt);
 			for (;;) {
-				char character = '\0';
-				const ssize_t result = ::read(file_, &character, 1);
+				char		  character = '\0';
+				const ssize_t result	= ::read(file_, &character, 1);
 				if (result == -1 && errno == EINTR) {
 					continue;
 				}
@@ -94,7 +91,7 @@ class TerminalPasswordPrompt {
   private:
 	void writeAll(const char *text) {
 		std::size_t remaining = std::char_traits<char>::length(text);
-		const char *cursor = text;
+		const char *cursor	  = text;
 		while (remaining > 0) {
 			const ssize_t written = ::write(file_, cursor, remaining);
 			if (written == -1 && errno == EINTR) {
@@ -108,9 +105,9 @@ class TerminalPasswordPrompt {
 		}
 	}
 
-	int file_ = -1;
+	int		file_ = -1;
 	termios original_{};
-	bool echoDisabled_ = false;
+	bool	echoDisabled_ = false;
 };
 } // namespace
 
@@ -119,4 +116,4 @@ std::string promptPassword(const char *prompt) {
 	return terminal.read(prompt);
 }
 
-} // namespace Secrets
+} // namespace Auth

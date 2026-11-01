@@ -37,8 +37,8 @@ void disableAccount(Auth::AuthProvider &auth, const httplib::Request &request,
  * @brief Issues a one-time account setup or password-reset token.
  * @return No value; writes the token once with account metadata.
  */
-void issueAccountSetupToken(Auth::AuthProvider &auth,
+void issueAccountSetupToken(Auth::AuthProvider	   &auth,
 							const httplib::Request &request,
-							httplib::Response &response);
+							httplib::Response	   &response);
 
 } // namespace HttpApi

@@ -18,7 +18,11 @@ void reject(httplib::Response &response, int status, const char *code,
 			const char *message) {
 	response.status = status;
 	response.set_content(
-		Json{{"error", message}, {"code", code}}.dump(),
+		Json{
+			{"error", message},
+			{ "code",	 code}
+	  }
+			.dump(),
 		"application/json");
 }
 
@@ -43,8 +47,9 @@ bool satisfies(Auth::Role role, RouteAccess access) {
 	return false;
 }
 
-httplib::Server::HandlerResponse rateLimitResponse(
-	httplib::Response &response, std::uint32_t retryAfterSeconds) {
+httplib::Server::HandlerResponse
+rateLimitResponse(httplib::Response &response,
+				  std::uint32_t		 retryAfterSeconds) {
 	response.set_header("Retry-After", std::to_string(retryAfterSeconds));
 	reject(response, 429, "rate_limited",
 		   "API request rate limit exceeded; try again later");
@@ -76,11 +81,11 @@ void RateLimiter::pruneExpired(std::chrono::steady_clock::time_point now) {
 }
 
 bool RateLimiter::allow(std::string_view key,
-						std::uint32_t &retryAfterSeconds) {
+						std::uint32_t	&retryAfterSeconds) {
 	std::lock_guard<std::mutex> lock(mutex_);
 	const auto					now = std::chrono::steady_clock::now();
 	const std::string stableKey = key.empty() ? "<unknown>" : std::string(key);
-	auto window = windows_.find(stableKey);
+	auto			  window	= windows_.find(stableKey);
 	if (window != windows_.end() && now - window->second.started >= window_) {
 		window->second = Window{now, 0};
 	}
@@ -96,10 +101,9 @@ bool RateLimiter::allow(std::string_view key,
 		}
 		window = windows_.emplace(stableKey, Window{now, 0}).first;
 	}
-	const auto elapsed =
-		std::chrono::duration_cast<std::chrono::seconds>(
-			now - window->second.started)
-			.count();
+	const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+							 now - window->second.started)
+							 .count();
 	if (window->second.requests >= maximum_requests_) {
 		retryAfterSeconds = static_cast<std::uint32_t>(
 			std::max<std::int64_t>(1, window_.count() - elapsed));
@@ -140,13 +144,11 @@ std::optional<std::string> bearerToken(const httplib::Request &request) {
 	if (request.get_header_value_count("Authorization") != 1) {
 		return std::nullopt;
 	}
-	const std::string authorization =
-		request.get_header_value("Authorization");
-	constexpr char scheme[] = "bearer ";
+	const std::string authorization = request.get_header_value("Authorization");
+	constexpr char	  scheme[]		= "bearer ";
 	if (authorization.size() <= sizeof(scheme) - 1 ||
 		!std::equal(std::begin(scheme), std::end(scheme) - 1,
-					authorization.begin(),
-					[](char expected, char actual) {
+					authorization.begin(), [](char expected, char actual) {
 						return expected ==
 							   static_cast<char>(std::tolower(
 								   static_cast<unsigned char>(actual)));
@@ -178,8 +180,7 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 	}
 	const std::string supportedVersion = std::to_string(SCHEMA_VERSION);
 	response.set_header(SCHEMA_VERSION_HEADER, supportedVersion);
-	if (request.get_header_value(SCHEMA_VERSION_HEADER) !=
-		supportedVersion) {
+	if (request.get_header_value(SCHEMA_VERSION_HEADER) != supportedVersion) {
 		reject(response, 400, "unsupported_schema_version",
 			   "Missing or unsupported API schema version");
 		return httplib::Server::HandlerResponse::Handled;

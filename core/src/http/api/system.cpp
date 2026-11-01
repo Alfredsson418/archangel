@@ -73,7 +73,7 @@ Json collectSystemStatistics() {
 	stats["memory_used_bytes"]		= memoryUsed;
 	stats["memory_usage_percent"]	= percentage(memoryUsed, memoryTotal);
 
-	struct statvfs diskInfo{};
+	struct statvfs diskInfo {};
 	if (statvfs("/", &diskInfo) == 0) {
 		const std::uint64_t blockSize =
 			diskInfo.f_frsize ? diskInfo.f_frsize : diskInfo.f_bsize;

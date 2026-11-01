@@ -14,14 +14,14 @@
 
 namespace Auth {
 namespace {
-using AuthStorage::Statement;
-using AuthStorage::Transaction;
 using Auth::Detail::hashPassword;
 using Auth::Detail::hashSessionToken;
 using Auth::Detail::makeUuid;
 using Auth::Detail::normalizeUsername;
-using Auth::Detail::verifyPassword;
 using Auth::Detail::validatePassword;
+using Auth::Detail::verifyPassword;
+using AuthStorage::Statement;
+using AuthStorage::Transaction;
 
 const std::string INVALID_USERNAME_MESSAGE =
 	"Username must be " + std::to_string(AppConfigLimits::MIN_USERNAME_LENGTH) +
@@ -37,7 +37,8 @@ Auth::Role parseRole(int role) {
 	case 2:
 		return Auth::Role::Administrator;
 	default:
-		throw std::runtime_error("Authentication database contains invalid role");
+		throw std::runtime_error(
+			"Authentication database contains invalid role");
 	}
 }
 
@@ -50,8 +51,8 @@ int roleValue(Auth::Role role) {
 	case Auth::Role::Administrator:
 		return 2;
 	}
-	throw Auth::AccountOperationError(Auth::AccountOperationError::Code::Invalid,
-									  "Account role is invalid");
+	throw Auth::AccountOperationError(
+		Auth::AccountOperationError::Code::Invalid, "Account role is invalid");
 }
 
 std::int64_t unixTimeNow() {
@@ -64,11 +65,10 @@ std::int64_t unixTimeNow() {
 
 struct SqliteAuthProvider::Impl {
 	explicit Impl(const std::string &path, std::chrono::seconds idle,
-				  std::chrono::seconds absolute,
-				  PasswordPolicy policy,
+				  std::chrono::seconds absolute, PasswordPolicy policy,
 				  Argon2idParameters argonParameters)
-		: idleTimeout(idle), absoluteTimeout(absolute),
-		  passwordPolicy(policy), argon2idParameters(argonParameters) {
+		: idleTimeout(idle), absoluteTimeout(absolute), passwordPolicy(policy),
+		  argon2idParameters(argonParameters) {
 		if (idleTimeout <= std::chrono::seconds::zero() ||
 			absoluteTimeout <= idleTimeout) {
 			throw std::runtime_error("Invalid API session lifetime settings");
@@ -98,7 +98,7 @@ struct SqliteAuthProvider::Impl {
 			throw std::runtime_error(
 				"Invalid Argon2id password hashing settings");
 		}
-		storage = std::make_unique<AuthStorage::Database>(path);
+		storage	 = std::make_unique<AuthStorage::Database>(path);
 		database = storage->get();
 		dummyPasswordHash =
 			hashPassword("archangel-dummy-password-value", argon2idParameters);
@@ -124,23 +124,22 @@ struct SqliteAuthProvider::Impl {
 	}
 
 	std::unique_ptr<AuthStorage::Database> storage;
-	sqlite3 *database = nullptr;
-	std::string			dummyPasswordHash;
-	std::chrono::seconds idleTimeout;
-	std::chrono::seconds absoluteTimeout;
-	PasswordPolicy		 passwordPolicy;
-	Argon2idParameters	 argon2idParameters;
-	std::mutex			  databaseMutex;
+	sqlite3								  *database = nullptr;
+	std::string							   dummyPasswordHash;
+	std::chrono::seconds				   idleTimeout;
+	std::chrono::seconds				   absoluteTimeout;
+	PasswordPolicy						   passwordPolicy;
+	Argon2idParameters					   argon2idParameters;
+	std::mutex							   databaseMutex;
 };
 
-SqliteAuthProvider::SqliteAuthProvider(std::string databasePath,
+SqliteAuthProvider::SqliteAuthProvider(std::string			databasePath,
 									   std::chrono::seconds idleTimeout,
 									   std::chrono::seconds absoluteTimeout,
-									   PasswordPolicy passwordPolicy,
-									   Argon2idParameters argon2idParameters)
-	: impl_(std::make_unique<Impl>(databasePath, idleTimeout,
-								   absoluteTimeout, passwordPolicy,
-								   argon2idParameters)) {}
+									   PasswordPolicy		passwordPolicy,
+									   Argon2idParameters	argon2idParameters)
+	: impl_(std::make_unique<Impl>(databasePath, idleTimeout, absoluteTimeout,
+								   passwordPolicy, argon2idParameters)) {}
 
 SqliteAuthProvider::~SqliteAuthProvider() = default;
 SqliteAuthProvider::SqliteAuthProvider(SqliteAuthProvider &&) noexcept =
@@ -201,10 +200,10 @@ std::optional<Session> SqliteAuthProvider::login(std::string_view username,
 	const auto now = std::chrono::duration_cast<std::chrono::seconds>(
 						 std::chrono::system_clock::now().time_since_epoch())
 						 .count();
-	const auto expiry = now + impl_->absoluteTimeout.count();
-	const std::string token = Auth::Detail::createSessionToken();
+	const auto		  expiry	= now + impl_->absoluteTimeout.count();
+	const std::string token		= Auth::Detail::createSessionToken();
 	const std::string tokenHash = Auth::Detail::hashSessionToken(token);
-	Transaction transaction(impl_->database);
+	Transaction		  transaction(impl_->database);
 	{
 		Statement removeExpired(
 			impl_->database,
@@ -243,16 +242,16 @@ SqliteAuthProvider::authenticateSession(std::string_view token) {
 		return std::nullopt;
 	}
 	const std::string tokenHash = Auth::Detail::hashSessionToken(token);
-	const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-						 std::chrono::system_clock::now().time_since_epoch())
+	const auto		  now = std::chrono::duration_cast<std::chrono::seconds>(
+							std::chrono::system_clock::now().time_since_epoch())
 						 .count();
 	Transaction transaction(impl_->database);
-	Statement query(
-		impl_->database,
-		"SELECT users.id, users.username, users.role, api_sessions.expires_at, "
-		"api_sessions.last_used_at FROM api_sessions "
-		"JOIN users ON users.id = api_sessions.user_id "
-		"WHERE api_sessions.token_hash = ?1 AND users.enabled = 1");
+	Statement	query(
+		  impl_->database,
+		  "SELECT users.id, users.username, users.role, api_sessions.expires_at, "
+		  "api_sessions.last_used_at FROM api_sessions "
+		  "JOIN users ON users.id = api_sessions.user_id "
+		  "WHERE api_sessions.token_hash = ?1 AND users.enabled = 1");
 	query.bindText(1, tokenHash);
 	const int queryResult = sqlite3_step(query.get());
 	if (queryResult == SQLITE_DONE) {
@@ -260,11 +259,10 @@ SqliteAuthProvider::authenticateSession(std::string_view token) {
 		return std::nullopt;
 	}
 	if (queryResult != SQLITE_ROW) {
-		throw std::runtime_error(
-			std::string("Unable to query API session: ") +
-			sqlite3_errmsg(impl_->database));
+		throw std::runtime_error(std::string("Unable to query API session: ") +
+								 sqlite3_errmsg(impl_->database));
 	}
-	const auto expiry = sqlite3_column_int64(query.get(), 3);
+	const auto expiry	= sqlite3_column_int64(query.get(), 3);
 	const auto lastUsed = sqlite3_column_int64(query.get(), 4);
 	if (expiry <= now || lastUsed <= now - impl_->idleTimeout.count()) {
 		Statement remove(impl_->database,
@@ -275,9 +273,9 @@ SqliteAuthProvider::authenticateSession(std::string_view token) {
 		return std::nullopt;
 	}
 	const Identity identity = impl_->identityFrom(query.get());
-	Statement update(impl_->database,
-					 "UPDATE api_sessions SET last_used_at = ?1 "
-					 "WHERE token_hash = ?2");
+	Statement	   update(impl_->database,
+						  "UPDATE api_sessions SET last_used_at = ?1 "
+							   "WHERE token_hash = ?2");
 	update.bindInteger(1, now);
 	update.bindText(2, tokenHash);
 	update.execute();
@@ -302,13 +300,13 @@ void SqliteAuthProvider::revokeSession(std::string_view token) {
 	remove.execute();
 }
 
-Identity SqliteAuthProvider::bootstrapAdministrator(
-	std::string_view username, std::string_view password) {
+Identity SqliteAuthProvider::bootstrapAdministrator(std::string_view username,
+													std::string_view password) {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	const std::string normalized = normalizeUsername(username);
+	const std::string			normalized = normalizeUsername(username);
 	if (normalized.empty()) {
 		throw std::runtime_error(INVALID_USERNAME_MESSAGE);
 	}
@@ -321,8 +319,8 @@ Identity SqliteAuthProvider::bootstrapAdministrator(
 	const std::string passwordHash =
 		hashPassword(password, impl_->argon2idParameters);
 	const std::string userId = makeUuid();
-	const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-						 std::chrono::system_clock::now().time_since_epoch())
+	const auto		  now	 = std::chrono::duration_cast<std::chrono::seconds>(
+						   std::chrono::system_clock::now().time_since_epoch())
 						 .count();
 
 	Transaction transaction(impl_->database);
@@ -332,8 +330,7 @@ Identity SqliteAuthProvider::bootstrapAdministrator(
 			"SELECT 1 FROM users WHERE role = 2 AND enabled = 1 LIMIT 1");
 		const int result = sqlite3_step(activeAdmin.get());
 		if (result == SQLITE_ROW) {
-			throw std::runtime_error(
-				"An active administrator already exists");
+			throw std::runtime_error("An active administrator already exists");
 		}
 		if (result != SQLITE_DONE) {
 			throw std::runtime_error(
@@ -360,10 +357,10 @@ std::vector<Account> SqliteAuthProvider::listAccounts() {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	Statement query(impl_->database,
-					"SELECT id, username, role, enabled, setup_pending FROM "
-					"users ORDER BY normalized_username");
-	std::vector<Account> accounts;
+	Statement					query(impl_->database,
+									  "SELECT id, username, role, enabled, setup_pending FROM "
+														"users ORDER BY normalized_username");
+	std::vector<Account>		accounts;
 	for (;;) {
 		const int result = sqlite3_step(query.get());
 		if (result == SQLITE_DONE) {
@@ -379,22 +376,22 @@ std::vector<Account> SqliteAuthProvider::listAccounts() {
 }
 
 AccountSetup SqliteAuthProvider::createAccount(std::string_view username,
-											  Role role) {
+											   Role				role) {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	const std::string normalized = normalizeUsername(username);
+	const std::string			normalized = normalizeUsername(username);
 	if (normalized.empty()) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									INVALID_USERNAME_MESSAGE);
 	}
-	const int storedRole = roleValue(role);
-	const std::string userId = makeUuid();
-	const std::string token = Auth::Detail::createSessionToken();
-	const std::string tokenHash = hashSessionToken(token);
-	const std::int64_t now = unixTimeNow();
-	Transaction transaction(impl_->database);
+	const int		   storedRole = roleValue(role);
+	const std::string  userId	  = makeUuid();
+	const std::string  token	  = Auth::Detail::createSessionToken();
+	const std::string  tokenHash  = hashSessionToken(token);
+	const std::int64_t now		  = unixTimeNow();
+	Transaction		   transaction(impl_->database);
 	{
 		Statement existing(
 			impl_->database,
@@ -422,10 +419,9 @@ AccountSetup SqliteAuthProvider::createAccount(std::string_view username,
 	insert.bindInteger(3, storedRole);
 	insert.bindInteger(4, now);
 	insert.execute();
-	Statement setup(
-		impl_->database,
-		"INSERT INTO account_setup_tokens "
-		"(token_hash, user_id, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)");
+	Statement setup(impl_->database, "INSERT INTO account_setup_tokens "
+									 "(token_hash, user_id, created_at, "
+									 "expires_at) VALUES (?1, ?2, ?3, ?4)");
 	setup.bindText(1, tokenHash);
 	setup.bindText(2, userId);
 	setup.bindInteger(3, now);
@@ -433,10 +429,13 @@ AccountSetup SqliteAuthProvider::createAccount(std::string_view username,
 		4, now + AppConfigLimits::ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
 	setup.execute();
 	transaction.commit();
-	return {Account{Identity{userId, normalized, role}, false, true}, token};
+	return {
+		Account{Identity{userId, normalized, role}, false, true},
+		  token
+	   };
 }
 
-Account SqliteAuthProvider::updateAccount(std::string_view id,
+Account SqliteAuthProvider::updateAccount(std::string_view	   id,
 										  const AccountUpdate &update) {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
@@ -447,11 +446,11 @@ Account SqliteAuthProvider::updateAccount(std::string_view id,
 									"Account update is invalid");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	Transaction transaction(impl_->database);
-	Statement current(
-		impl_->database,
-		"SELECT id, username, role, enabled, setup_pending FROM users "
-		"WHERE id = ?1");
+	Transaction					transaction(impl_->database);
+	Statement					current(
+		  impl_->database,
+		  "SELECT id, username, role, enabled, setup_pending FROM users "
+						  "WHERE id = ?1");
 	current.bindText(1, id);
 	const int currentResult = sqlite3_step(current.get());
 	if (currentResult == SQLITE_DONE) {
@@ -459,20 +458,19 @@ Account SqliteAuthProvider::updateAccount(std::string_view id,
 									"Account was not found");
 	}
 	if (currentResult != SQLITE_ROW) {
-		throw std::runtime_error(
-			std::string("Unable to query account: ") +
-			sqlite3_errmsg(impl_->database));
+		throw std::runtime_error(std::string("Unable to query account: ") +
+								 sqlite3_errmsg(impl_->database));
 	}
-	const Account existing = impl_->accountFrom(current.get());
-	const std::string username =
-		update.username ? normalizeUsername(*update.username)
-						: existing.identity.username;
+	const Account	  existing = impl_->accountFrom(current.get());
+	const std::string username = update.username
+									 ? normalizeUsername(*update.username)
+									 : existing.identity.username;
 	if (username.empty()) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									INVALID_USERNAME_MESSAGE);
 	}
-	const Role role = update.role.value_or(existing.identity.role);
-	const int storedRole = roleValue(role);
+	const Role role		  = update.role.value_or(existing.identity.role);
+	const int  storedRole = roleValue(role);
 	if (username != existing.identity.username) {
 		Statement duplicate(
 			impl_->database,
@@ -491,8 +489,7 @@ Account SqliteAuthProvider::updateAccount(std::string_view id,
 				sqlite3_errmsg(impl_->database));
 		}
 	}
-	if (existing.enabled &&
-		existing.identity.role == Role::Administrator &&
+	if (existing.enabled && existing.identity.role == Role::Administrator &&
 		role != Role::Administrator) {
 		Statement otherAdmin(
 			impl_->database,
@@ -523,8 +520,11 @@ Account SqliteAuthProvider::updateAccount(std::string_view id,
 	revoke.bindText(1, id);
 	revoke.execute();
 	transaction.commit();
-	return Account{Identity{existing.identity.id, username, role},
-				   existing.enabled, existing.setup_pending};
+	return Account{
+		Identity{existing.identity.id, username, role},
+		existing.enabled,
+		existing.setup_pending
+	  };
 }
 
 void SqliteAuthProvider::disableAccount(std::string_view id) {
@@ -536,9 +536,9 @@ void SqliteAuthProvider::disableAccount(std::string_view id) {
 									"Account ID is invalid");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	Transaction transaction(impl_->database);
-	Statement current(impl_->database,
-					  "SELECT role, enabled FROM users WHERE id = ?1");
+	Transaction					transaction(impl_->database);
+	Statement					current(impl_->database,
+										"SELECT role, enabled FROM users WHERE id = ?1");
 	current.bindText(1, id);
 	const int currentResult = sqlite3_step(current.get());
 	if (currentResult == SQLITE_DONE) {
@@ -546,9 +546,8 @@ void SqliteAuthProvider::disableAccount(std::string_view id) {
 									"Account was not found");
 	}
 	if (currentResult != SQLITE_ROW) {
-		throw std::runtime_error(
-			std::string("Unable to query account: ") +
-			sqlite3_errmsg(impl_->database));
+		throw std::runtime_error(std::string("Unable to query account: ") +
+								 sqlite3_errmsg(impl_->database));
 	}
 	if (sqlite3_column_int(current.get(), 0) == 2 &&
 		sqlite3_column_int(current.get(), 1) != 0) {
@@ -594,11 +593,11 @@ AccountSetup SqliteAuthProvider::issueAccountSetupToken(std::string_view id) {
 									"Account ID is invalid");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	Transaction transaction(impl_->database);
-	Statement current(
-		impl_->database,
-		"SELECT id, username, role, enabled, setup_pending FROM users "
-		"WHERE id = ?1");
+	Transaction					transaction(impl_->database);
+	Statement					current(
+		  impl_->database,
+		  "SELECT id, username, role, enabled, setup_pending FROM users "
+						  "WHERE id = ?1");
 	current.bindText(1, id);
 	const int currentResult = sqlite3_step(current.get());
 	if (currentResult == SQLITE_DONE) {
@@ -606,27 +605,25 @@ AccountSetup SqliteAuthProvider::issueAccountSetupToken(std::string_view id) {
 									"Account was not found");
 	}
 	if (currentResult != SQLITE_ROW) {
-		throw std::runtime_error(
-			std::string("Unable to query account: ") +
-			sqlite3_errmsg(impl_->database));
+		throw std::runtime_error(std::string("Unable to query account: ") +
+								 sqlite3_errmsg(impl_->database));
 	}
 	const Account account = impl_->accountFrom(current.get());
 	if (!account.enabled && !account.setup_pending) {
-		throw AccountOperationError(AccountOperationError::Code::Invalid,
-									"Disabled accounts cannot receive setup tokens");
+		throw AccountOperationError(
+			AccountOperationError::Code::Invalid,
+			"Disabled accounts cannot receive setup tokens");
 	}
-	const std::string token = Auth::Detail::createSessionToken();
-	const std::string tokenHash = hashSessionToken(token);
-	const std::int64_t now = unixTimeNow();
-	Statement revokeTokens(
-		impl_->database,
-		"DELETE FROM account_setup_tokens WHERE user_id = ?1");
+	const std::string  token	 = Auth::Detail::createSessionToken();
+	const std::string  tokenHash = hashSessionToken(token);
+	const std::int64_t now		 = unixTimeNow();
+	Statement		   revokeTokens(
+		 impl_->database, "DELETE FROM account_setup_tokens WHERE user_id = ?1");
 	revokeTokens.bindText(1, id);
 	revokeTokens.execute();
-	Statement insert(
-		impl_->database,
-		"INSERT INTO account_setup_tokens "
-		"(token_hash, user_id, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)");
+	Statement insert(impl_->database, "INSERT INTO account_setup_tokens "
+									  "(token_hash, user_id, created_at, "
+									  "expires_at) VALUES (?1, ?2, ?3, ?4)");
 	insert.bindText(1, tokenHash);
 	insert.bindText(2, id);
 	insert.bindInteger(3, now);
@@ -654,16 +651,16 @@ Identity SqliteAuthProvider::completeAccountSetup(std::string_view token,
 									"Setup token is invalid or expired");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	Transaction transaction(impl_->database);
-	const std::string tokenHash = hashSessionToken(token);
-	const std::int64_t now = unixTimeNow();
-	Statement query(
-		impl_->database,
-		"SELECT users.id, users.username, users.role, users.enabled, "
-		"users.setup_pending, account_setup_tokens.expires_at "
-		"FROM account_setup_tokens JOIN users ON users.id = "
-		"account_setup_tokens.user_id WHERE "
-		"account_setup_tokens.token_hash = ?1");
+	Transaction					transaction(impl_->database);
+	const std::string			tokenHash = hashSessionToken(token);
+	const std::int64_t			now		  = unixTimeNow();
+	Statement					query(
+		  impl_->database,
+		  "SELECT users.id, users.username, users.role, users.enabled, "
+						  "users.setup_pending, account_setup_tokens.expires_at "
+						  "FROM account_setup_tokens JOIN users ON users.id = "
+						  "account_setup_tokens.user_id WHERE "
+						  "account_setup_tokens.token_hash = ?1");
 	query.bindText(1, tokenHash);
 	const int queryResult = sqlite3_step(query.get());
 	if (queryResult == SQLITE_DONE) {
@@ -676,10 +673,11 @@ Identity SqliteAuthProvider::completeAccountSetup(std::string_view token,
 			sqlite3_errmsg(impl_->database));
 	}
 	const Account account = impl_->accountFrom(query.get());
-	const auto expiry = sqlite3_column_int64(query.get(), 5);
+	const auto	  expiry  = sqlite3_column_int64(query.get(), 5);
 	if ((!account.enabled && !account.setup_pending) || expiry <= now) {
-		Statement remove(impl_->database,
-						 "DELETE FROM account_setup_tokens WHERE token_hash = ?1");
+		Statement remove(
+			impl_->database,
+			"DELETE FROM account_setup_tokens WHERE token_hash = ?1");
 		remove.bindText(1, tokenHash);
 		remove.execute();
 		transaction.commit();
@@ -698,12 +696,11 @@ Identity SqliteAuthProvider::completeAccountSetup(std::string_view token,
 	update.bindText(3, account.identity.id);
 	update.execute();
 	Statement removeTokens(
-		impl_->database,
-		"DELETE FROM account_setup_tokens WHERE user_id = ?1");
+		impl_->database, "DELETE FROM account_setup_tokens WHERE user_id = ?1");
 	removeTokens.bindText(1, account.identity.id);
 	removeTokens.execute();
 	Statement removeSessions(impl_->database,
-							"DELETE FROM api_sessions WHERE user_id = ?1");
+							 "DELETE FROM api_sessions WHERE user_id = ?1");
 	removeSessions.bindText(1, account.identity.id);
 	removeSessions.execute();
 	transaction.commit();

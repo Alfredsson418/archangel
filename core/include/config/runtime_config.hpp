@@ -30,7 +30,7 @@ std::string generateRuntimeConfig(const AppConfig &config = AppConfig{});
  * safely created.
  */
 void writeRuntimeConfig(const std::string &path,
-						const AppConfig &config = AppConfig{});
+						const AppConfig	  &config = AppConfig{});
 
 /**
  * @brief Loads and validates a private runtime configuration file.

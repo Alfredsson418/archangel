@@ -1,5 +1,5 @@
-#include "../../../include/firewall/providers/nft.hpp"
 #include "../../../include/firewall/config.hpp"
+#include "../../../include/firewall/providers/nft.hpp"
 
 #include <stdexcept>
 
@@ -7,7 +7,7 @@ std::string Nftables::exportFirewallConfig() {
 	return serializeFirewallConfig(exportRuleset());
 }
 
-void Nftables::importFirewallConfig(const std::string &bundle,
+void Nftables::importFirewallConfig(const std::string		&bundle,
 									FirewallConfigImportMode mode) {
 	const FirewallConfig config = parseFirewallConfig(bundle);
 	switch (mode) {

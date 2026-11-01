@@ -15,17 +15,17 @@
 namespace {
 class TestFirewall final : public Firewall {
   public:
-	std::string listRules() override { return "{}"; }
+	std::string		   listRules() override { return "{}"; }
 	FirewallStatistics getStatistics() override { return {}; }
-	void addRule(const RuleSpec &) override {}
-	void deleteRule(const std::string &, const std::string &,
-					const std::string &, std::uint64_t) override {}
+	void			   addRule(const RuleSpec &) override {}
+	void			   deleteRule(const std::string &, const std::string &,
+								  const std::string &, std::uint64_t) override {}
 };
 
 class TemporaryDirectory {
   public:
 	TemporaryDirectory() {
-		std::string pattern = "/tmp/archangel-firewall-config-XXXXXX";
+		std::string		  pattern = "/tmp/archangel-firewall-config-XXXXXX";
 		std::vector<char> writable(pattern.begin(), pattern.end());
 		writable.push_back('\0');
 		const char *created = mkdtemp(writable.data());
@@ -58,12 +58,11 @@ void requiresAnImportExportCapableBackend() {
 
 void writesAndReadsVersionedBundles() {
 	TemporaryDirectory directory;
-	const auto path = directory.file("bundle.json");
-	const std::string ruleset = R"({"nftables":[]})";
+	const auto		   path	   = directory.file("bundle.json");
+	const std::string  ruleset = R"({"nftables":[]})";
 
 	FirewallConfigCommand::writeBundle(path.string(), ruleset);
-	const std::string bundle =
-		FirewallConfigCommand::readBundle(path.string());
+	const std::string bundle = FirewallConfigCommand::readBundle(path.string());
 	const FirewallConfig parsed = parseFirewallConfig(bundle);
 	TestSupport::require(parsed.ruleset == ruleset,
 						 "written bundle should preserve its native ruleset");
@@ -71,7 +70,7 @@ void writesAndReadsVersionedBundles() {
 
 void rejectsMissingAndEmptyBundleFiles() {
 	TemporaryDirectory directory;
-	const auto missing = directory.file("missing.json");
+	const auto		   missing = directory.file("missing.json");
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] { FirewallConfigCommand::readBundle(missing.string()); },
 		"missing bundles should fail explicitly");

@@ -4,21 +4,21 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <fcntl.h>
+#include <filesystem>
 #include <initializer_list>
 #include <stdexcept>
 #include <string>
-#include <system_error>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <system_error>
 #include <unistd.h>
 
 namespace {
 using Json = nlohmann::json;
-void rejectUnknownKeys(const Json &object,
+void rejectUnknownKeys(const Json						  &object,
 					   std::initializer_list<const char *> allowed,
-					   const char *description) {
+					   const char						  *description) {
 	for (auto key = object.begin(); key != object.end(); ++key) {
 		bool known = false;
 		for (const char *candidate : allowed) {
@@ -45,7 +45,7 @@ const Json *optionalObject(const Json &document, const char *key) {
 
 std::string requiredString(const Json &object, const char *key,
 						   const std::string &current,
-						   const char *description) {
+						   const char		 *description) {
 	const auto field = object.find(key);
 	if (field == object.end()) {
 		return current;
@@ -77,8 +77,7 @@ bool requiredBoolean(const Json &object, const char *key, bool current,
 }
 
 std::uint64_t unsignedInteger(const Json &object, const char *key,
-							  std::uint64_t current,
-							  const char *description) {
+							  std::uint64_t current, const char *description) {
 	const auto field = object.find(key);
 	if (field == object.end()) {
 		return current;
@@ -102,8 +101,7 @@ std::uint64_t unsignedInteger(const Json &object, const char *key,
 
 std::uint32_t boundedInteger(const Json &object, const char *key,
 							 std::uint32_t current, std::uint32_t minimum,
-							 std::uint32_t maximum,
-							 const char *description) {
+							 std::uint32_t maximum, const char *description) {
 	const std::uint64_t value =
 		unsignedInteger(object, key, current, description);
 	if (value < minimum || value > maximum) {
@@ -129,19 +127,21 @@ void validateConfig(const AppConfig &config) {
 			std::string::npos ||
 		config.server.bind_address.find('\0') != std::string::npos ||
 		config.server.port < AppConfigLimits::MIN_SERVER_PORT) {
-		throw std::runtime_error("Runtime config server.bind_address is invalid");
+		throw std::runtime_error(
+			"Runtime config server.bind_address is invalid");
 	}
 	if (config.auth.provider != "local") {
-		throw std::runtime_error(
-			"Runtime config auth.provider must be local");
+		throw std::runtime_error("Runtime config auth.provider must be local");
 	}
 	if (config.auth.database_path.empty() ||
 		config.auth.database_path.find('\0') != std::string::npos) {
-		throw std::runtime_error("Runtime config auth.database_path is invalid");
+		throw std::runtime_error(
+			"Runtime config auth.database_path is invalid");
 	}
 	if (config.auth.password_min_length <
 			AppConfigLimits::MIN_PASSWORD_LENGTH ||
-		config.auth.password_max_length > AppConfigLimits::MAX_PASSWORD_LENGTH ||
+		config.auth.password_max_length >
+			AppConfigLimits::MAX_PASSWORD_LENGTH ||
 		config.auth.password_min_length > config.auth.password_max_length) {
 		throw std::runtime_error(
 			"Runtime config password minimum must not exceed its maximum");
@@ -160,8 +160,8 @@ void validateConfig(const AppConfig &config) {
 			AppConfigLimits::MAX_ARGON2ID_PARALLELISM ||
 		config.auth.argon2id_memory_kib <
 			config.auth.argon2id_parallelism * 8) {
-		throw std::runtime_error(
-			"Runtime config Argon2id parameters are outside the supported range");
+		throw std::runtime_error("Runtime config Argon2id parameters are "
+								 "outside the supported range");
 	}
 	if (config.sessions.idle_timeout_seconds == 0 ||
 		config.sessions.absolute_timeout_seconds == 0 ||
@@ -172,11 +172,10 @@ void validateConfig(const AppConfig &config) {
 		throw std::runtime_error(
 			"Runtime config session lifetimes are invalid");
 	}
-	if (config.tls.enabled &&
-		(config.tls.certificate_file.empty() ||
-		 config.tls.private_key_file.empty())) {
-		throw std::runtime_error(
-			"Enabled runtime TLS requires certificate_file and private_key_file");
+	if (config.tls.enabled && (config.tls.certificate_file.empty() ||
+							   config.tls.private_key_file.empty())) {
+		throw std::runtime_error("Enabled runtime TLS requires "
+								 "certificate_file and private_key_file");
 	}
 	if (!config.tls.certificate_file.empty() &&
 		!config.tls.private_key_file.empty() &&
@@ -194,8 +193,8 @@ void validateConfig(const AppConfig &config) {
 	}
 	if (config.logging.level != "DEBUG" && config.logging.level != "INFO" &&
 		config.logging.level != "WARNING" && config.logging.level != "ERROR") {
-		throw std::runtime_error(
-			"Runtime config logging.level must be DEBUG, INFO, WARNING, or ERROR");
+		throw std::runtime_error("Runtime config logging.level must be DEBUG, "
+								 "INFO, WARNING, or ERROR");
 	}
 	if (config.rate_limits.failed_auth_attempts <
 			AppConfigLimits::MIN_RATE_LIMIT ||
@@ -220,9 +219,7 @@ void validateConfig(const AppConfig &config) {
 
 } // namespace
 
-void validateAppConfig(const AppConfig &config) {
-	validateConfig(config);
-}
+void validateAppConfig(const AppConfig &config) { validateConfig(config); }
 
 AppConfig parseRuntimeConfig(const std::string &content) {
 	const Json document = parseJson(content);
@@ -230,29 +227,27 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 		throw std::runtime_error("Runtime config must be a JSON object");
 	}
 	rejectUnknownKeys(document,
-					  {"format", "version", "server", "auth", "sessions",
-					   "tls", "logging", "rate_limits"},
+					  {"format", "version", "server", "auth", "sessions", "tls",
+					   "logging", "rate_limits"},
 					  "Runtime config");
 	if (!document.contains("format") || !document["format"].is_string() ||
 		document["format"] != "archangel-runtime-config" ||
 		!document.contains("version") ||
-		!document["version"].is_number_integer() ||
-		document["version"] != 1) {
-		throw std::runtime_error(
-			"Runtime config must use format archangel-runtime-config version 1");
+		!document["version"].is_number_integer() || document["version"] != 1) {
+		throw std::runtime_error("Runtime config must use format "
+								 "archangel-runtime-config version 1");
 	}
 
 	AppConfig config;
 	if (const Json *server = optionalObject(document, "server")) {
 		rejectUnknownKeys(*server, {"bind_address", "port"},
 						  "Runtime config server");
-		config.server.bind_address =
-			requiredString(*server, "bind_address",
-						   config.server.bind_address, "server");
-		config.server.port = static_cast<std::uint16_t>(boundedInteger(
-			*server, "port", config.server.port,
-			AppConfigLimits::MIN_SERVER_PORT,
-			AppConfigLimits::MAX_SERVER_PORT, "server"));
+		config.server.bind_address = requiredString(
+			*server, "bind_address", config.server.bind_address, "server");
+		config.server.port = static_cast<std::uint16_t>(
+			boundedInteger(*server, "port", config.server.port,
+						   AppConfigLimits::MIN_SERVER_PORT,
+						   AppConfigLimits::MAX_SERVER_PORT, "server"));
 	}
 	if (const Json *auth = optionalObject(document, "auth")) {
 		rejectUnknownKeys(*auth,
@@ -263,17 +258,16 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 			requiredString(*auth, "provider", config.auth.provider, "auth");
 		config.auth.database_path = requiredString(
 			*auth, "database_path", config.auth.database_path, "auth");
-		config.auth.password_min_length = static_cast<std::uint16_t>(
-			boundedInteger(
-				*auth, "password_min_length",
-				config.auth.password_min_length,
+		config.auth.password_min_length =
+			static_cast<std::uint16_t>(boundedInteger(
+				*auth, "password_min_length", config.auth.password_min_length,
 				AppConfigLimits::MIN_PASSWORD_LENGTH,
 				AppConfigLimits::MAX_PASSWORD_LENGTH, "auth"));
-		config.auth.password_max_length = static_cast<std::uint16_t>(
-			boundedInteger(*auth, "password_max_length",
-						   config.auth.password_max_length,
-						   config.auth.password_min_length,
-						   AppConfigLimits::MAX_PASSWORD_LENGTH, "auth"));
+		config.auth.password_max_length =
+			static_cast<std::uint16_t>(boundedInteger(
+				*auth, "password_max_length", config.auth.password_max_length,
+				config.auth.password_min_length,
+				AppConfigLimits::MAX_PASSWORD_LENGTH, "auth"));
 		if (const Json *argon = optionalObject(*auth, "argon2id")) {
 			rejectUnknownKeys(*argon,
 							  {"memory_kib", "iterations", "parallelism"},
@@ -294,8 +288,7 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 	}
 	if (const Json *sessions = optionalObject(document, "sessions")) {
 		rejectUnknownKeys(*sessions,
-						  {"idle_timeout_seconds",
-						   "absolute_timeout_seconds"},
+						  {"idle_timeout_seconds", "absolute_timeout_seconds"},
 						  "Runtime config sessions");
 		config.sessions.idle_timeout_seconds = boundedInteger(
 			*sessions, "idle_timeout_seconds",
@@ -333,31 +326,30 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 	}
 	if (const Json *limits = optionalObject(document, "rate_limits")) {
 		rejectUnknownKeys(*limits,
-						  {"failed_auth_attempts",
-						   "failed_auth_window_seconds",
+						  {"failed_auth_attempts", "failed_auth_window_seconds",
 						   "api_requests_per_minute",
 						   "firewall_mutations_per_minute"},
 						  "Runtime config rate_limits");
-		config.rate_limits.failed_auth_attempts = boundedInteger(
-			*limits, "failed_auth_attempts",
-			config.rate_limits.failed_auth_attempts,
-			AppConfigLimits::MIN_RATE_LIMIT, AppConfigLimits::MAX_RATE_LIMIT,
-			"rate_limits");
+		config.rate_limits.failed_auth_attempts =
+			boundedInteger(*limits, "failed_auth_attempts",
+						   config.rate_limits.failed_auth_attempts,
+						   AppConfigLimits::MIN_RATE_LIMIT,
+						   AppConfigLimits::MAX_RATE_LIMIT, "rate_limits");
 		config.rate_limits.failed_auth_window_seconds = boundedInteger(
 			*limits, "failed_auth_window_seconds",
 			config.rate_limits.failed_auth_window_seconds,
 			AppConfigLimits::MIN_RATE_LIMIT,
 			AppConfigLimits::MAX_SESSION_LIFETIME_SECONDS, "rate_limits");
-		config.rate_limits.api_requests_per_minute = boundedInteger(
-			*limits, "api_requests_per_minute",
-			config.rate_limits.api_requests_per_minute,
-			AppConfigLimits::MIN_RATE_LIMIT, AppConfigLimits::MAX_RATE_LIMIT,
-			"rate_limits");
-		config.rate_limits.firewall_mutations_per_minute = boundedInteger(
-			*limits, "firewall_mutations_per_minute",
-			config.rate_limits.firewall_mutations_per_minute,
-			AppConfigLimits::MIN_RATE_LIMIT, AppConfigLimits::MAX_RATE_LIMIT,
-			"rate_limits");
+		config.rate_limits.api_requests_per_minute =
+			boundedInteger(*limits, "api_requests_per_minute",
+						   config.rate_limits.api_requests_per_minute,
+						   AppConfigLimits::MIN_RATE_LIMIT,
+						   AppConfigLimits::MAX_RATE_LIMIT, "rate_limits");
+		config.rate_limits.firewall_mutations_per_minute =
+			boundedInteger(*limits, "firewall_mutations_per_minute",
+						   config.rate_limits.firewall_mutations_per_minute,
+						   AppConfigLimits::MIN_RATE_LIMIT,
+						   AppConfigLimits::MAX_RATE_LIMIT, "rate_limits");
 	}
 	validateAppConfig(config);
 	return config;
@@ -367,12 +359,12 @@ std::string generateRuntimeConfig(const AppConfig &config) {
 	validateAppConfig(config);
 
 	Json document = {
-		{"format", "archangel-runtime-config"},
-		{"version", 1},
-		{"server",
+		{	 "format","archangel-runtime-config"						 },
+		{	 "version",										1},
+		{	 "server",
 		 {{"bind_address", config.server.bind_address},
-		  {"port", config.server.port}}},
-		{"auth",
+		  {"port", config.server.port}}						   },
+		{		 "auth",
 		 {{"provider", config.auth.provider},
 		  {"database_path", config.auth.database_path},
 		  {"password_min_length", config.auth.password_min_length},
@@ -380,25 +372,25 @@ std::string generateRuntimeConfig(const AppConfig &config) {
 		  {"argon2id",
 		   {{"memory_kib", config.auth.argon2id_memory_kib},
 			{"iterations", config.auth.argon2id_iterations},
-			{"parallelism", config.auth.argon2id_parallelism}}}}},
-		{"sessions",
+			{"parallelism", config.auth.argon2id_parallelism}}}}	},
+		{	 "sessions",
 		 {{"idle_timeout_seconds", config.sessions.idle_timeout_seconds},
 		  {"absolute_timeout_seconds",
-		   config.sessions.absolute_timeout_seconds}}},
-		{"tls", {{"enabled", config.tls.enabled}}},
-		{"logging",
+		   config.sessions.absolute_timeout_seconds}}			 },
+		{		 "tls",		{{"enabled", config.tls.enabled}}},
+		{	 "logging",
 		 {{"sink", config.logging.sink},
 		  {"path", config.logging.path},
-		  {"level", config.logging.level}}},
+		  {"level", config.logging.level}}						  },
 		{"rate_limits",
-		 {{"failed_auth_attempts",
-		   config.rate_limits.failed_auth_attempts},
+		 {{"failed_auth_attempts", config.rate_limits.failed_auth_attempts},
 		  {"failed_auth_window_seconds",
 		   config.rate_limits.failed_auth_window_seconds},
 		  {"api_requests_per_minute",
 		   config.rate_limits.api_requests_per_minute},
 		  {"firewall_mutations_per_minute",
-		   config.rate_limits.firewall_mutations_per_minute}}}};
+		   config.rate_limits.firewall_mutations_per_minute}}	 }
+	  };
 	if (!config.tls.certificate_file.empty()) {
 		document["tls"]["certificate_file"] = config.tls.certificate_file;
 	}
@@ -412,14 +404,13 @@ void writeRuntimeConfig(const std::string &path, const AppConfig &config) {
 	if (path.empty()) {
 		throw std::runtime_error("Runtime config destination path is empty");
 	}
-	const std::string content = generateRuntimeConfig(config);
+	const std::string			content = generateRuntimeConfig(config);
 	const std::filesystem::path destination(path);
-	const std::filesystem::path parent =
-		destination.has_parent_path() ? destination.parent_path()
-									  : std::filesystem::path(".");
-	std::filesystem::perms directoryPermissions =
-		std::filesystem::perms::owner_all |
-		std::filesystem::perms::group_read |
+	const std::filesystem::path parent = destination.has_parent_path()
+											 ? destination.parent_path()
+											 : std::filesystem::path(".");
+	std::filesystem::perms		directoryPermissions =
+		std::filesystem::perms::owner_all | std::filesystem::perms::group_read |
 		std::filesystem::perms::group_exec |
 		std::filesystem::perms::others_read |
 		std::filesystem::perms::others_exec;
@@ -428,27 +419,26 @@ void writeRuntimeConfig(const std::string &path, const AppConfig &config) {
 		directoryPermissions = std::filesystem::perms::owner_all;
 	}
 #endif
-	const mode_t previousMask = umask(0077);
+	const mode_t	previousMask = umask(0077);
 	std::error_code directoryError;
-	const bool parentCreated =
+	const bool		parentCreated =
 		std::filesystem::create_directories(parent, directoryError);
 	umask(previousMask);
 	if (directoryError) {
-		throw std::runtime_error("Unable to create runtime config directory: " +
-								 parent.string() + ": " +
-								 directoryError.message());
+		throw std::runtime_error(
+			"Unable to create runtime config directory: " + parent.string() +
+			": " + directoryError.message());
 	}
 	if (parentCreated &&
-		chmod(parent.c_str(),
-			  static_cast<mode_t>(directoryPermissions)) != 0) {
+		chmod(parent.c_str(), static_cast<mode_t>(directoryPermissions)) != 0) {
 		throw std::runtime_error("Unable to set runtime config directory "
 								 "permissions: " +
 								 parent.string());
 	}
 
-	const int file = open(path.c_str(),
-						  O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
-						  0644);
+	const int file =
+		open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+			 0644);
 	if (file == -1) {
 		if (errno == EEXIST) {
 			throw std::runtime_error("Runtime config already exists: " + path);
@@ -499,9 +489,9 @@ AppConfig loadRuntimeConfig(const std::string &path, bool allowMissing) {
 		(info.st_uid != 0 && info.st_uid != geteuid()) ||
 		(info.st_mode & 0022) != 0) {
 		close(file);
-		throw std::runtime_error(
-			"Runtime config must be a regular file owned by root or the service "
-			"user and not group/world writable");
+		throw std::runtime_error("Runtime config must be a regular file owned "
+								 "by root or the service "
+								 "user and not group/world writable");
 	}
 	if (info.st_size <= 0 || static_cast<std::uint64_t>(info.st_size) >
 								 AppConfigLimits::MAX_RUNTIME_CONFIG_BYTES) {

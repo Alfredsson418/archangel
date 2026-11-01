@@ -41,7 +41,7 @@ class Nftables : public Firewall, public FirewallConfigProvider {
 	 * @return No value.
 	 * @throws std::exception If the bundle is invalid or cannot be applied.
 	 */
-	void importFirewallConfig(const std::string &bundle,
+	void importFirewallConfig(const std::string		  &bundle,
 							  FirewallConfigImportMode mode) override;
 
 	/**
@@ -105,7 +105,7 @@ class Nftables : public Firewall, public FirewallConfigProvider {
 	 * @return No value.
 	 * @throws std::runtime_error If buffering or command execution fails.
 	 */
-	void			execute(const std::string &command);
+	void execute(const std::string &command);
 
 	/**
 	 * @brief Executes an nftables JSON command document; callers must hold

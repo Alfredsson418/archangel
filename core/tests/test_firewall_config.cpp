@@ -22,11 +22,11 @@ const std::string fullRuleset = R"({
 })";
 
 void roundTripsV2ManagedAndExternalSections() {
-	const std::string encoded =
-		serializeFirewallConfig(fullRuleset);
-	const Json document = Json::parse(encoded);
-	TestSupport::require(document["format"] == "archangel-firewall-config",
-						 "firewall exports should use the firewall-specific format name");
+	const std::string encoded  = serializeFirewallConfig(fullRuleset);
+	const Json		  document = Json::parse(encoded);
+	TestSupport::require(
+		document["format"] == "archangel-firewall-config",
+		"firewall exports should use the firewall-specific format name");
 	TestSupport::require(document["version"] == 1,
 						 "firewall export should use version 1");
 	TestSupport::require(!document.contains("server"),
@@ -37,8 +37,8 @@ void roundTripsV2ManagedAndExternalSections() {
 	TestSupport::require(document["firewall"]["archangel_rules"].size() == 1,
 						 "v2 managed section should contain marked rules only");
 
-	const FirewallConfig config = parseFirewallConfig(encoded);
-	const Json combined = Json::parse(config.ruleset);
+	const FirewallConfig config	  = parseFirewallConfig(encoded);
+	const Json			 combined = Json::parse(config.ruleset);
 	TestSupport::require(combined["nftables"].size() == 5,
 						 "combined ruleset should reconstruct every object");
 	TestSupport::require(
@@ -47,8 +47,7 @@ void roundTripsV2ManagedAndExternalSections() {
 }
 
 void rejectsIncorrectOwnershipSections() {
-	Json document =
-		Json::parse(serializeFirewallConfig(fullRuleset));
+	Json document = Json::parse(serializeFirewallConfig(fullRuleset));
 	document["firewall"]["archangel_rules"].push_back(Json{
 		{"rule", {{"family", "inet"}, {"comment", "external"}}}
 	   });
@@ -56,8 +55,7 @@ void rejectsIncorrectOwnershipSections() {
 		[&] { parseFirewallConfig(document.dump()); },
 		"unmarked rules must not be accepted as Archangel-owned");
 
-	document =
-		Json::parse(serializeFirewallConfig(fullRuleset));
+	document = Json::parse(serializeFirewallConfig(fullRuleset));
 	document["firewall"]["other_ruleset"]["nftables"].push_back(
 		document["firewall"]["archangel_rules"][0]);
 	TestSupport::requireThrows<std::runtime_error>(
@@ -87,10 +85,9 @@ void rejectsUnsupportedConfigVersions() {
 }
 
 void resolvesImportModes() {
-	TestSupport::require(
-		resolveFirewallConfigImportMode("replace") ==
-			FirewallConfigImportMode::ReplaceArchangel,
-		"replace must target only marked Archangel rules");
+	TestSupport::require(resolveFirewallConfigImportMode("replace") ==
+							 FirewallConfigImportMode::ReplaceArchangel,
+						 "replace must target only marked Archangel rules");
 	TestSupport::require(resolveFirewallConfigImportMode("replace-all") ==
 							 FirewallConfigImportMode::ReplaceAll,
 						 "replace-all must explicitly target the full ruleset");

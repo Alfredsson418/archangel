@@ -5,7 +5,7 @@
 
 namespace HttpApi {
 
-void getLogs(Firewall &firewall, const httplib::Request &,
+void getLogs(Firewall		   &firewall, const httplib::Request &,
 			 httplib::Response &response) {
 	const BackendLogSources::ReadResult result =
 		BackendLogSources::readSources(firewall);
@@ -17,15 +17,18 @@ void getLogs(Firewall &firewall, const httplib::Request &,
 	nlohmann::json sources = nlohmann::json::array();
 	for (const BackendLogSources::Source &source : result.sources) {
 		sources.push_back({
-			{"id", source.id},
-			{"label", source.label},
+			{		 "id",		   source.id},
+			{	 "label",	  source.label},
 			{"available", source.available},
-			{"detail", source.detail},
-			{"entries", source.entries},
+			{	 "detail",	   source.detail},
+			{	 "entries",	source.entries},
 		});
 	}
 	response.set_content(
-		nlohmann::json{{"sources", std::move(sources)}}.dump(),
+		nlohmann::json{
+			{"sources", std::move(sources)}
+	   }
+			.dump(),
 		"application/json");
 }
 

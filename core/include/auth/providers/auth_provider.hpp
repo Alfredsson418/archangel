@@ -39,18 +39,18 @@ struct Session {
 
 struct Account {
 	Identity identity;
-	bool enabled = false;
-	bool setup_pending = false;
+	bool	 enabled	   = false;
+	bool	 setup_pending = false;
 };
 
 struct AccountSetup {
-	Account account;
+	Account		account;
 	std::string setup_token;
 };
 
 struct AccountUpdate {
 	std::optional<std::string> username;
-	std::optional<Role> role;
+	std::optional<Role>		   role;
 };
 
 class AccountOperationError : public std::runtime_error {
@@ -70,7 +70,8 @@ class AccountOperationError : public std::runtime_error {
 };
 
 /**
- * @brief Defines backend-owned credential authentication and API-session behavior.
+ * @brief Defines backend-owned credential authentication and API-session
+ * behavior.
  */
 class AuthProvider {
   public:
@@ -132,7 +133,8 @@ class AuthProvider {
 	 * @throws AccountOperationError If the account name is invalid or in use.
 	 * @throws std::runtime_error If persistent authentication storage fails.
 	 */
-	virtual AccountSetup createAccount(std::string_view username, Role role) = 0;
+	virtual AccountSetup createAccount(std::string_view username,
+									   Role				role) = 0;
 
 	/**
 	 * @brief Updates an account's username and/or role without changing its ID.
@@ -142,7 +144,7 @@ class AuthProvider {
 	 * @throws AccountOperationError If the account is missing, invalid, or the
 	 * change would remove the last active administrator.
 	 */
-	virtual Account updateAccount(std::string_view id,
+	virtual Account updateAccount(std::string_view	   id,
 								  const AccountUpdate &update) = 0;
 
 	/**
@@ -198,7 +200,7 @@ class SqliteAuthProvider final : public AuthProvider {
 
 	~SqliteAuthProvider() override;
 
-	SqliteAuthProvider(const SqliteAuthProvider &)			 = delete;
+	SqliteAuthProvider(const SqliteAuthProvider &)			  = delete;
 	SqliteAuthProvider &operator=(const SqliteAuthProvider &) = delete;
 	SqliteAuthProvider(SqliteAuthProvider &&) noexcept;
 	SqliteAuthProvider &operator=(SqliteAuthProvider &&) noexcept;
@@ -246,12 +248,12 @@ class SqliteAuthProvider final : public AuthProvider {
 
 	std::vector<Account> listAccounts() override;
 	AccountSetup createAccount(std::string_view username, Role role) override;
-	Account updateAccount(std::string_view id,
-						  const AccountUpdate &update) override;
-	void disableAccount(std::string_view id) override;
+	Account		 updateAccount(std::string_view		id,
+							   const AccountUpdate &update) override;
+	void		 disableAccount(std::string_view id) override;
 	AccountSetup issueAccountSetupToken(std::string_view id) override;
-	Identity completeAccountSetup(std::string_view token,
-								  std::string_view password) override;
+	Identity	 completeAccountSetup(std::string_view token,
+									  std::string_view password) override;
 
   private:
 	struct Impl;

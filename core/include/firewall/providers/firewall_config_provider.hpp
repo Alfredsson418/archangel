@@ -2,11 +2,7 @@
 
 #include <string>
 
-enum class FirewallConfigImportMode {
-	Merge,
-	ReplaceArchangel,
-	ReplaceAll
-};
+enum class FirewallConfigImportMode { Merge, ReplaceArchangel, ReplaceAll };
 
 /**
  * @brief Optional capability for importing and exporting native firewall
@@ -33,6 +29,6 @@ class FirewallConfigProvider {
 	 * @return No value.
 	 * @throws std::exception If the bundle is invalid or cannot be applied.
 	 */
-	virtual void importFirewallConfig(const std::string &bundle,
+	virtual void importFirewallConfig(const std::string		  &bundle,
 									  FirewallConfigImportMode mode) = 0;
 };

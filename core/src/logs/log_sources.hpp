@@ -8,16 +8,16 @@
 namespace BackendLogSources {
 
 struct Source {
-	std::string id;
-	std::string label;
-	bool available;
-	std::string detail;
+	std::string				 id;
+	std::string				 label;
+	bool					 available;
+	std::string				 detail;
 	std::vector<std::string> entries;
 };
 
 struct ReadResult {
 	std::vector<Source> sources;
-	bool rulesetUnavailable = false;
+	bool				rulesetUnavailable = false;
 };
 
 /**

@@ -22,7 +22,7 @@ class SecretString {
 	 */
 	~SecretString();
 
-	SecretString(const SecretString &) = delete;
+	SecretString(const SecretString &)			  = delete;
 	SecretString &operator=(const SecretString &) = delete;
 
 	/**
@@ -45,4 +45,4 @@ class SecretString {
  */
 std::string promptPassword(const char *prompt);
 
-} // namespace Secrets
+} // namespace Auth

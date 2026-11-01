@@ -72,8 +72,8 @@ buildArchangelRulesReplacement(const std::string &activeRuleset,
 		}
 		Json target{
 			{"family", rule["family"]},
-			{ "table",	rule["table"]},
-			{ "chain",	rule["chain"]},
+			{ "table",  rule["table"]},
+			{ "chain",  rule["chain"]},
 			{"handle", rule["handle"]},
 		};
 		commands.push_back(Json{

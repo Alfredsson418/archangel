@@ -17,16 +17,16 @@ class StatisticsFirewall final : public Firewall {
 		statistics.total_chains	   = 4;
 		statistics.rules_by_family = {
 			{"inet", 2},
-			{ "ip6", 1}
-		  };
+			 { "ip6", 1}
+		   };
 		statistics.rules_by_protocol = {
 			{"tcp", 2},
-			   {"udp", 1}
-		 };
+			{"udp", 1}
+		  };
 		statistics.rules_by_verdict = {
 			{"accept", 2},
-			  {	 "drop", 1}
-		 };
+			   {	"drop", 1}
+		  };
 		return statistics;
 	}
 

@@ -39,40 +39,37 @@ bool parseRole(const Detail::Json &value, Auth::Role &role) {
 
 Detail::Json accountJson(const Auth::Account &account) {
 	return {
-		{"id", account.identity.id},
-		{"username", account.identity.username},
-		{"role", roleName(account.identity.role)},
-		{"enabled", account.enabled},
-		{"setup_pending", account.setup_pending},
+		{		   "id",			   account.identity.id},
+		{	 "username",		 account.identity.username},
+		{		 "role", roleName(account.identity.role)},
+		{		 "enabled",					account.enabled},
+		{"setup_pending",			  account.setup_pending},
 	};
 }
 
 bool parseBody(const httplib::Request &request, Detail::Json &document,
 			   httplib::Response &response) {
 	if (request.body.size() > AppConfigLimits::MAX_ACCOUNT_BODY_BYTES) {
-		Detail::sendError(response,
-						  ApiError(413, "request_too_large",
-								   "Account request is too large"));
+		Detail::sendError(response, ApiError(413, "request_too_large",
+											 "Account request is too large"));
 		return false;
 	}
 	try {
 		document = Detail::Json::parse(request.body);
 	} catch (const Detail::Json::exception &) {
-		Detail::sendError(response,
-						  ApiError(400, "invalid_request",
-								   "Account request is invalid"));
+		Detail::sendError(response, ApiError(400, "invalid_request",
+											 "Account request is invalid"));
 		return false;
 	}
 	if (!document.is_object()) {
-		Detail::sendError(response,
-						  ApiError(400, "invalid_request",
-								   "Account request is invalid"));
+		Detail::sendError(response, ApiError(400, "invalid_request",
+											 "Account request is invalid"));
 		return false;
 	}
 	return true;
 }
 
-bool hasOnly(const Detail::Json &document,
+bool hasOnly(const Detail::Json					&document,
 			 std::initializer_list<const char *> keys) {
 	for (auto field = document.begin(); field != document.end(); ++field) {
 		bool known = false;
@@ -86,39 +83,43 @@ bool hasOnly(const Detail::Json &document,
 	return true;
 }
 
-void sendAccountError(httplib::Response &response,
+void sendAccountError(httplib::Response					&response,
 					  const Auth::AccountOperationError &error) {
-	int status = 400;
-	const char *code = "invalid_request";
+	int			status = 400;
+	const char *code   = "invalid_request";
 	switch (error.code) {
 	case Auth::AccountOperationError::Code::Invalid:
 		break;
 	case Auth::AccountOperationError::Code::NotFound:
 		status = 404;
-		code = "account_not_found";
+		code   = "account_not_found";
 		break;
 	case Auth::AccountOperationError::Code::Conflict:
 		status = 409;
-		code = "account_conflict";
+		code   = "account_conflict";
 		break;
 	case Auth::AccountOperationError::Code::LastAdministrator:
 		status = 409;
-		code = "last_administrator";
+		code   = "last_administrator";
 		break;
 	case Auth::AccountOperationError::Code::InvalidToken:
 		status = 400;
-		code = "invalid_setup_token";
+		code   = "invalid_setup_token";
 		break;
 	}
 	response.status = status;
 	response.set_content(
-		Detail::Json{{"error", error.what()}, {"code", code}}.dump(),
+		Detail::Json{
+			{"error", error.what()},
+			 { "code",		  code}
+	   }
+			.dump(),
 		"application/json");
 }
 
 template <typename Operation>
-void handleAccountOperation(httplib::Response &response,
-							const char *operation, Operation &&run) {
+void handleAccountOperation(httplib::Response &response, const char *operation,
+							Operation &&run) {
 	try {
 		run();
 	} catch (const Auth::AccountOperationError &error) {
@@ -133,15 +134,19 @@ void handleAccountOperation(httplib::Response &response,
 } // namespace
 
 void getAccounts(Auth::AuthProvider &auth, const httplib::Request &,
-				 httplib::Response &response) {
+				 httplib::Response	&response) {
 	handleAccountOperation(response, "GET /api/v1/accounts", [&] {
 		Detail::Json accounts = Detail::Json::array();
 		for (const Auth::Account &account : auth.listAccounts()) {
 			accounts.push_back(accountJson(account));
 		}
 		response.status = 200;
-		response.set_content(Detail::Json{{"accounts", std::move(accounts)}}.dump(),
-							 "application/json");
+		response.set_content(
+			Detail::Json{
+				{"accounts", std::move(accounts)}
+		 }
+				.dump(),
+			"application/json");
 	});
 }
 
@@ -151,27 +156,27 @@ void createAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 	if (!parseBody(request, document, response)) {
 		return;
 	}
-	if (!hasOnly(document, {"username", "role"}) ||
-		document.size() != 2 || !document["username"].is_string()) {
-		Detail::sendError(response,
-						  ApiError(400, "invalid_request",
-								   "Account request is invalid"));
+	if (!hasOnly(document, {"username", "role"}) || document.size() != 2 ||
+		!document["username"].is_string()) {
+		Detail::sendError(response, ApiError(400, "invalid_request",
+											 "Account request is invalid"));
 		return;
 	}
 	Auth::Role role;
 	if (!parseRole(document["role"], role)) {
-		Detail::sendError(response,
-						  ApiError(400, "invalid_request",
-								   "Account role is invalid"));
+		Detail::sendError(response, ApiError(400, "invalid_request",
+											 "Account role is invalid"));
 		return;
 	}
 	const std::string username = document["username"].get<std::string>();
 	handleAccountOperation(response, "POST /api/v1/accounts", [&] {
 		const Auth::AccountSetup created = auth.createAccount(username, role);
-		response.status = 201;
+		response.status					 = 201;
 		response.set_content(
-			Detail::Json{{"account", accountJson(created.account)},
-						 {"setup_token", created.setup_token}}
+			Detail::Json{
+				{	 "account", accountJson(created.account)},
+				{"setup_token",			created.setup_token}
+		}
 				.dump(),
 			"application/json");
 	});
@@ -188,9 +193,8 @@ void updateAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 		document["id"].get<std::string>().empty() ||
 		document["id"].get<std::string>().size() >
 			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
-		Detail::sendError(response,
-						  ApiError(400, "invalid_request",
-								   "Account update is invalid"));
+		Detail::sendError(response, ApiError(400, "invalid_request",
+											 "Account update is invalid"));
 		return;
 	}
 	Auth::AccountUpdate update;
@@ -206,9 +210,8 @@ void updateAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 	if (document.contains("role")) {
 		Auth::Role role;
 		if (!parseRole(document["role"], role)) {
-			Detail::sendError(response,
-							  ApiError(400, "invalid_request",
-									   "Account role is invalid"));
+			Detail::sendError(response, ApiError(400, "invalid_request",
+												 "Account role is invalid"));
 			return;
 		}
 		update.role = role;
@@ -217,7 +220,9 @@ void updateAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 	handleAccountOperation(response, "PATCH /api/v1/accounts", [&] {
 		response.status = 200;
 		response.set_content(
-			Detail::Json{{"account", accountJson(auth.updateAccount(id, update))}}
+			Detail::Json{
+				{"account", accountJson(auth.updateAccount(id, update))}
+		}
 				.dump(),
 			"application/json");
 	});
@@ -234,9 +239,8 @@ void disableAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 		document["id"].get<std::string>().empty() ||
 		document["id"].get<std::string>().size() >
 			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
-		Detail::sendError(response,
-						  ApiError(400, "invalid_request",
-								   "Account request is invalid"));
+		Detail::sendError(response, ApiError(400, "invalid_request",
+											 "Account request is invalid"));
 		return;
 	}
 	const std::string id = document["id"].get<std::string>();
@@ -246,9 +250,9 @@ void disableAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 	});
 }
 
-void issueAccountSetupToken(Auth::AuthProvider &auth,
+void issueAccountSetupToken(Auth::AuthProvider	   &auth,
 							const httplib::Request &request,
-							httplib::Response &response) {
+							httplib::Response	   &response) {
 	Detail::Json document;
 	if (!parseBody(request, document, response)) {
 		return;
@@ -258,18 +262,19 @@ void issueAccountSetupToken(Auth::AuthProvider &auth,
 		document["id"].get<std::string>().empty() ||
 		document["id"].get<std::string>().size() >
 			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
-		Detail::sendError(response,
-						  ApiError(400, "invalid_request",
-								   "Account request is invalid"));
+		Detail::sendError(response, ApiError(400, "invalid_request",
+											 "Account request is invalid"));
 		return;
 	}
 	const std::string id = document["id"].get<std::string>();
 	handleAccountOperation(response, "POST /api/v1/accounts/setup-token", [&] {
 		const Auth::AccountSetup setup = auth.issueAccountSetupToken(id);
-		response.status = 200;
+		response.status				   = 200;
 		response.set_content(
-			Detail::Json{{"account", accountJson(setup.account)},
-						 {"setup_token", setup.setup_token}}
+			Detail::Json{
+				{	 "account", accountJson(setup.account)},
+				{"setup_token",			setup.setup_token}
+		  }
 				.dump(),
 			"application/json");
 	});

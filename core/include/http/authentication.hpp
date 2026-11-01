@@ -60,9 +60,9 @@ class RateLimiter {
 	void pruneExpired(std::chrono::steady_clock::time_point now);
 
 	std::uint32_t				  maximum_requests_;
-	std::chrono::seconds window_;
+	std::chrono::seconds		  window_;
 	std::size_t					  maximum_tracked_keys_;
-	std::mutex mutex_;
+	std::mutex					  mutex_;
 	std::map<std::string, Window> windows_;
 };
 
@@ -143,7 +143,6 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
  * @return The token when the header uses Bearer credentials, otherwise no
  * value.
  */
-std::optional<std::string>
-bearerToken(const httplib::Request &request);
+std::optional<std::string> bearerToken(const httplib::Request &request);
 
 } // namespace HttpApi

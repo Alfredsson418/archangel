@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../../include/http/authentication.hpp"
 #include "../../../include/auth/providers/auth_provider.hpp"
+#include "../../../include/http/authentication.hpp"
 #include "../../../lib/cpp-httplib/cpp-httplib.hpp"
 
 namespace HttpApi {
@@ -33,8 +33,8 @@ void logout(Auth::AuthProvider &auth, const httplib::Request &request,
  * @param response HTTP response to populate.
  * @return No value; writes a safe success or error response.
  */
-void completeAccountSetup(Auth::AuthProvider &auth,
+void completeAccountSetup(Auth::AuthProvider	 &auth,
 						  const httplib::Request &request,
-						  httplib::Response &response);
+						  httplib::Response		 &response);
 
 } // namespace HttpApi

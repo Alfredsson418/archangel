@@ -46,14 +46,14 @@ FirewallConfig parseFirewallConfig(const std::string &content) {
 		!document["version"].is_number_integer() ||
 		!document.contains("firewall") || !document["firewall"].is_object() ||
 		document.size() != 3) {
-		throw std::runtime_error(
-			"Firewall bundle must use format archangel-firewall-config version 1");
+		throw std::runtime_error("Firewall bundle must use format "
+								 "archangel-firewall-config version 1");
 	}
 
 	const int version = document["version"].get<int>();
 	if (version != 1) {
-		throw std::runtime_error(
-			"Firewall bundle must use format archangel-firewall-config version 1");
+		throw std::runtime_error("Firewall bundle must use format "
+								 "archangel-firewall-config version 1");
 	}
 
 	const Json &firewall = document["firewall"];
@@ -104,7 +104,9 @@ resolveFirewallConfigImportMode(const std::string &mode) {
 
 std::string serializeFirewallConfig(const std::string &ruleset) {
 	const Json documentRuleset = parseRuleset(parseJson(ruleset), "Ruleset");
-	Json otherRuleset{{"nftables", Json::array()}};
+	Json	   otherRuleset{
+			  {"nftables", Json::array()}
+	 };
 	Json archangelRules = Json::array();
 	for (const Json &entry : documentRuleset["nftables"]) {
 		if (isArchangelRule(entry)) {
@@ -113,13 +115,15 @@ std::string serializeFirewallConfig(const std::string &ruleset) {
 			otherRuleset["nftables"].push_back(entry);
 		}
 	}
-	Json firewall{{"other_ruleset", std::move(otherRuleset)},
-				  {"archangel_rules", std::move(archangelRules)}};
+	Json firewall{
+		{	 "other_ruleset",	  std::move(otherRuleset)},
+		{"archangel_rules", std::move(archangelRules)}
+	  };
 
 	return Json{
-			   {  "format",					"archangel-firewall-config"},
-			   { "version",											1},
-			   {"firewall",						   std::move(firewall)}
+			   {	"format", "archangel-firewall-config"},
+			   { "version",						   1},
+			   {"firewall",			std::move(firewall)}
 	}
 			   .dump(2) +
 		   "\n";

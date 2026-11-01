@@ -1,10 +1,10 @@
 #pragma once
 
 #include "../../lib/cpp-httplib/cpp-httplib.hpp"
+#include "../auth/providers/auth_provider.hpp"
 #include "../config/app_config.hpp"
 #include "../firewall/providers/firewall.hpp"
 #include "authentication.hpp"
-#include "../auth/providers/auth_provider.hpp"
 #include <chrono>
 #include <iostream>
 #include <string>
@@ -18,7 +18,7 @@ class HttpServer {
 	 * @return No value.
 	 */
 	HttpServer(Firewall &firewall, Auth::AuthProvider &auth,
-			   AppConfig::Server serverConfig,
+			   AppConfig::Server	 serverConfig,
 			   AppConfig::RateLimits rateLimits);
 
 	/**
@@ -32,11 +32,11 @@ class HttpServer {
   private:
 	Firewall							 &firewall_;
 	Auth::AuthProvider					 &auth_;
-	HttpApi::RateLimiter					  login_limiter_;
-	HttpApi::RateLimiter					  source_rate_limiter_;
-	HttpApi::RateLimiter					  identity_rate_limiter_;
-	HttpApi::RateLimiter firewall_mutation_source_limiter_;
-	HttpApi::RateLimiter firewall_mutation_identity_limiter_;
+	HttpApi::RateLimiter				  login_limiter_;
+	HttpApi::RateLimiter				  source_rate_limiter_;
+	HttpApi::RateLimiter				  identity_rate_limiter_;
+	HttpApi::RateLimiter				  firewall_mutation_source_limiter_;
+	HttpApi::RateLimiter				  firewall_mutation_identity_limiter_;
 	AppConfig::Server					  server_config_;
 	std::chrono::steady_clock::time_point started_at_;
 };

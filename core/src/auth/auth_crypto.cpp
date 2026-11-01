@@ -38,9 +38,8 @@ std::array<unsigned char, Size> secureRandomBytes() {
 std::size_t passwordCodepoints(std::string_view password) {
 	std::size_t count = 0;
 	for (std::size_t index = 0; index < password.size(); ++count) {
-		const unsigned char lead =
-			static_cast<unsigned char>(password[index]);
-		std::size_t continuationCount = 0;
+		const unsigned char lead = static_cast<unsigned char>(password[index]);
+		std::size_t			continuationCount = 0;
 		if (lead <= 0x7f) {
 			continuationCount = 0;
 		} else if (lead >= 0xc2 && lead <= 0xdf) {
@@ -56,8 +55,8 @@ std::size_t passwordCodepoints(std::string_view password) {
 			throw std::runtime_error("Password must be valid UTF-8");
 		}
 		for (std::size_t offset = 1; offset <= continuationCount; ++offset) {
-			if ((static_cast<unsigned char>(password[index + offset]) &
-				 0xc0) != 0x80) {
+			if ((static_cast<unsigned char>(password[index + offset]) & 0xc0) !=
+				0x80) {
 				throw std::runtime_error("Password must be valid UTF-8");
 			}
 		}
@@ -87,9 +86,8 @@ std::string normalizeUsername(std::string_view username) {
 	std::string normalized;
 	normalized.reserve(username.size());
 	for (const unsigned char character : username) {
-		const bool isAsciiLetter =
-			(character >= 'A' && character <= 'Z') ||
-			(character >= 'a' && character <= 'z');
+		const bool isAsciiLetter = (character >= 'A' && character <= 'Z') ||
+								   (character >= 'a' && character <= 'z');
 		const bool isAsciiDigit = character >= '0' && character <= '9';
 		if (!(isAsciiLetter || isAsciiDigit || character == '.' ||
 			  character == '_' || character == '-')) {
@@ -104,8 +102,7 @@ std::string normalizeUsername(std::string_view username) {
 
 void validatePassword(std::string_view password, const PasswordPolicy &policy) {
 	if (password.size() > AppConfigLimits::MAX_PASSWORD_BYTES) {
-		throw std::runtime_error(
-			"Password exceeds the maximum encoded size");
+		throw std::runtime_error("Password exceeds the maximum encoded size");
 	}
 	const std::size_t length = passwordCodepoints(password);
 	if (length < policy.minimumCharacters ||
@@ -115,11 +112,11 @@ void validatePassword(std::string_view password, const PasswordPolicy &policy) {
 	}
 }
 
-std::string hashPassword(std::string_view password,
+std::string hashPassword(std::string_view		   password,
 						 const Argon2idParameters &parameters) {
-	const auto salt = secureRandomBytes<ARGON2_SALT_BYTES>();
+	const auto			  salt = secureRandomBytes<ARGON2_SALT_BYTES>();
 	std::array<char, 256> encoded{};
-	const int result = argon2id_hash_encoded(
+	const int			  result = argon2id_hash_encoded(
 		parameters.iterations, parameters.memoryKiB, parameters.parallelism,
 		password.data(), password.size(), salt.data(), salt.size(),
 		ARGON2_HASH_BYTES, encoded.data(), encoded.size());
@@ -133,7 +130,7 @@ std::string hashPassword(std::string_view password,
 
 bool verifyPassword(std::string_view encoded, std::string_view password) {
 	const std::string hash(encoded);
-	const int result =
+	const int		  result =
 		argon2id_verify(hash.c_str(), password.data(), password.size());
 	if (result == ARGON2_OK) {
 		return true;
@@ -153,7 +150,7 @@ std::string createSessionToken() {
 
 std::string hashSessionToken(std::string_view token) {
 	std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
-	unsigned int digestLength = 0;
+	unsigned int							   digestLength = 0;
 	if (EVP_Digest(token.data(), token.size(), digest.data(), &digestLength,
 				   EVP_sha256(), nullptr) != 1) {
 		throw std::runtime_error("Unable to hash API session token");
@@ -163,8 +160,8 @@ std::string hashSessionToken(std::string_view token) {
 
 std::string makeUuid() {
 	auto bytes = secureRandomBytes<16>();
-	bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0f) | 0x40);
-	bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3f) | 0x80);
+	bytes[6]   = static_cast<unsigned char>((bytes[6] & 0x0f) | 0x40);
+	bytes[8]   = static_cast<unsigned char>((bytes[8] & 0x3f) | 0x80);
 	const std::string value = hexEncode(bytes.data(), bytes.size());
 	return value.substr(0, 8) + "-" + value.substr(8, 4) + "-" +
 		   value.substr(12, 4) + "-" + value.substr(16, 4) + "-" +

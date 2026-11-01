@@ -30,7 +30,7 @@ void validatePassword(std::string_view password, const PasswordPolicy &policy);
  * @return Encoded Argon2id hash.
  * @throws std::runtime_error If secure randomness or hashing fails.
  */
-std::string hashPassword(std::string_view password,
+std::string hashPassword(std::string_view		   password,
 						 const Argon2idParameters &parameters);
 
 /**

@@ -1,14 +1,14 @@
 #include "../../include/app/application.hpp"
+#include "../../include/auth/providers/auth_provider.hpp"
+#include "../../include/auth/secret_input.hpp"
 #include "../../include/cli/firewall_config.hpp"
 #include "../../include/config/runtime_config.hpp"
+#include "../../include/firewall/config.hpp"
 #include "../../include/firewall/providers/firewall_config_provider.hpp"
 #include "../../include/firewall/providers/nft.hpp"
-#include "../../include/firewall/config.hpp"
 #include "../../include/http/server.hpp"
 #include "../../include/logger.hpp"
 #include "../../include/network/address.hpp"
-#include "../../include/auth/providers/auth_provider.hpp"
-#include "../../include/auth/secret_input.hpp"
 
 #include "../../lib/CLI11/CLI11.hpp"
 
@@ -21,18 +21,17 @@
 int runApplication(int argc, char *argv[]) {
 	CLI::App app{"Archangel firewall"};
 	auto *userCommand = app.add_subcommand("user", "Manage backend accounts");
-	auto *bootstrapAdmin =
-		userCommand->add_subcommand("bootstrap-admin",
-									"Create the initial administrator");
+	auto *bootstrapAdmin = userCommand->add_subcommand(
+		"bootstrap-admin", "Create the initial administrator");
 	std::string bootstrapUsername;
 	std::string authDatabasePathOverride;
 	bootstrapAdmin
 		->add_option("--username", bootstrapUsername,
 					 "Initial administrator username")
 		->required();
-	auto *databaseOption = bootstrapAdmin->add_option(
-		"--database", authDatabasePathOverride,
-		"Private authentication database path");
+	auto *databaseOption =
+		bootstrapAdmin->add_option("--database", authDatabasePathOverride,
+								   "Private authentication database path");
 	userCommand->require_subcommand(1);
 
 	auto *configCommand =
@@ -46,29 +45,26 @@ int runApplication(int argc, char *argv[]) {
 	configCommand->require_subcommand(1);
 
 	std::string runtimeConfigPath;
-	auto *runtimeConfigOption =
-		app.add_option("--config", runtimeConfigPath,
-					   "Backend runtime JSON config file");
+	auto	   *runtimeConfigOption = app.add_option(
+		  "--config", runtimeConfigPath, "Backend runtime JSON config file");
 	std::string hostOverride;
-	int portOverride = 0;
-	auto *hostOption =
+	int			portOverride = 0;
+	auto	   *hostOption =
 		app.add_option("--host", hostOverride,
 					   "HTTP server bind address (overrides runtime config)");
-	auto *portOption =
-		app.add_option("--port", portOverride,
-					   "HTTP server port (overrides runtime config)");
+	auto *portOption = app.add_option(
+		"--port", portOverride, "HTTP server port (overrides runtime config)");
 	std::string importFirewallConfigPath;
 	std::string exportFirewallConfigPath;
-	app.add_option("--import-firewall-config",
-				   importFirewallConfigPath,
+	app.add_option("--import-firewall-config", importFirewallConfigPath,
 				   "Import a versioned firewall ruleset bundle before serving");
-	app.add_option(
-		"--export-firewall-config", exportFirewallConfigPath,
-		"Export the complete nftables ruleset as a firewall bundle");
+	app.add_option("--export-firewall-config", exportFirewallConfigPath,
+				   "Export the complete nftables ruleset as a firewall bundle");
 	std::string rulesModeText;
-	auto	   *rulesModeOption = app.add_option(
-		"--firewall-rules-mode", rulesModeText,
-		"Required with --import-firewall-config: merge, replace, or replace-all");
+	auto	   *rulesModeOption =
+		app.add_option("--firewall-rules-mode", rulesModeText,
+					   "Required with --import-firewall-config: merge, "
+					   "replace, or replace-all");
 
 	CLI11_PARSE(app, argc, argv);
 
@@ -80,9 +76,9 @@ int runApplication(int argc, char *argv[]) {
 						 "overrides or firewall bundle operations\n";
 			return 2;
 		}
-		const std::string outputPath =
-			generatedConfigPath.empty() ? AppConfigDefaults::configPath()
-										: generatedConfigPath;
+		const std::string outputPath = generatedConfigPath.empty()
+										   ? AppConfigDefaults::configPath()
+										   : generatedConfigPath;
 		try {
 			writeRuntimeConfig(outputPath);
 			std::cout << "Generated runtime config at " << outputPath << '\n';
@@ -97,10 +93,10 @@ int runApplication(int argc, char *argv[]) {
 	AppConfig appConfig;
 	try {
 		const bool explicitConfig = runtimeConfigOption->count() > 0;
-		appConfig = loadRuntimeConfig(
-			explicitConfig ? runtimeConfigPath
-						   : AppConfigDefaults::configPath(),
-			!explicitConfig);
+		appConfig =
+			loadRuntimeConfig(explicitConfig ? runtimeConfigPath
+											 : AppConfigDefaults::configPath(),
+							  !explicitConfig);
 	} catch (const std::exception &error) {
 		std::cerr << "Runtime configuration failed: " << error.what() << '\n';
 		return 1;
@@ -118,28 +114,24 @@ int runApplication(int argc, char *argv[]) {
 			validateAppConfig(appConfig);
 			Auth::SecretString password(
 				Auth::promptPassword("New administrator password: "));
-			Auth::SecretString confirmation(Auth::promptPassword(
-				"Confirm administrator password: "));
+			Auth::SecretString confirmation(
+				Auth::promptPassword("Confirm administrator password: "));
 			if (password.value() != confirmation.value()) {
 				std::cerr << "Passwords do not match\n";
 				return 2;
 			}
 			Auth::SqliteAuthProvider provider(
 				appConfig.auth.database_path,
-				std::chrono::seconds(
-					appConfig.sessions.idle_timeout_seconds),
+				std::chrono::seconds(appConfig.sessions.idle_timeout_seconds),
 				std::chrono::seconds(
 					appConfig.sessions.absolute_timeout_seconds),
-				Auth::PasswordPolicy{
-					appConfig.auth.password_min_length,
-					appConfig.auth.password_max_length},
-				Auth::Argon2idParameters{
-					appConfig.auth.argon2id_memory_kib,
-					appConfig.auth.argon2id_iterations,
-					appConfig.auth.argon2id_parallelism});
-			const Auth::Identity identity =
-				provider.bootstrapAdministrator(bootstrapUsername,
-												password.value());
+				Auth::PasswordPolicy{appConfig.auth.password_min_length,
+									 appConfig.auth.password_max_length},
+				Auth::Argon2idParameters{appConfig.auth.argon2id_memory_kib,
+										 appConfig.auth.argon2id_iterations,
+										 appConfig.auth.argon2id_parallelism});
+			const Auth::Identity identity = provider.bootstrapAdministrator(
+				bootstrapUsername, password.value());
 			std::cout << "Created initial administrator account "
 					  << identity.username << '\n';
 			return 0;
@@ -189,23 +181,18 @@ int runApplication(int argc, char *argv[]) {
 			   "be used together\n";
 		return 2;
 	}
-	if (!importFirewallConfigPath.empty() &&
-		rulesModeOption->count() == 0) {
-		std::cerr
-			<< "--firewall-rules-mode merge|replace is required with "
-			   "--import-firewall-config\n";
+	if (!importFirewallConfigPath.empty() && rulesModeOption->count() == 0) {
+		std::cerr << "--firewall-rules-mode merge|replace is required with "
+					 "--import-firewall-config\n";
 		return 2;
 	}
-	if (importFirewallConfigPath.empty() &&
-		rulesModeOption->count() > 0) {
-		std::cerr
-			<< "--firewall-rules-mode can only be used with "
-			   "--import-firewall-config\n";
+	if (importFirewallConfigPath.empty() && rulesModeOption->count() > 0) {
+		std::cerr << "--firewall-rules-mode can only be used with "
+					 "--import-firewall-config\n";
 		return 2;
 	}
-	if (!importFirewallConfigPath.empty() &&
-		rulesModeText != "merge" && rulesModeText != "replace" &&
-		rulesModeText != "replace-all") {
+	if (!importFirewallConfigPath.empty() && rulesModeText != "merge" &&
+		rulesModeText != "replace" && rulesModeText != "replace-all") {
 		std::cerr << "--firewall-rules-mode must be merge, replace, or "
 					 "replace-all\n";
 		return 2;
@@ -240,17 +227,13 @@ int runApplication(int argc, char *argv[]) {
 
 		Auth::SqliteAuthProvider authProvider(
 			appConfig.auth.database_path,
-			std::chrono::seconds(
-				appConfig.sessions.idle_timeout_seconds),
-			std::chrono::seconds(
-				appConfig.sessions.absolute_timeout_seconds),
-			Auth::PasswordPolicy{
-				appConfig.auth.password_min_length,
-				appConfig.auth.password_max_length},
-			Auth::Argon2idParameters{
-				appConfig.auth.argon2id_memory_kib,
-				appConfig.auth.argon2id_iterations,
-				appConfig.auth.argon2id_parallelism});
+			std::chrono::seconds(appConfig.sessions.idle_timeout_seconds),
+			std::chrono::seconds(appConfig.sessions.absolute_timeout_seconds),
+			Auth::PasswordPolicy{appConfig.auth.password_min_length,
+								 appConfig.auth.password_max_length},
+			Auth::Argon2idParameters{appConfig.auth.argon2id_memory_kib,
+									 appConfig.auth.argon2id_iterations,
+									 appConfig.auth.argon2id_parallelism});
 
 		if (!importFirewallConfigPath.empty()) {
 			FirewallConfigProvider &configProvider =
@@ -258,8 +241,7 @@ int runApplication(int argc, char *argv[]) {
 			const FirewallConfigImportMode importMode =
 				resolveFirewallConfigImportMode(rulesModeText);
 			configProvider.importFirewallConfig(
-				FirewallConfigCommand::readBundle(
-					importFirewallConfigPath),
+				FirewallConfigCommand::readBundle(importFirewallConfigPath),
 				importMode);
 			Logger::Program::log("Imported Archangel firewall config bundle");
 			HttpServer server(nftables, authProvider, appConfig.server,

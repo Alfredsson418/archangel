@@ -36,8 +36,8 @@ httplib::Server::Handler withSchemaVersion(httplib::Server::Handler handler) {
 			response.status = 400;
 			response.set_content(
 				nlohmann::json{
-					{		  "error", "Missing or unsupported API schema version"},
-					{		   "code",				  "unsupported_schema_version"},
+					{		 "error", "Missing or unsupported API schema version"},
+					{			 "code",				 "unsupported_schema_version"},
 					{"schema_version",					   HttpApi::SCHEMA_VERSION},
 			}
 					.dump(),
@@ -153,7 +153,7 @@ HttpServer::HttpServer(Firewall &firewall, Auth::AuthProvider &auth,
 
 void HttpServer::run() {
 	using HttpApi::RouteAccess;
-	httplib::Server server;
+	httplib::Server		   server;
 	HttpApi::RoutePolicies routes;
 	server.set_pre_routing_handler(
 		[this, &routes](const httplib::Request &request,

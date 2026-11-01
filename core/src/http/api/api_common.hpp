@@ -23,8 +23,8 @@ inline void sendError(httplib::Response &response, const ApiError &error) {
 	response.set_content(
 		Json{
 			{"error", error.what()},
-			{ "code", error.code()}
-	  }
+			 { "code", error.code()}
+	   }
 			.dump(),
 		"application/json");
 }
@@ -49,8 +49,8 @@ inline void sendOperationError(httplib::Response &response,
 	response.set_content(
 		Json{
 			{"error", message},
-			   { "code",	code}
-	 }
+			{ "code",	 code}
+	  }
 			.dump(),
 		"application/json");
 }

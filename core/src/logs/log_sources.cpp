@@ -51,7 +51,9 @@ Source readArchangelLog() {
 	const int file =
 		open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
 	if (file == -1) {
-		return {"archangel", "Archangel application", false,
+		return {"archangel",
+				"Archangel application",
+				false,
 				"The backend log file is not readable or has not been created.",
 				{}};
 	}
@@ -59,22 +61,28 @@ Source readArchangelLog() {
 	struct stat fileInfo {};
 	if (fstat(file, &fileInfo) == -1 || !S_ISREG(fileInfo.st_mode)) {
 		close(file);
-		return {"archangel", "Archangel application", false,
-				"The backend log file is not a readable regular file.", {}};
+		return {"archangel",
+				"Archangel application",
+				false,
+				"The backend log file is not a readable regular file.",
+				{}};
 	}
 	const off_t fileSize = fileInfo.st_size;
 	const off_t bytesToRead =
 		std::min<off_t>(fileSize, AppConfigLimits::MAX_LOG_READ_BYTES);
 	const off_t offset = fileSize - bytesToRead;
 	std::string tail(static_cast<std::size_t>(bytesToRead), '\0');
-	ssize_t bytesRead = 0;
+	ssize_t		bytesRead = 0;
 	do {
 		bytesRead = pread(file, tail.data(), tail.size(), offset);
 	} while (bytesRead == -1 && errno == EINTR);
 	close(file);
 	if (bytesRead == -1 || static_cast<std::size_t>(bytesRead) != tail.size()) {
-		return {"archangel", "Archangel application", false,
-				"The backend log file could not be read completely.", {}};
+		return {"archangel",
+				"Archangel application",
+				false,
+				"The backend log file could not be read completely.",
+				{}};
 	}
 	if (offset > 0) {
 		const std::size_t firstNewline = tail.find('\n');
@@ -86,8 +94,8 @@ Source readArchangelLog() {
 	}
 
 	std::vector<std::string> entries;
-	std::string line;
-	std::istringstream lines(tail);
+	std::string				 line;
+	std::istringstream		 lines(tail);
 	while (std::getline(lines, line)) {
 		if (line.size() > AppConfigLimits::MAX_LOG_LINE_BYTES) {
 			line.resize(AppConfigLimits::MAX_LOG_LINE_BYTES);
@@ -98,9 +106,7 @@ Source readArchangelLog() {
 		}
 	}
 	std::reverse(entries.begin(), entries.end());
-	return {"archangel",
-			"Archangel application",
-			true,
+	return {"archangel", "Archangel application", true,
 			entries.empty() ? "No application log entries yet."
 							: "Showing the most recent application events.",
 			std::move(entries)};
@@ -156,12 +162,15 @@ Source readNftablesLog() {
 					   "--lines=500 2>/dev/null",
 					   "r");
 	if (pipe == nullptr) {
-		return {"nftables", "nftables packet logs", false,
-				"The host kernel journal could not be opened.", {}};
+		return {"nftables",
+				"nftables packet logs",
+				false,
+				"The host kernel journal could not be opened.",
+				{}};
 	}
 
 	std::vector<std::string> entries;
-	std::string line;
+	std::string				 line;
 	while (readBoundedLine(pipe, line)) {
 		if (line.find("SRC=") == std::string::npos ||
 			line.find("DST=") == std::string::npos ||
@@ -183,9 +192,7 @@ Source readNftablesLog() {
 	}
 
 	std::reverse(entries.begin(), entries.end());
-	return {"nftables",
-			"nftables packet logs",
-			true,
+	return {"nftables", "nftables packet logs", true,
 			entries.empty()
 				? "No recent nftables packet log entries found."
 				: "Showing recent packet events from the host kernel journal.",
@@ -202,12 +209,12 @@ ReadResult readSources(Firewall &firewall) {
 		if (hasNftablesLogRules(firewall)) {
 			result.sources.push_back(readNftablesLog());
 		} else {
-			result.sources.push_back(
-				{"nftables",
-				 "nftables packet logs",
-				 false,
-				 "No nftables log statements are present in the active ruleset.",
-				 {}});
+			result.sources.push_back({"nftables",
+									  "nftables packet logs",
+									  false,
+									  "No nftables log statements are present "
+									  "in the active ruleset.",
+									  {}});
 		}
 	} catch (const std::exception &) {
 		result.rulesetUnavailable = true;

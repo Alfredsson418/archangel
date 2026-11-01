@@ -9,8 +9,8 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -18,12 +18,13 @@ namespace {
 class TemporaryDirectory {
   public:
 	TemporaryDirectory() {
-		std::string pattern = "/tmp/archangel-auth-test-XXXXXX";
+		std::string		  pattern = "/tmp/archangel-auth-test-XXXXXX";
 		std::vector<char> writable(pattern.begin(), pattern.end());
 		writable.push_back('\0');
 		const char *created = mkdtemp(writable.data());
 		if (created == nullptr) {
-			throw std::runtime_error("Unable to create authentication test directory");
+			throw std::runtime_error(
+				"Unable to create authentication test directory");
 		}
 		path_ = created;
 	}
@@ -47,12 +48,12 @@ std::string readFile(const std::filesystem::path &path) {
 
 std::string sessionTokenHash(const std::string &token) {
 	std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
-	unsigned int						 digestLength = 0;
+	unsigned int							   digestLength = 0;
 	if (EVP_Digest(token.data(), token.size(), digest.data(), &digestLength,
 				   EVP_sha256(), nullptr) != 1) {
 		throw std::runtime_error("Unable to hash test session token");
 	}
-	std::string encoded;
+	std::string			  encoded;
 	static constexpr char digits[] = "0123456789abcdef";
 	for (unsigned int index = 0; index < digestLength; ++index) {
 		encoded.push_back(digits[digest[index] >> 4]);
@@ -62,8 +63,8 @@ std::string sessionTokenHash(const std::string &token) {
 }
 
 void bootstrapsAdminAndCreatesHashedSessions() {
-	TemporaryDirectory directory;
-	const auto database = directory.path() / "archangel.db";
+	TemporaryDirectory		 directory;
+	const auto				 database = directory.path() / "archangel.db";
 	Auth::SqliteAuthProvider provider(database.string());
 
 	const Auth::Identity created = provider.bootstrapAdministrator(
@@ -76,8 +77,8 @@ void bootstrapsAdminAndCreatesHashedSessions() {
 						 "account IDs should be UUID-shaped");
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
-			provider.bootstrapAdministrator("second-admin",
-											"another sufficiently long passphrase");
+			provider.bootstrapAdministrator(
+				"second-admin", "another sufficiently long passphrase");
 		},
 		"bootstrap must refuse when an active administrator already exists");
 
@@ -88,8 +89,9 @@ void bootstrapsAdminAndCreatesHashedSessions() {
 		"unknown users must not authenticate");
 	const auto session =
 		provider.login("INITIAL.ADMIN", "a sufficiently long passphrase");
-	TestSupport::require(session.has_value(),
-						 "valid case-insensitive credentials should authenticate");
+	TestSupport::require(
+		session.has_value(),
+		"valid case-insensitive credentials should authenticate");
 	TestSupport::require(session->token.size() == 64,
 						 "session tokens should contain 256 random bits");
 	TestSupport::require(session->identity.id == created.id,
@@ -99,10 +101,9 @@ void bootstrapsAdminAndCreatesHashedSessions() {
 	TestSupport::require(databaseContents.find(session->token) ==
 							 std::string::npos,
 						 "database must not contain the raw session token");
-	TestSupport::require(
-		databaseContents.find(sessionTokenHash(session->token)) !=
-			std::string::npos,
-		"database should contain only the SHA-256 token hash");
+	TestSupport::require(databaseContents.find(sessionTokenHash(
+							 session->token)) != std::string::npos,
+						 "database should contain only the SHA-256 token hash");
 	TestSupport::require(
 		databaseContents.find("a sufficiently long passphrase") ==
 			std::string::npos,
@@ -112,8 +113,9 @@ void bootstrapsAdminAndCreatesHashedSessions() {
 							 authenticated->id == created.id,
 						 "valid session tokens should resolve to their user");
 	provider.revokeSession(session->token);
-	TestSupport::require(!provider.authenticateSession(session->token),
-						 "revoked session tokens should no longer authenticate");
+	TestSupport::require(
+		!provider.authenticateSession(session->token),
+		"revoked session tokens should no longer authenticate");
 
 	struct stat databaseInfo {};
 	TestSupport::require(stat(database.c_str(), &databaseInfo) == 0 &&
@@ -127,21 +129,17 @@ void bootstrapsAdminAndCreatesHashedSessions() {
 }
 
 void enforcesPasswordAndUsernamePolicy() {
-	TemporaryDirectory directory;
+	TemporaryDirectory		 directory;
 	Auth::SqliteAuthProvider provider(
 		(directory.path() / "archangel.db").string());
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] { provider.bootstrapAdministrator("ab", "long enough password"); },
 		"usernames shorter than three characters must be rejected");
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] {
-			provider.bootstrapAdministrator("valid-user", "too short");
-		},
+		[&] { provider.bootstrapAdministrator("valid-user", "too short"); },
 		"passwords shorter than fifteen characters must be rejected");
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] {
-			provider.bootstrapAdministrator("valid-user", "ééééééé");
-		},
+		[&] { provider.bootstrapAdministrator("valid-user", "ééééééé"); },
 		"password minimum must count Unicode code points");
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
@@ -157,14 +155,13 @@ void enforcesPasswordAndUsernamePolicy() {
 		"unsupported username characters must be rejected");
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
-			provider.bootstrapAdministrator("usérname",
-											"long enough password");
+			provider.bootstrapAdministrator("usérname", "long enough password");
 		},
 		"non-ASCII usernames must be rejected");
 }
 
 void appliesConfiguredPasswordAndArgonParameters() {
-	TemporaryDirectory directory;
+	TemporaryDirectory		 directory;
 	Auth::SqliteAuthProvider provider(
 		(directory.path() / "configured.db").string(), std::chrono::minutes(15),
 		std::chrono::hours(8), Auth::PasswordPolicy{16, 80},
@@ -177,18 +174,19 @@ void appliesConfiguredPasswordAndArgonParameters() {
 		"configured password minimums should be enforced");
 	const auto identity = provider.bootstrapAdministrator(
 		"configured-admin", "a sufficiently long configured passphrase");
+	TestSupport::require(provider
+							 .login("configured-admin",
+									"a sufficiently long configured passphrase")
+							 .has_value(),
+						 "configured Argon2id hashes should remain verifiable");
 	TestSupport::require(
-		provider.login("configured-admin",
-					   "a sufficiently long configured passphrase")
-			.has_value(),
-		"configured Argon2id hashes should remain verifiable");
-	TestSupport::require(identity.role == Auth::Role::Administrator,
-						 "configured bootstrap should retain administrator role");
+		identity.role == Auth::Role::Administrator,
+		"configured bootstrap should retain administrator role");
 }
 
 void rejectsUnsafeDatabaseFiles() {
 	TemporaryDirectory directory;
-	const auto database = directory.path() / "unsafe.db";
+	const auto		   database = directory.path() / "unsafe.db";
 	{
 		std::ofstream output(database);
 		output << "not a database";
@@ -216,7 +214,7 @@ void rejectsUnsafeDatabaseFiles() {
 }
 
 void expiresIdleSessions() {
-	TemporaryDirectory directory;
+	TemporaryDirectory		 directory;
 	Auth::SqliteAuthProvider provider(
 		(directory.path() / "archangel.db").string(), std::chrono::seconds(1),
 		std::chrono::seconds(4));
@@ -232,7 +230,7 @@ void expiresIdleSessions() {
 }
 
 void managesAccountsAndOneTimeSetupTokens() {
-	TemporaryDirectory directory;
+	TemporaryDirectory		 directory;
 	Auth::SqliteAuthProvider provider(
 		(directory.path() / "accounts.db").string());
 	const Auth::Identity administrator = provider.bootstrapAdministrator(
@@ -254,9 +252,9 @@ void managesAccountsAndOneTimeSetupTokens() {
 							 !created.account.enabled &&
 							 created.setup_token.size() == 64,
 						 "new accounts should be disabled and pending setup");
-	TestSupport::require(!provider.login("operator.one",
-										"operator account secure passphrase"),
-						 "pending accounts must not authenticate");
+	TestSupport::require(
+		!provider.login("operator.one", "operator account secure passphrase"),
+		"pending accounts must not authenticate");
 	const auto pendingAccounts = provider.listAccounts();
 	TestSupport::require(pendingAccounts.size() == 2,
 						 "account listing should include pending accounts");
@@ -267,8 +265,8 @@ void managesAccountsAndOneTimeSetupTokens() {
 						 "setup should return the normalized account");
 	TestSupport::requireThrows<Auth::AccountOperationError>(
 		[&] {
-			provider.completeAccountSetup(
-				created.setup_token, "another operator secure passphrase");
+			provider.completeAccountSetup(created.setup_token,
+										  "another operator secure passphrase");
 		},
 		"setup tokens should be single use");
 	const auto operatorSession =
@@ -278,12 +276,12 @@ void managesAccountsAndOneTimeSetupTokens() {
 
 	const Auth::Account updated = provider.updateAccount(
 		operatorIdentity.id,
-		Auth::AccountUpdate{std::string("new-operator"),
-							Auth::Role::Viewer});
-	TestSupport::require(updated.identity.username == "new-operator" &&
-							 updated.identity.role == Auth::Role::Viewer &&
-							 !provider.authenticateSession(operatorSession->token),
-						 "updates should preserve IDs and revoke existing sessions");
+		Auth::AccountUpdate{std::string("new-operator"), Auth::Role::Viewer});
+	TestSupport::require(
+		updated.identity.username == "new-operator" &&
+			updated.identity.role == Auth::Role::Viewer &&
+			!provider.authenticateSession(operatorSession->token),
+		"updates should preserve IDs and revoke existing sessions");
 
 	const Auth::AccountSetup reset =
 		provider.issueAccountSetupToken(operatorIdentity.id);
@@ -294,32 +292,26 @@ void managesAccountsAndOneTimeSetupTokens() {
 								  "updated operator secure passphrase");
 	TestSupport::require(
 		!provider.login("new-operator", "operator account secure passphrase") &&
-			provider.login("new-operator",
-						   "updated operator secure passphrase")
+			provider.login("new-operator", "updated operator secure passphrase")
 				.has_value(),
 		"reset token redemption should replace the account password");
 
-	const auto secondAdmin = provider.createAccount(
-		"second-admin", Auth::Role::Administrator);
+	const auto secondAdmin =
+		provider.createAccount("second-admin", Auth::Role::Administrator);
 	provider.completeAccountSetup(secondAdmin.setup_token,
 								  "second administrator secure passphrase");
 	provider.disableAccount(administrator.id);
 	provider.disableAccount(operatorIdentity.id);
 	TestSupport::requireThrows<Auth::AccountOperationError>(
-		[&] {
-			provider.createAccount("FIRST-ADMIN", Auth::Role::Viewer);
-		},
+		[&] { provider.createAccount("FIRST-ADMIN", Auth::Role::Viewer); },
 		"disabled usernames must not be reused");
 	TestSupport::requireThrows<Auth::AccountOperationError>(
 		[&] {
-			provider.updateAccount(operatorIdentity.id,
-								   Auth::AccountUpdate{});
+			provider.updateAccount(operatorIdentity.id, Auth::AccountUpdate{});
 		},
 		"empty account updates must be rejected");
 	TestSupport::requireThrows<Auth::AccountOperationError>(
-		[&] {
-			provider.issueAccountSetupToken(operatorIdentity.id);
-		},
+		[&] { provider.issueAccountSetupToken(operatorIdentity.id); },
 		"disabled accounts must not receive setup tokens");
 	TestSupport::requireThrows<Auth::AccountOperationError>(
 		[&] { provider.disableAccount(secondAdmin.account.identity.id); },
