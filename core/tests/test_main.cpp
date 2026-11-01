@@ -11,6 +11,8 @@ void runStatisticsApiTests();
 void runFirewallConfigCommandTests();
 void runNetworkAddressTests();
 void runHttpAuthenticationTests();
+void runAuthApiTests();
+void runAccountsApiTests();
 
 int main() {
 	try {
@@ -24,6 +26,8 @@ int main() {
 		runFirewallConfigCommandTests();
 		runNetworkAddressTests();
 		runHttpAuthenticationTests();
+		runAuthApiTests();
+		runAccountsApiTests();
 	} catch (const std::exception &error) {
 		std::cerr << "Backend test failure: " << error.what() << '\n';
 		return 1;
