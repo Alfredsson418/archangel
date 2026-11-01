@@ -230,6 +230,101 @@ void expiresIdleSessions() {
 	TestSupport::require(!provider.authenticateSession(session->token),
 						 "idle sessions should expire after inactivity");
 }
+
+void managesAccountsAndOneTimeSetupTokens() {
+	TemporaryDirectory directory;
+	Auth::SqliteAuthProvider provider(
+		(directory.path() / "accounts.db").string());
+	const Auth::Identity administrator = provider.bootstrapAdministrator(
+		"first-admin", "first administrator secure passphrase");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] { provider.disableAccount(administrator.id); },
+		"the final active administrator cannot be disabled");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.updateAccount(
+				administrator.id,
+				Auth::AccountUpdate{std::nullopt, Auth::Role::Operator});
+		},
+		"the final active administrator cannot be demoted");
+
+	const Auth::AccountSetup created =
+		provider.createAccount("Operator.One", Auth::Role::Operator);
+	TestSupport::require(created.account.setup_pending &&
+							 !created.account.enabled &&
+							 created.setup_token.size() == 64,
+						 "new accounts should be disabled and pending setup");
+	TestSupport::require(!provider.login("operator.one",
+										"operator account secure passphrase"),
+						 "pending accounts must not authenticate");
+	const auto pendingAccounts = provider.listAccounts();
+	TestSupport::require(pendingAccounts.size() == 2,
+						 "account listing should include pending accounts");
+
+	const Auth::Identity operatorIdentity = provider.completeAccountSetup(
+		created.setup_token, "operator account secure passphrase");
+	TestSupport::require(operatorIdentity.username == "operator.one",
+						 "setup should return the normalized account");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.completeAccountSetup(
+				created.setup_token, "another operator secure passphrase");
+		},
+		"setup tokens should be single use");
+	const auto operatorSession =
+		provider.login("operator.one", "operator account secure passphrase");
+	TestSupport::require(operatorSession.has_value(),
+						 "completed accounts should be able to log in");
+
+	const Auth::Account updated = provider.updateAccount(
+		operatorIdentity.id,
+		Auth::AccountUpdate{std::string("new-operator"),
+							Auth::Role::Viewer});
+	TestSupport::require(updated.identity.username == "new-operator" &&
+							 updated.identity.role == Auth::Role::Viewer &&
+							 !provider.authenticateSession(operatorSession->token),
+						 "updates should preserve IDs and revoke existing sessions");
+
+	const Auth::AccountSetup reset =
+		provider.issueAccountSetupToken(operatorIdentity.id);
+	TestSupport::require(
+		!provider.authenticateSession(operatorSession->token),
+		"password reset initiation should revoke existing API sessions");
+	provider.completeAccountSetup(reset.setup_token,
+								  "updated operator secure passphrase");
+	TestSupport::require(
+		!provider.login("new-operator", "operator account secure passphrase") &&
+			provider.login("new-operator",
+						   "updated operator secure passphrase")
+				.has_value(),
+		"reset token redemption should replace the account password");
+
+	const auto secondAdmin = provider.createAccount(
+		"second-admin", Auth::Role::Administrator);
+	provider.completeAccountSetup(secondAdmin.setup_token,
+								  "second administrator secure passphrase");
+	provider.disableAccount(administrator.id);
+	provider.disableAccount(operatorIdentity.id);
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.createAccount("FIRST-ADMIN", Auth::Role::Viewer);
+		},
+		"disabled usernames must not be reused");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.updateAccount(operatorIdentity.id,
+								   Auth::AccountUpdate{});
+		},
+		"empty account updates must be rejected");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] {
+			provider.issueAccountSetupToken(operatorIdentity.id);
+		},
+		"disabled accounts must not receive setup tokens");
+	TestSupport::requireThrows<Auth::AccountOperationError>(
+		[&] { provider.disableAccount(secondAdmin.account.identity.id); },
+		"the final active administrator cannot be disabled");
+}
 } // namespace
 
 void runAuthProviderTests() {
@@ -238,4 +333,5 @@ void runAuthProviderTests() {
 	appliesConfiguredPasswordAndArgonParameters();
 	rejectsUnsafeDatabaseFiles();
 	expiresIdleSessions();
+	managesAccountsAndOneTimeSetupTokens();
 }

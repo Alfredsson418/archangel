@@ -35,6 +35,16 @@ int runApplication(int argc, char *argv[]) {
 		"Private authentication database path");
 	userCommand->require_subcommand(1);
 
+	auto *configCommand =
+		app.add_subcommand("config", "Manage backend runtime config");
+	auto *generateConfigCommand =
+		configCommand->add_subcommand("generate", "Generate a default config");
+	std::string generatedConfigPath;
+	generateConfigCommand->add_option(
+		"--output", generatedConfigPath,
+		"Destination path (defaults to the runtime config path)");
+	configCommand->require_subcommand(1);
+
 	std::string runtimeConfigPath;
 	auto *runtimeConfigOption =
 		app.add_option("--config", runtimeConfigPath,
@@ -61,6 +71,28 @@ int runApplication(int argc, char *argv[]) {
 		"Required with --import-firewall-config: merge, replace, or replace-all");
 
 	CLI11_PARSE(app, argc, argv);
+
+	if (generateConfigCommand->parsed()) {
+		if (runtimeConfigOption->count() > 0 || hostOption->count() > 0 ||
+			portOption->count() > 0 || !importFirewallConfigPath.empty() ||
+			!exportFirewallConfigPath.empty() || rulesModeOption->count() > 0) {
+			std::cerr << "config generate cannot be combined with runtime "
+						 "overrides or firewall bundle operations\n";
+			return 2;
+		}
+		const std::string outputPath =
+			generatedConfigPath.empty() ? AppConfigDefaults::configPath()
+										: generatedConfigPath;
+		try {
+			writeRuntimeConfig(outputPath);
+			std::cout << "Generated runtime config at " << outputPath << '\n';
+			return 0;
+		} catch (const std::exception &error) {
+			std::cerr << "Runtime config generation failed: " << error.what()
+					  << '\n';
+			return 1;
+		}
+	}
 
 	AppConfig appConfig;
 	try {
@@ -145,13 +177,6 @@ int runApplication(int argc, char *argv[]) {
 		appConfig.logging.path != defaultAppConfig.logging.path ||
 		appConfig.logging.level != defaultAppConfig.logging.level) {
 		std::cerr << "Custom runtime logging settings are not supported yet\n";
-		return 1;
-	}
-	if (appConfig.rate_limits.api_requests_per_minute !=
-			defaultAppConfig.rate_limits.api_requests_per_minute ||
-		appConfig.rate_limits.firewall_mutations_per_minute !=
-			defaultAppConfig.rate_limits.firewall_mutations_per_minute) {
-		std::cerr << "Custom runtime rate limits are not supported yet\n";
 		return 1;
 	}
 

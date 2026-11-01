@@ -9,7 +9,7 @@
 #include <unistd.h>
 
 namespace {
-constexpr int CURRENT_SCHEMA_VERSION = 1;
+constexpr int CURRENT_SCHEMA_VERSION = 2;
 
 std::string createPrivateDatabasePath(const std::string &requestedPath) {
 	std::filesystem::path path(requestedPath);
@@ -199,39 +199,65 @@ void Database::migrate() {
 		throw std::runtime_error(
 			"Authentication database schema is newer than this backend");
 	}
-	if (version == CURRENT_SCHEMA_VERSION) {
-		return;
-	}
-	if (version != 0) {
+	if (version < 0 || version > CURRENT_SCHEMA_VERSION) {
 		throw std::runtime_error(
 			"Unsupported authentication database schema version");
 	}
-	Transaction transaction(database_);
-	executeSql(
-		database_,
-		"CREATE TABLE users ("
-		"id TEXT PRIMARY KEY NOT NULL,"
-		"username TEXT NOT NULL,"
-		"normalized_username TEXT NOT NULL UNIQUE,"
-		"role INTEGER NOT NULL CHECK(role IN (0, 1, 2)),"
-		"password_hash TEXT NOT NULL,"
-		"enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),"
-		"created_at INTEGER NOT NULL,"
-		"updated_at INTEGER NOT NULL"
-		")");
-	executeSql(
-		database_,
-		"CREATE TABLE api_sessions ("
-		"token_hash TEXT PRIMARY KEY NOT NULL,"
-		"user_id TEXT NOT NULL REFERENCES users(id),"
-		"created_at INTEGER NOT NULL,"
-		"last_used_at INTEGER NOT NULL,"
-		"expires_at INTEGER NOT NULL"
-		")");
-	executeSql(database_,
-			   "CREATE INDEX api_sessions_user_id_idx ON api_sessions(user_id)");
-	executeSql(database_, "PRAGMA user_version = 1");
-	transaction.commit();
+	if (version == 0) {
+		Transaction transaction(database_);
+		executeSql(
+			database_,
+			"CREATE TABLE users ("
+			"id TEXT PRIMARY KEY NOT NULL,"
+			"username TEXT NOT NULL,"
+			"normalized_username TEXT NOT NULL UNIQUE,"
+			"role INTEGER NOT NULL CHECK(role IN (0, 1, 2)),"
+			"password_hash TEXT NOT NULL,"
+			"enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),"
+			"created_at INTEGER NOT NULL,"
+			"updated_at INTEGER NOT NULL"
+			")");
+		executeSql(
+			database_,
+			"CREATE TABLE api_sessions ("
+			"token_hash TEXT PRIMARY KEY NOT NULL,"
+			"user_id TEXT NOT NULL REFERENCES users(id),"
+			"created_at INTEGER NOT NULL,"
+			"last_used_at INTEGER NOT NULL,"
+			"expires_at INTEGER NOT NULL"
+			")");
+		executeSql(database_,
+				   "CREATE INDEX api_sessions_user_id_idx ON "
+				   "api_sessions(user_id)");
+		executeSql(database_, "PRAGMA user_version = 1");
+		transaction.commit();
+		version = 1;
+	}
+	if (version == 1) {
+		Transaction transaction(database_);
+		executeSql(
+			database_,
+			"ALTER TABLE users ADD COLUMN setup_pending INTEGER NOT NULL "
+			"DEFAULT 0 CHECK(setup_pending IN (0, 1))");
+		executeSql(
+			database_,
+			"CREATE TABLE account_setup_tokens ("
+			"token_hash TEXT PRIMARY KEY NOT NULL,"
+			"user_id TEXT NOT NULL REFERENCES users(id),"
+			"created_at INTEGER NOT NULL,"
+			"expires_at INTEGER NOT NULL"
+			")");
+		executeSql(database_,
+				   "CREATE INDEX account_setup_tokens_user_id_idx ON "
+				   "account_setup_tokens(user_id)");
+		executeSql(database_, "PRAGMA user_version = 2");
+		transaction.commit();
+		version = 2;
+	}
+	if (version != CURRENT_SCHEMA_VERSION) {
+		throw std::runtime_error(
+			"Unsupported authentication database schema version");
+	}
 }
 
 } // namespace AuthStorage

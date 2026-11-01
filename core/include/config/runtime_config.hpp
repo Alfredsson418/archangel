@@ -14,6 +14,25 @@
 AppConfig parseRuntimeConfig(const std::string &content);
 
 /**
+ * @brief Serializes every supported runtime setting from an application config.
+ * @param config Settings to serialize.
+ * @return Formatted version 1 runtime configuration JSON.
+ * @throws std::runtime_error If any setting is invalid.
+ */
+std::string generateRuntimeConfig(const AppConfig &config = AppConfig{});
+
+/**
+ * @brief Creates a protected runtime configuration file without overwriting.
+ * @param path Destination file path; missing parent directories are created.
+ * @param config Settings to serialize.
+ * @return No value.
+ * @throws std::runtime_error If settings are invalid or the file cannot be
+ * safely created.
+ */
+void writeRuntimeConfig(const std::string &path,
+						const AppConfig &config = AppConfig{});
+
+/**
  * @brief Loads and validates a private runtime configuration file.
  * @param path File path to read without following a final-component symlink.
  * @param allowMissing Whether a missing file should return built-in defaults.

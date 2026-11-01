@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Archangel | Sign in{% endblock %}
+{% block breadcrumb %}SIGN IN{% endblock %}
+{% block heading_label %}BACKEND AUTHENTICATION{% endblock %}
+{% block page_heading %}Sign in{% endblock %}
+{% block page_subtitle %}Authenticate with an account managed by the Archangel backend.{% endblock %}
+{% block page_status %}AUTHENTICATION REQUIRED{% endblock %}
+
+{% block content %}
+  {% if request.args.get("logged_out") %}<div class="success-notice" role="status">Dashboard session ended.</div>{% endif %}
+  {% if error %}<div class="notice" role="alert">{{ error }}</div>{% endif %}
+  <section class="panel settings-panel" aria-labelledby="login-heading">
+    <div class="panel-heading"><div><p class="eyebrow">BACKEND ACCOUNT</p><h2 id="login-heading">Account credentials</h2></div></div>
+    <form class="settings-form" action="{{ url_for('pages.login', next=next_path) }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="username">Username</label>
+      <div class="settings-field"><input id="username" name="username" type="text" required maxlength="64" autocomplete="username"></div>
+      <label for="password">Password</label>
+      <div class="settings-field"><input id="password" name="password" type="password" required maxlength="512" autocomplete="current-password"></div>
+      <div class="settings-actions"><button class="refresh-button" type="submit">Sign in</button></div>
+    </form>
+  </section>
+{% endblock %}

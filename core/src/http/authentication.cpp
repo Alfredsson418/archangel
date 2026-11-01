@@ -12,6 +12,7 @@ namespace HttpApi {
 namespace {
 using Json = nlohmann::json;
 constexpr std::size_t MAX_TRACKED_LOGIN_SOURCES = 4096;
+constexpr std::size_t MAX_TRACKED_RATE_LIMIT_KEYS = 8192;
 
 void reject(httplib::Response &response, int status, const char *code,
 			const char *message) {
@@ -24,12 +25,34 @@ void reject(httplib::Response &response, int status, const char *code,
 bool isPublicRoute(const httplib::Request &request) {
 	return (request.method == "GET" && request.path == "/status/health") ||
 		   (request.method == "POST" &&
-			request.path == "/api/v1/auth/login");
+			(request.path == "/api/v1/auth/login" ||
+			 request.path == "/api/v1/auth/setup"));
 }
 
 bool requiresFirewallOperator(const httplib::Request &request) {
 	return request.path == "/api/v1/rules" &&
 		   (request.method == "POST" || request.method == "DELETE");
+}
+
+bool requiresAdministrator(const httplib::Request &request) {
+	return request.path == "/api/v1/accounts" ||
+		   request.path == "/api/v1/accounts/disable" ||
+		   request.path == "/api/v1/accounts/setup-token";
+}
+
+bool isFirewallMutation(const httplib::Request &request) {
+	return request.path == "/api/v1/rules" &&
+		   (request.method == "POST" || request.method == "DELETE");
+}
+
+httplib::Server::HandlerResponse rateLimitResponse(
+	httplib::Response &response, std::uint32_t retryAfterSeconds) {
+	response.set_header("Retry-After", std::to_string(retryAfterSeconds));
+	reject(response, 429, "rate_limited",
+		   "API request rate limit exceeded; try again later");
+	Logger::API::log("request_rejected code=rate_limited",
+					 Logger::Level::WARNING);
+	return httplib::Server::HandlerResponse::Handled;
 }
 } // namespace
 
@@ -91,6 +114,52 @@ void LoginAttemptLimiter::clear(std::string_view sourceAddress) {
 	attempts_.erase(key);
 }
 
+RateLimiter::RateLimiter(std::uint32_t maximumRequests,
+						 std::chrono::seconds window)
+	: maximum_requests_(maximumRequests), window_(window) {
+	if (maximum_requests_ == 0 || window_ <= std::chrono::seconds::zero()) {
+		throw std::invalid_argument("API rate limits must be positive");
+	}
+}
+
+void RateLimiter::pruneExpired(std::chrono::steady_clock::time_point now) {
+	for (auto window = windows_.begin(); window != windows_.end();) {
+		if (now - window->second.started >= window_) {
+			window = windows_.erase(window);
+		} else {
+			++window;
+		}
+	}
+}
+
+bool RateLimiter::allow(std::string_view key,
+						std::uint32_t &retryAfterSeconds) {
+	std::lock_guard<std::mutex> lock(mutex_);
+	const auto now = std::chrono::steady_clock::now();
+	pruneExpired(now);
+	const std::string stableKey = key.empty() ? "<unknown>" : std::string(key);
+	auto window = windows_.find(stableKey);
+	if (window == windows_.end()) {
+		if (windows_.size() >= MAX_TRACKED_RATE_LIMIT_KEYS) {
+			retryAfterSeconds = static_cast<std::uint32_t>(window_.count());
+			return false;
+		}
+		window = windows_.emplace(stableKey, Window{now, 0}).first;
+	}
+	const auto elapsed =
+		std::chrono::duration_cast<std::chrono::seconds>(
+			now - window->second.started)
+			.count();
+	if (window->second.requests >= maximum_requests_) {
+		retryAfterSeconds = static_cast<std::uint32_t>(
+			std::max<std::int64_t>(1, window_.count() - elapsed));
+		return false;
+	}
+	++window->second.requests;
+	retryAfterSeconds = 0;
+	return true;
+}
+
 std::optional<std::string> bearerToken(const httplib::Request &request) {
 	if (request.get_header_value_count("Authorization") != 1) {
 		return std::nullopt;
@@ -118,16 +187,24 @@ std::optional<std::string> bearerToken(const httplib::Request &request) {
 
 httplib::Server::HandlerResponse authorizeApiRequest(
 	Auth::AuthProvider &auth, const httplib::Request &request,
-	httplib::Response &response) {
-	if (!(request.method == "GET" && request.path == "/status/health")) {
-		const std::string supportedVersion = std::to_string(SCHEMA_VERSION);
-		response.set_header(SCHEMA_VERSION_HEADER, supportedVersion);
-		if (request.get_header_value(SCHEMA_VERSION_HEADER) !=
-			supportedVersion) {
-			reject(response, 400, "unsupported_schema_version",
-				   "Missing or unsupported API schema version");
-			return httplib::Server::HandlerResponse::Handled;
-		}
+	httplib::Response &response, RateLimiter &sourceRateLimiter,
+	RateLimiter &identityRateLimiter,
+	RateLimiter &firewallMutationSourceLimiter,
+	RateLimiter &firewallMutationIdentityLimiter) {
+	if (request.method == "GET" && request.path == "/status/health") {
+		return httplib::Server::HandlerResponse::Unhandled;
+	}
+	std::uint32_t retryAfterSeconds = 0;
+	if (!sourceRateLimiter.allow(request.remote_addr, retryAfterSeconds)) {
+		return rateLimitResponse(response, retryAfterSeconds);
+	}
+	const std::string supportedVersion = std::to_string(SCHEMA_VERSION);
+	response.set_header(SCHEMA_VERSION_HEADER, supportedVersion);
+	if (request.get_header_value(SCHEMA_VERSION_HEADER) !=
+		supportedVersion) {
+		reject(response, 400, "unsupported_schema_version",
+			   "Missing or unsupported API schema version");
+		return httplib::Server::HandlerResponse::Handled;
 	}
 
 	if (isPublicRoute(request)) {
@@ -168,6 +245,26 @@ httplib::Server::HandlerResponse authorizeApiRequest(
 		identity->role == Auth::Role::Viewer) {
 		reject(response, 403, "insufficient_role",
 			   "Operator or administrator role is required");
+		Logger::API::log("request_rejected code=insufficient_role",
+						 Logger::Level::WARNING);
+		return httplib::Server::HandlerResponse::Handled;
+	}
+
+	if (!identityRateLimiter.allow(identity->id, retryAfterSeconds)) {
+		return rateLimitResponse(response, retryAfterSeconds);
+	}
+	if (isFirewallMutation(request)) {
+		if (!firewallMutationSourceLimiter.allow(request.remote_addr,
+												 retryAfterSeconds) ||
+			!firewallMutationIdentityLimiter.allow(identity->id,
+												  retryAfterSeconds)) {
+			return rateLimitResponse(response, retryAfterSeconds);
+		}
+	}
+	if (requiresAdministrator(request) &&
+		identity->role != Auth::Role::Administrator) {
+		reject(response, 403, "insufficient_role",
+			   "Administrator role is required");
 		Logger::API::log("request_rejected code=insufficient_role",
 						 Logger::Level::WARNING);
 		return httplib::Server::HandlerResponse::Handled;

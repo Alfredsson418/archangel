@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     WEB_WORKERS=1 \
     WEB_LOG_LEVEL=INFO \
     ARCHANGEL_API_URL=http://127.0.0.1:8080 \
-    ARCHANGEL_WEB_CONFIG=/data/web.json
+    ARCHANGEL_WEB_CONFIG=/data/web.json \
+    ARCHANGEL_SESSION_DATABASE=/data/sessions.db
 
 WORKDIR /app
 
@@ -16,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && addgroup --system --gid 10001 archangel \
     && adduser --system --uid 10001 --ingroup archangel archangel \
     && mkdir -p /data \
+    && chmod 700 /data \
     && chown archangel:archangel /data
 
 COPY --chown=archangel:archangel server.py ./server.py

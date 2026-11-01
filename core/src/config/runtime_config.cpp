@@ -4,10 +4,12 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fcntl.h>
 #include <initializer_list>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -360,6 +362,128 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 	}
 	validateAppConfig(config);
 	return config;
+}
+
+std::string generateRuntimeConfig(const AppConfig &config) {
+	validateAppConfig(config);
+
+	Json document = {
+		{"format", "archangel-runtime-config"},
+		{"version", 1},
+		{"server",
+		 {{"bind_address", config.server.bind_address},
+		  {"port", config.server.port}}},
+		{"auth",
+		 {{"provider", config.auth.provider},
+		  {"database_path", config.auth.database_path},
+		  {"password_min_length", config.auth.password_min_length},
+		  {"password_max_length", config.auth.password_max_length},
+		  {"argon2id",
+		   {{"memory_kib", config.auth.argon2id_memory_kib},
+			{"iterations", config.auth.argon2id_iterations},
+			{"parallelism", config.auth.argon2id_parallelism}}}}},
+		{"sessions",
+		 {{"idle_timeout_seconds", config.sessions.idle_timeout_seconds},
+		  {"absolute_timeout_seconds",
+		   config.sessions.absolute_timeout_seconds}}},
+		{"tls", {{"enabled", config.tls.enabled}}},
+		{"logging",
+		 {{"sink", config.logging.sink},
+		  {"path", config.logging.path},
+		  {"level", config.logging.level}}},
+		{"rate_limits",
+		 {{"failed_auth_attempts",
+		   config.rate_limits.failed_auth_attempts},
+		  {"failed_auth_window_seconds",
+		   config.rate_limits.failed_auth_window_seconds},
+		  {"api_requests_per_minute",
+		   config.rate_limits.api_requests_per_minute},
+		  {"firewall_mutations_per_minute",
+		   config.rate_limits.firewall_mutations_per_minute}}}};
+	if (!config.tls.certificate_file.empty()) {
+		document["tls"]["certificate_file"] = config.tls.certificate_file;
+	}
+	if (!config.tls.private_key_file.empty()) {
+		document["tls"]["private_key_file"] = config.tls.private_key_file;
+	}
+	return document.dump(2) + "\n";
+}
+
+void writeRuntimeConfig(const std::string &path, const AppConfig &config) {
+	if (path.empty()) {
+		throw std::runtime_error("Runtime config destination path is empty");
+	}
+	const std::string content = generateRuntimeConfig(config);
+	const std::filesystem::path destination(path);
+	const std::filesystem::path parent =
+		destination.has_parent_path() ? destination.parent_path()
+									  : std::filesystem::path(".");
+	std::filesystem::perms directoryPermissions =
+		std::filesystem::perms::owner_all |
+		std::filesystem::perms::group_read |
+		std::filesystem::perms::group_exec |
+		std::filesystem::perms::others_read |
+		std::filesystem::perms::others_exec;
+#ifdef ARCHANGEL_DEV_BUILD
+	if (path == AppConfigDefaults::configPath()) {
+		directoryPermissions = std::filesystem::perms::owner_all;
+	}
+#endif
+	const mode_t previousMask = umask(0077);
+	std::error_code directoryError;
+	const bool parentCreated =
+		std::filesystem::create_directories(parent, directoryError);
+	umask(previousMask);
+	if (directoryError) {
+		throw std::runtime_error("Unable to create runtime config directory: " +
+								 parent.string() + ": " +
+								 directoryError.message());
+	}
+	if (parentCreated &&
+		chmod(parent.c_str(),
+			  static_cast<mode_t>(directoryPermissions)) != 0) {
+		throw std::runtime_error("Unable to set runtime config directory "
+								 "permissions: " +
+								 parent.string());
+	}
+
+	const int file = open(path.c_str(),
+						  O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+						  0644);
+	if (file == -1) {
+		if (errno == EEXIST) {
+			throw std::runtime_error("Runtime config already exists: " + path);
+		}
+		throw std::runtime_error("Unable to create runtime config: " + path);
+	}
+
+	std::string failure;
+	std::size_t offset = 0;
+	while (offset < content.size()) {
+		const ssize_t count =
+			write(file, content.data() + offset, content.size() - offset);
+		if (count < 0 && errno == EINTR) {
+			continue;
+		}
+		if (count <= 0) {
+			failure = "Unable to write runtime config: " + path;
+			break;
+		}
+		offset += static_cast<std::size_t>(count);
+	}
+	if (failure.empty() && fchmod(file, 0644) != 0) {
+		failure = "Unable to set runtime config permissions: " + path;
+	}
+	if (failure.empty() && fsync(file) != 0) {
+		failure = "Unable to sync runtime config: " + path;
+	}
+	if (close(file) != 0 && failure.empty()) {
+		failure = "Unable to close runtime config: " + path;
+	}
+	if (!failure.empty()) {
+		unlink(path.c_str());
+		throw std::runtime_error(failure);
+	}
 }
 
 AppConfig loadRuntimeConfig(const std::string &path, bool allowMissing) {

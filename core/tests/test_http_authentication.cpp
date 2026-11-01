@@ -1,4 +1,5 @@
 #include "../include/http/api/auth.hpp"
+#include "../include/http/api/accounts.hpp"
 #include "../include/http/api/schema.hpp"
 #include "../include/http/authentication.hpp"
 #include "test_support.hpp"
@@ -7,6 +8,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 class MockAuthProvider final : public Auth::AuthProvider {
@@ -28,6 +30,10 @@ class MockAuthProvider final : public Auth::AuthProvider {
 		if (token == "viewer-token") {
 			return Auth::Identity{"viewer-id", "viewer", Auth::Role::Viewer};
 		}
+		if (token == "operator-token" && second_operator) {
+			return Auth::Identity{"operator-two-id", "operator-two",
+								  Auth::Role::Operator};
+		}
 		if (token == "operator-token") {
 			return Auth::Identity{"operator-id", "operator",
 								  Auth::Role::Operator};
@@ -48,7 +54,49 @@ class MockAuthProvider final : public Auth::AuthProvider {
 		throw std::runtime_error("not used");
 	}
 
+	std::vector<Auth::Account> listAccounts() override {
+		return {Auth::Account{
+			Auth::Identity{"account-id", "operator", Auth::Role::Operator},
+			true, false}};
+	}
+
+	Auth::AccountSetup createAccount(std::string_view username,
+									 Auth::Role role) override {
+		return {Auth::Account{
+					Auth::Identity{"new-account-id", std::string(username), role},
+					false, true},
+				"setup-token"};
+	}
+
+	Auth::Account updateAccount(std::string_view id,
+								const Auth::AccountUpdate &update) override {
+		return {Auth::Identity{
+					std::string(id),
+					update.username.value_or("operator"),
+					update.role.value_or(Auth::Role::Operator)},
+				true, false};
+	}
+
+	void disableAccount(std::string_view id) override {
+		disabled_account_id = id;
+	}
+
+	Auth::AccountSetup issueAccountSetupToken(std::string_view id) override {
+		return {Auth::Account{
+					Auth::Identity{std::string(id), "operator",
+								   Auth::Role::Operator},
+					true, false},
+				"replacement-token"};
+	}
+
+	Auth::Identity completeAccountSetup(std::string_view,
+									   std::string_view) override {
+		return {"new-account-id", "operator", Auth::Role::Operator};
+	}
+
 	bool storage_failure = false;
+	bool second_operator = false;
+	std::string disabled_account_id;
 	std::string revoked_token;
 };
 
@@ -65,10 +113,18 @@ httplib::Request requestWithSchema(const std::string &method,
 httplib::Server::HandlerResponse authorize(MockAuthProvider &auth,
 										   httplib::Request &request,
 										   httplib::Response &response) {
-	return HttpApi::authorizeApiRequest(auth, request, response);
+	static HttpApi::RateLimiter source(10000, std::chrono::minutes(1));
+	static HttpApi::RateLimiter identity(10000, std::chrono::minutes(1));
+	static HttpApi::RateLimiter mutationSource(10000,
+											   std::chrono::minutes(1));
+	static HttpApi::RateLimiter mutationIdentity(10000,
+												 std::chrono::minutes(1));
+	return HttpApi::authorizeApiRequest(auth, request, response, source,
+										identity, mutationSource,
+										mutationIdentity);
 }
 
-void healthAndLoginAreTheOnlyPublicRoutes() {
+void healthLoginAndSetupAreTheOnlyPublicRoutes() {
 	MockAuthProvider auth;
 	httplib::Response response;
 	httplib::Request health;
@@ -85,6 +141,11 @@ void healthAndLoginAreTheOnlyPublicRoutes() {
 		authorize(auth, login, response) ==
 			httplib::Server::HandlerResponse::Unhandled,
 		"login should be public with the required schema header");
+	login = requestWithSchema("POST", "/api/v1/auth/setup");
+	TestSupport::require(
+		authorize(auth, login, response) ==
+			httplib::Server::HandlerResponse::Unhandled,
+		"one-time account setup should be public with the required schema");
 
 	httplib::Request invalidLogin;
 	invalidLogin.method = "POST";
@@ -144,12 +205,118 @@ void restrictsFirewallMutationsToElevatedRoles() {
 		"operators should be able to mutate firewall rules");
 
 	request = requestWithSchema("DELETE", "/api/v1/rules");
+	request = requestWithSchema("GET", "/api/v1/accounts");
 	request.set_header("Authorization", "Bearer admin-token");
 	response = httplib::Response{};
 	TestSupport::require(
 		authorize(auth, request, response) ==
 			httplib::Server::HandlerResponse::Unhandled,
 		"administrators should be able to mutate firewall rules");
+}
+
+void restrictsAccountManagementToAdministrators() {
+	MockAuthProvider auth;
+	auto request = requestWithSchema("GET", "/api/v1/accounts");
+	request.set_header("Authorization", "Bearer viewer-token");
+	TestSupport::require(HttpApi::bearerToken(request).has_value(),
+						 "account viewer test must send a parseable bearer header");
+	httplib::Response response;
+	const auto viewerResult = authorize(auth, request, response);
+	TestSupport::require(
+		viewerResult == httplib::Server::HandlerResponse::Handled &&
+			response.status == 403,
+		"viewers must not be able to list accounts; status=" +
+			std::to_string(response.status) + " body=" + response.body);
+
+	request = requestWithSchema("GET", "/api/v1/accounts");
+	request.set_header("Authorization", "Bearer admin-token");
+	response = httplib::Response{};
+	const auto adminResult = authorize(auth, request, response);
+	TestSupport::require(
+		adminResult == httplib::Server::HandlerResponse::Unhandled,
+		"administrators should be able to list accounts; status=" +
+			std::to_string(response.status) + " body=" + response.body +
+			" handler=" + std::to_string(static_cast<int>(adminResult)));
+}
+
+void limitsApiRequestsAndFirewallMutations() {
+	MockAuthProvider auth;
+	HttpApi::RateLimiter source(20, std::chrono::minutes(1));
+	HttpApi::RateLimiter identity(2, std::chrono::minutes(1));
+	HttpApi::RateLimiter mutations(1, std::chrono::minutes(1));
+	HttpApi::RateLimiter mutationSources(20, std::chrono::minutes(1));
+	auto request = requestWithSchema("GET", "/api/v1/system");
+	request.remote_addr = "192.0.2.55";
+	request.set_header("Authorization", "Bearer admin-token");
+	httplib::Response response;
+	TestSupport::require(
+		HttpApi::authorizeApiRequest(auth, request, response, source, identity,
+									 mutationSources, mutations) ==
+			httplib::Server::HandlerResponse::Unhandled,
+		"the first API request should pass the configured limit");
+	response = httplib::Response{};
+	TestSupport::require(
+		HttpApi::authorizeApiRequest(auth, request, response, source, identity,
+									 mutationSources, mutations) ==
+			httplib::Server::HandlerResponse::Unhandled,
+		"requests within the configured API limit should pass");
+	response = httplib::Response{};
+	TestSupport::require(
+		HttpApi::authorizeApiRequest(auth, request, response, source, identity,
+									 mutationSources, mutations) ==
+				httplib::Server::HandlerResponse::Handled &&
+			response.status == 429 &&
+			response.get_header_value("Retry-After") == "60",
+		"API requests exceeding the configured identity limit should be rate limited");
+
+	HttpApi::RateLimiter mutationIdentity(20, std::chrono::minutes(1));
+	request = requestWithSchema("POST", "/api/v1/rules");
+	request.remote_addr = "192.0.2.56";
+	request.set_header("Authorization", "Bearer admin-token");
+	response = httplib::Response{};
+	TestSupport::require(
+		HttpApi::authorizeApiRequest(auth, request, response, source,
+									 mutationIdentity, mutationSources,
+									 mutations) ==
+			httplib::Server::HandlerResponse::Unhandled,
+		"the first firewall mutation should pass its configured limit");
+	response = httplib::Response{};
+	TestSupport::require(
+		HttpApi::authorizeApiRequest(auth, request, response, source,
+									 mutationIdentity, mutationSources,
+									 mutations) ==
+				httplib::Server::HandlerResponse::Handled &&
+			response.status == 429,
+		"firewall mutations exceeding their separate limit should be rejected");
+
+	HttpApi::RateLimiter sourceMutation(1, std::chrono::minutes(1));
+	HttpApi::RateLimiter identityMutation(20, std::chrono::minutes(1));
+	HttpApi::RateLimiter apiIdentity(20, std::chrono::minutes(1));
+	request = requestWithSchema("POST", "/api/v1/rules");
+	request.remote_addr = "192.0.2.61";
+	request.set_header("Authorization", "Bearer operator-token");
+	response = httplib::Response{};
+	const auto firstSourceMutation = HttpApi::authorizeApiRequest(
+		auth, request, response, source, apiIdentity, sourceMutation,
+		identityMutation);
+	TestSupport::require(
+		firstSourceMutation == httplib::Server::HandlerResponse::Unhandled,
+		"the first mutation from a source should pass its source-IP limit; status=" +
+			std::to_string(response.status) + " handler=" +
+			std::to_string(static_cast<int>(firstSourceMutation)) +
+			" body=" + response.body);
+	auth.second_operator = true;
+	request = requestWithSchema("POST", "/api/v1/rules");
+	request.remote_addr = "192.0.2.61";
+	request.set_header("Authorization", "Bearer operator-token");
+	response = httplib::Response{};
+	TestSupport::require(
+		HttpApi::authorizeApiRequest(auth, request, response, source,
+									 apiIdentity, sourceMutation,
+									 identityMutation) ==
+				httplib::Server::HandlerResponse::Handled &&
+			response.status == 429,
+		"mutations by separate identities from one source should share the IP limit");
 }
 
 void rejectsInvalidSessionsAndReportsStorageFailures() {
@@ -223,6 +390,73 @@ void supportsLoginAndLogoutHandlers() {
 						 "logout should revoke the caller's session");
 }
 
+void supportsAccountLifecycleHandlers() {
+	MockAuthProvider auth;
+	httplib::Request request;
+	httplib::Response response;
+
+	request.body = R"({"username":"operator","role":"operator"})";
+	HttpApi::createAccount(auth, request, response);
+	TestSupport::require(response.status == 201,
+						 "account creation should return HTTP 201");
+	auto payload = nlohmann::json::parse(response.body);
+	TestSupport::require(
+		payload["account"]["id"] == "new-account-id" &&
+			payload["account"]["setup_pending"] == true &&
+			payload["setup_token"] == "setup-token",
+		"account creation should return pending account metadata and its token");
+
+	response = httplib::Response{};
+	request.body =
+		R"({"username":"operator","role":"operator","unexpected":true})";
+	HttpApi::createAccount(auth, request, response);
+	TestSupport::require(response.status == 400,
+						 "account creation should reject unknown fields");
+
+	request.body.clear();
+	response = httplib::Response{};
+	HttpApi::getAccounts(auth, request, response);
+	payload = nlohmann::json::parse(response.body);
+	TestSupport::require(
+		payload["accounts"].size() == 1 &&
+			payload["accounts"][0]["role"] == "operator",
+		"account listing should return account metadata");
+
+	request.body = R"({"id":"account-id","role":"administrator"})";
+	response = httplib::Response{};
+	HttpApi::updateAccount(auth, request, response);
+	payload = nlohmann::json::parse(response.body);
+	TestSupport::require(
+		response.status == 200 &&
+			payload["account"]["role"] == "administrator",
+		"account updates should return updated metadata; status=" +
+			std::to_string(response.status) + " body=" + response.body);
+
+	request.body = R"({"id":"account-id"})";
+	response = httplib::Response{};
+	HttpApi::disableAccount(auth, request, response);
+	TestSupport::require(
+		response.status == 204 && auth.disabled_account_id == "account-id",
+		"account disablement should return HTTP 204 and call the provider");
+
+	request.body = R"({"id":"account-id"})";
+	response = httplib::Response{};
+	HttpApi::issueAccountSetupToken(auth, request, response);
+	payload = nlohmann::json::parse(response.body);
+	TestSupport::require(
+		response.status == 200 &&
+			payload["setup_token"] == "replacement-token",
+		"setup-token issuance should return the one-time token");
+
+	request.body =
+		"{\"setup_token\":\"" + std::string(64, 'a') +
+		"\",\"password\":\"a sufficiently long password\"}";
+	response = httplib::Response{};
+	HttpApi::completeAccountSetup(auth, request, response);
+	TestSupport::require(response.status == 204,
+						 "valid account setup should return HTTP 204");
+}
+
 void limitsFailedLoginAttemptsPerSource() {
 	MockAuthProvider auth;
 	HttpApi::LoginAttemptLimiter limiter(2, std::chrono::minutes(5));
@@ -255,10 +489,13 @@ void limitsFailedLoginAttemptsPerSource() {
 } // namespace
 
 void runHttpAuthenticationTests() {
-	healthAndLoginAreTheOnlyPublicRoutes();
+	healthLoginAndSetupAreTheOnlyPublicRoutes();
 	protectsAllOtherRoutesByDefault();
 	restrictsFirewallMutationsToElevatedRoles();
+	restrictsAccountManagementToAdministrators();
+	limitsApiRequestsAndFirewallMutations();
 	rejectsInvalidSessionsAndReportsStorageFailures();
 	supportsLoginAndLogoutHandlers();
+	supportsAccountLifecycleHandlers();
 	limitsFailedLoginAttemptsPerSource();
 }

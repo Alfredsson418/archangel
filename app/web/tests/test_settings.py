@@ -1,6 +1,4 @@
-import json
 from pathlib import Path
-from unittest.mock import patch
 
 from server import app
 from webapp.settings import load_api_url
@@ -13,7 +11,8 @@ class SettingsPageTests(DashboardTestCase):
         response = self.client.get("/config")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"API base URL", response.data)
-        self.assertIn(b'value="http://127.0.0.1:8080"', response.data)
+        self.assertIn(b"http://127.0.0.1:8080", response.data)
+        self.assertIn(b"cannot change this address", response.data)
         self.assertNotIn(b"config.js", response.data)
         response.close()
 
@@ -27,39 +26,17 @@ class SettingsPageTests(DashboardTestCase):
         self.assertEqual(api_url, "http://127.0.0.1:8081")
         self.assertIn("connection_setting_load_failed", "\n".join(captured.output))
 
-    def test_connection_settings_are_saved(self):
+    def test_browser_cannot_change_backend_destination(self):
         response = self.client.post(
             "/config",
-            data={"api_url": "http://10.0.0.5:8081/", "action": "save"},
+            data={
+                "api_url": "http://10.0.0.5:8081/",
+                "action": "save",
+                "csrf_token": self.csrf_token(),
+            },
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Connection saved.", response.data)
-        self.assertEqual(app.config["API_URL"], "http://10.0.0.5:8081")
-        self.assertEqual(
-            json.loads(app.config["CONFIG_PATH"].read_text())["api_url"],
-            "http://10.0.0.5:8081",
-        )
-        response.close()
-
-    def test_connection_settings_reject_invalid_urls(self):
-        response = self.client.post(
-            "/config",
-            data={"api_url": "file:///etc/passwd", "action": "save"},
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(b"Enter a valid HTTP or HTTPS API base URL", response.data)
-        response.close()
-
-    @patch("webapp.api_client.urlopen", side_effect=OSError("connection refused"))
-    def test_connection_test_runs_server_side_without_saving_url(self, urlopen):
-        response = self.client.post(
-            "/config",
-            data={"api_url": "http://10.0.0.5:8081", "action": "test"},
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"The C++ API is unavailable", response.data)
+        self.assertEqual(response.status_code, 405)
         self.assertEqual(app.config["API_URL"], "http://127.0.0.1:8080")
-        urlopen.assert_called_once()
         response.close()
 
     def test_dashboard_does_not_expose_cpp_api_passthrough_routes(self):

@@ -1,7 +1,10 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+
+os.environ.setdefault("ARCHANGEL_DEV_MODE", "true")
 
 from server import app
 from webapp.api_client import API_SCHEMA_VERSION, API_SCHEMA_VERSION_HEADER
@@ -9,17 +12,32 @@ from webapp.api_client import API_SCHEMA_VERSION, API_SCHEMA_VERSION_HEADER
 
 class DashboardTestCase(unittest.TestCase):
     def setUp(self):
-        self.client = app.test_client()
         self.original_api_url = app.config["API_URL"]
         self.original_config_path = app.config["CONFIG_PATH"]
+        self.original_session_database = app.config["SESSION_DATABASE"]
         self.temp_dir = tempfile.TemporaryDirectory()
         app.config["API_URL"] = "http://127.0.0.1:8080"
         app.config["CONFIG_PATH"] = Path(self.temp_dir.name) / "web.json"
+        app.config["SESSION_DATABASE"] = Path(self.temp_dir.name) / "sessions.db"
+        self.client = app.test_client()
+        with self.client.session_transaction() as browser_session:
+            browser_session["access_token"] = "test-api-access-token"
+            browser_session["identity"] = {
+                "id": "test-user",
+                "username": "test-user",
+                "role": "administrator",
+            }
+            browser_session["_csrf_token"] = "test-csrf-token"
 
     def tearDown(self):
         app.config["API_URL"] = self.original_api_url
         app.config["CONFIG_PATH"] = self.original_config_path
+        app.config["SESSION_DATABASE"] = self.original_session_database
         self.temp_dir.cleanup()
+
+    def csrf_token(self):
+        with self.client.session_transaction() as browser_session:
+            return browser_session["_csrf_token"]
 
 
 class UpstreamResponse:

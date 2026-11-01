@@ -1,11 +1,13 @@
 import os
 import secrets
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from flask import Flask
+from flask import Flask, abort, redirect, request, session, url_for
 
 from .logging_config import configure_logging
-from .settings import CONFIG_PATH, load_api_url
+from .server_sessions import SqliteSessionInterface
+from .settings import CONFIG_PATH, load_api_url, valid_api_url
 from .views import pages
 
 
@@ -17,12 +19,87 @@ def create_app():
     """
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
     configure_logging(app)
+    secret_key = os.getenv("FLASK_SECRET_KEY")
+    if not secret_key:
+        if os.getenv("ARCHANGEL_DEV_MODE", "").lower() != "true":
+            raise RuntimeError(
+                "FLASK_SECRET_KEY must be configured outside development mode."
+            )
+        secret_key = secrets.token_hex(32)
+        app.logger.warning(
+            "dashboard_session_key_ephemeral sessions_will_reset_on_restart"
+        )
+    configured_api_url = os.getenv("ARCHANGEL_API_URL")
+    api_url = valid_api_url(configured_api_url)
+    if configured_api_url and api_url is None:
+        raise RuntimeError("ARCHANGEL_API_URL is invalid.")
+    if api_url is None:
+        api_url = load_api_url()
+    secure_cookie = os.getenv("ARCHANGEL_COOKIE_SECURE", "").lower()
+    if secure_cookie not in ("", "true", "false"):
+        raise RuntimeError("ARCHANGEL_COOKIE_SECURE must be true or false.")
     app.config.update(
-        SECRET_KEY=os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32),
+        SECRET_KEY=secret_key,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        API_URL=load_api_url(),
+        SESSION_COOKIE_SECURE=secure_cookie == "true",
+        SESSION_COOKIE_NAME="archangel_session",
+        SESSION_IDLE_TIMEOUT=15 * 60,
+        SESSION_ABSOLUTE_TIMEOUT=8 * 60 * 60,
+        SESSION_DATABASE=Path(
+            os.getenv("ARCHANGEL_SESSION_DATABASE", "/data/sessions.db")
+        ),
+        API_URL=api_url,
+        API_URL_FROM_ENV=bool(configured_api_url),
         CONFIG_PATH=Path(os.getenv("ARCHANGEL_WEB_CONFIG", CONFIG_PATH)),
     )
+    app.session_interface = SqliteSessionInterface()
+
+    @app.before_request
+    def protect_state_changes():
+        if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+            return None
+        origin = request.headers.get("Origin")
+        if origin:
+            parsed_origin = urlsplit(origin)
+            if (
+                parsed_origin.scheme not in {"http", "https"}
+                or not parsed_origin.netloc
+                or parsed_origin.netloc.lower() != request.host.lower()
+            ):
+                abort(403)
+        expected = session.get("_csrf_token")
+        supplied = request.form.get("csrf_token") or request.headers.get(
+            "X-CSRF-Token"
+        )
+        if (
+            not isinstance(expected, str)
+            or not isinstance(supplied, str)
+            or not secrets.compare_digest(expected, supplied)
+        ):
+            abort(400, description="The request security token is missing or invalid.")
+        return None
+
+    @app.before_request
+    def require_dashboard_login():
+        if request.endpoint == "static":
+            return None
+        if request.endpoint == "pages.login":
+            if session.get("access_token"):
+                return redirect(url_for("pages.index"))
+            return None
+        if not isinstance(session.get("access_token"), str):
+            target = request.full_path if request.query_string else request.path
+            return redirect(url_for("pages.login", next=target))
+        return None
+
+    @app.context_processor
+    def inject_template_security_context():
+        token = session.get("_csrf_token")
+        if not isinstance(token, str):
+            token = secrets.token_urlsafe(32)
+            session["_csrf_token"] = token
+        return {"csrf_token": token}
+
     app.register_blueprint(pages)
     return app

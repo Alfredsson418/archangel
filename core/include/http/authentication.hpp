@@ -55,6 +55,35 @@ class LoginAttemptLimiter {
 };
 
 /**
+ * @brief Enforces bounded fixed-window API request limits by caller key.
+ */
+class RateLimiter {
+  public:
+	RateLimiter(std::uint32_t maximumRequests, std::chrono::seconds window);
+
+	/**
+	 * @brief Reserves a request slot for a source or authenticated identity.
+	 * @param key Stable source or identity key; do not log this value.
+	 * @param retryAfterSeconds Receives the wait duration when denied.
+	 * @return True when the request may proceed.
+	 */
+	bool allow(std::string_view key, std::uint32_t &retryAfterSeconds);
+
+  private:
+	struct Window {
+		std::chrono::steady_clock::time_point started;
+		std::uint32_t requests = 0;
+	};
+
+	void pruneExpired(std::chrono::steady_clock::time_point now);
+
+	std::uint32_t maximum_requests_;
+	std::chrono::seconds window_;
+	std::mutex mutex_;
+	std::map<std::string, Window> windows_;
+};
+
+/**
  * @brief Applies the API's default authentication and firewall-role policy.
  * @param auth Backend-owned authentication and session provider.
  * @param request Incoming request to authorize.
@@ -63,7 +92,10 @@ class LoginAttemptLimiter {
  */
 httplib::Server::HandlerResponse authorizeApiRequest(
 	Auth::AuthProvider &auth, const httplib::Request &request,
-	httplib::Response &response);
+	httplib::Response &response, RateLimiter &sourceRateLimiter,
+	RateLimiter &identityRateLimiter,
+	RateLimiter &firewallMutationSourceLimiter,
+	RateLimiter &firewallMutationIdentityLimiter);
 
 /**
  * @brief Extracts the bearer token from exactly one Authorization header.

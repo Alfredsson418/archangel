@@ -25,7 +25,9 @@ class ApiConnectionError(Exception):
 
 
 class ApiResponseError(Exception):
-    pass
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def request_backend(
@@ -35,6 +37,7 @@ def request_backend(
     schema_version=API_SCHEMA_VERSION,
     method="GET",
     body=None,
+    bearer_token=None,
 ):
     """Perform an HTTP request to the C++ API without decoding its body.
 
@@ -45,6 +48,10 @@ def request_backend(
         ApiConnectionError: If the API cannot be reached.
     """
     headers = {"Accept": "application/json"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
     if schema_version is not None:
         headers[API_SCHEMA_VERSION_HEADER] = schema_version
     request = Request(f"{api_url}{path}", data=body, headers=headers, method=method)
@@ -91,7 +98,7 @@ def request_backend(
     return result
 
 
-def fetch_json(api_url, path, timeout=10):
+def fetch_json(api_url, path, timeout=10, bearer_token=None):
     """Request an API resource and decode its successful JSON response.
 
     Returns:
@@ -102,7 +109,9 @@ def fetch_json(api_url, path, timeout=10):
         ApiResponseError: If the response is not valid JSON or has a non-2xx
             status.
     """
-    response = request_backend(api_url, path, timeout)
+    response = request_backend(
+        api_url, path, timeout, bearer_token=bearer_token
+    )
     if response.schema_version != API_SCHEMA_VERSION:
         logger.warning(
             "backend_schema_version_mismatch path=%s expected=%s actual=%s",
@@ -130,7 +139,10 @@ def fetch_json(api_url, path, timeout=10):
             urlsplit(path).path,
             response.status,
         )
-        raise ApiResponseError(detail or f"The API returned HTTP {response.status}.")
+        raise ApiResponseError(
+            detail or f"The API returned HTTP {response.status}.",
+            status=response.status,
+        )
     return payload
 
 

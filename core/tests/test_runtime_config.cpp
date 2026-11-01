@@ -105,6 +105,41 @@ void validatesEffectiveCliOverrides() {
 		"invalid CLI bind-address overrides should fail validation");
 }
 
+void generatesAndWritesRuntimeConfig() {
+	AppConfig config;
+	config.server.bind_address = "127.0.0.1";
+	config.server.port = 9443;
+	config.auth.database_path = "/tmp/generated-auth.db";
+	config.tls.certificate_file = "/etc/archangel/cert.pem";
+	config.tls.private_key_file = "/etc/archangel/key.pem";
+	config.rate_limits.api_requests_per_minute = 60;
+
+	const std::string generated = generateRuntimeConfig(config);
+	const AppConfig parsed = parseRuntimeConfig(generated);
+	TestSupport::require(
+		parsed.server.bind_address == config.server.bind_address &&
+			parsed.server.port == config.server.port &&
+			parsed.auth.database_path == config.auth.database_path &&
+			parsed.tls.certificate_file == config.tls.certificate_file &&
+			parsed.tls.private_key_file == config.tls.private_key_file &&
+			parsed.rate_limits.api_requests_per_minute == 60,
+		"generated runtime config should round-trip all supported settings");
+
+	TemporaryDirectory directory;
+	const auto path = directory.path() / "nested" / "config.json";
+	writeRuntimeConfig(path.string(), config);
+	struct stat info {};
+	TestSupport::require(stat(path.c_str(), &info) == 0 &&
+							 (info.st_mode & 0777) == 0644,
+						 "generated config should be readable but not writable by others");
+	TestSupport::require(loadRuntimeConfig(path.string(), false)
+								 .server.port == 9443,
+						 "generated config should be accepted by the runtime loader");
+	TestSupport::requireThrows<std::runtime_error>(
+		[&] { writeRuntimeConfig(path.string()); },
+		"config generation must not overwrite an existing file");
+}
+
 void rejectsInvalidSchemaAndSecurityValues() {
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
@@ -179,6 +214,7 @@ void loadsOnlyPrivateConfigFiles() {
 void runRuntimeConfigTests() {
 	parsesDefaultsAndOverrides();
 	validatesEffectiveCliOverrides();
+	generatesAndWritesRuntimeConfig();
 	rejectsInvalidSchemaAndSecurityValues();
 	loadsOnlyPrivateConfigFiles();
 }

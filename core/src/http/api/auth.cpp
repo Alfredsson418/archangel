@@ -130,4 +130,54 @@ void logout(Auth::AuthProvider &auth, const httplib::Request &request,
 	}
 }
 
+void completeAccountSetup(Auth::AuthProvider &auth,
+						  const httplib::Request &request,
+						  httplib::Response &response) {
+	if (request.body.size() > MAX_LOGIN_BODY_BYTES) {
+		sendLoginError(response, 400, "invalid_request",
+					   "Account setup request is invalid");
+		return;
+	}
+	Detail::Json document;
+	try {
+		document = Detail::Json::parse(request.body);
+	} catch (const Detail::Json::exception &) {
+		sendLoginError(response, 400, "invalid_request",
+					   "Account setup request is invalid");
+		return;
+	}
+	if (!document.is_object() || document.size() != 2 ||
+		!document.contains("setup_token") ||
+		!document.contains("password") ||
+		!document["setup_token"].is_string() ||
+		!document["password"].is_string()) {
+		sendLoginError(response, 400, "invalid_request",
+					   "Account setup request is invalid");
+		return;
+	}
+	const std::string token = document["setup_token"].get<std::string>();
+	Auth::SecretString password(
+		std::move(document["password"].get_ref<std::string &>()));
+	if (token.size() != 64 || password.value().size() > MAX_PASSWORD_BYTES) {
+		sendLoginError(response, 400, "invalid_request",
+					   "Account setup request is invalid");
+		return;
+	}
+	try {
+		auth.completeAccountSetup(token, password.value());
+		response.status = 204;
+	} catch (const Auth::AccountOperationError &error) {
+		sendLoginError(response, 400,
+					   error.code ==
+							   Auth::AccountOperationError::Code::InvalidToken
+						   ? "invalid_setup_token"
+						   : "invalid_request",
+					   error.what());
+	} catch (const std::exception &error) {
+		Detail::sendOperationError(response, "POST /api/v1/auth/setup", error,
+								   "authentication_error",
+								   "Account setup failed");
+	}
+}
+
 } // namespace HttpApi

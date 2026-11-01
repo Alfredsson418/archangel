@@ -45,8 +45,8 @@ effective-settings object; explicit CLI options then override its values.
 | `logging.level` | `INFO` | Planned minimum log level. |
 | `rate_limits.failed_auth_attempts` | `5` | Maximum failed login attempts per source IP in the configured window. |
 | `rate_limits.failed_auth_window_seconds` | `300` | Login-attempt window in seconds. |
-| `rate_limits.api_requests_per_minute` | `120` | Planned API request limit. |
-| `rate_limits.firewall_mutations_per_minute` | `30` | Planned firewall mutation limit. |
+| `rate_limits.api_requests_per_minute` | `120` | Maximum requests per minute for each source IP and authenticated identity. |
+| `rate_limits.firewall_mutations_per_minute` | `30` | Additional maximum firewall mutations per minute for each source IP and authenticated identity. |
 
 ## Example
 
@@ -79,6 +79,33 @@ bootstrap settings:
 }
 ```
 
+## Generate a config file
+
+Generate a complete version 1 runtime config containing the current built-in
+defaults:
+
+```sh
+./archangel config generate
+```
+
+By default, the command writes to the runtime config path for the current
+build: `/etc/archangel/config.json` for release builds or `.archangel-dev/config.json`
+beside the executable for debug builds. Use `--output PATH` to choose another
+destination:
+
+```sh
+./archangel config generate --output ./config.json
+```
+
+The command creates missing parent directories, writes a config file with
+mode `0644` (readable but not writable by group or others), and refuses to
+overwrite an existing destination. Writing the release default under
+`/etc/archangel` may require elevated privileges. It generates defaults
+rather than reading or modifying an existing config. Edit the generated file
+to customize supported settings. Generating TLS paths does
+not enable TLS, and the current backend still rejects enabling TLS or
+non-default custom logging because those capabilities are not implemented.
+
 Create the initial administrator using the same runtime file. Put `--config`
 before the `user` subcommand:
 
@@ -99,16 +126,21 @@ avoid unbounded CPU and memory consumption.
 
 The C++ API uses the local authentication provider to issue and validate
 sessions. Authentication is required by default, except for bodyless
-`GET /status/health` and `POST /api/v1/auth/login`; firewall mutations also
-require an Operator or Administrator role. Login attempts are limited per
-source IP using the configured thresholds. Session settings control API
-session lifetimes.
+`GET /status/health`, `POST /api/v1/auth/login`, and one-time
+`POST /api/v1/auth/setup`; firewall mutations also require an Operator or
+Administrator role, and account-management routes require an Administrator.
+Login attempts, API requests per source IP and authenticated identity, and
+firewall mutations per source IP and identity are limited using the configured
+thresholds. Rate-limit counters use bounded in-memory state and reset on
+restart. Session settings control API session lifetimes.
 
-Native TLS, custom logging, general API request limits, and firewall-mutation
-limits are not implemented. TLS cannot be enabled; unsupported non-default
-TLS, logging, and general rate-limit settings are rejected rather than
-silently ignored. The Flask dashboard does not yet integrate the login/session
-contract, and API traffic is plain HTTP. Keep both services restricted to
+Native TLS and configurable logging are not implemented. TLS cannot be
+enabled; unsupported non-default TLS and logging settings are rejected rather
+than silently ignored. The Flask dashboard integrates the backend login
+contract and stores its opaque backend session on the server in a separate
+SQLite session database. Production dashboard deployments must configure
+`FLASK_SECRET_KEY`; see the deployment guidance for its session-store
+settings. API traffic is plain HTTP. Keep both services restricted to
 localhost or a trusted, isolated management network.
 
 ## Command-line precedence

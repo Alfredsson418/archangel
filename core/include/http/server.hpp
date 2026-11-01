@@ -33,6 +33,10 @@ class HttpServer {
 	Firewall							 &firewall_;
 	Auth::AuthProvider					 &auth_;
 	HttpApi::LoginAttemptLimiter			  login_limiter_;
+	HttpApi::RateLimiter					  source_rate_limiter_;
+	HttpApi::RateLimiter					  identity_rate_limiter_;
+	HttpApi::RateLimiter firewall_mutation_source_limiter_;
+	HttpApi::RateLimiter firewall_mutation_identity_limiter_;
 	AppConfig::Server					  server_config_;
 	std::chrono::steady_clock::time_point started_at_;
 };

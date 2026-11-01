@@ -1,5 +1,6 @@
 #include "../../include/http/server.hpp"
 #include "../../include/http/authentication.hpp"
+#include "../../include/http/api/accounts.hpp"
 #include "../../include/http/api/auth.hpp"
 #include "../../include/http/api/health.hpp"
 #include "../../include/http/api/logs.hpp"
@@ -100,6 +101,16 @@ HttpServer::HttpServer(Firewall &firewall, Auth::AuthProvider &auth,
 	  login_limiter_(rateLimits.failed_auth_attempts,
 					 std::chrono::seconds(
 						 rateLimits.failed_auth_window_seconds)),
+	  source_rate_limiter_(rateLimits.api_requests_per_minute,
+						   std::chrono::minutes(1)),
+	  identity_rate_limiter_(rateLimits.api_requests_per_minute,
+							 std::chrono::minutes(1)),
+	  firewall_mutation_source_limiter_(
+		  rateLimits.firewall_mutations_per_minute,
+		  std::chrono::minutes(1)),
+	  firewall_mutation_identity_limiter_(
+		  rateLimits.firewall_mutations_per_minute,
+		  std::chrono::minutes(1)),
 	  server_config_(std::move(serverConfig)),
 	  started_at_(std::chrono::steady_clock::now()) {}
 
@@ -107,7 +118,10 @@ void HttpServer::run() {
 	httplib::Server server;
 	server.set_pre_routing_handler(
 		[this](const httplib::Request &request, httplib::Response &response) {
-			return HttpApi::authorizeApiRequest(auth_, request, response);
+			return HttpApi::authorizeApiRequest(
+				auth_, request, response, source_rate_limiter_,
+				identity_rate_limiter_, firewall_mutation_source_limiter_,
+				firewall_mutation_identity_limiter_);
 		});
 
 	server.Get("/status/health",
@@ -139,6 +153,48 @@ void HttpServer::run() {
 			"POST", "/api/v1/auth/logout",
 			withSchemaVersion([this](const auto &request, auto &response) {
 				HttpApi::logout(auth_, request, response);
+			})));
+	server.Post(
+		"/api/v1/auth/setup",
+		withRequestLogging(
+			"POST", "/api/v1/auth/setup",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::completeAccountSetup(auth_, request, response);
+			})));
+	server.Get(
+		"/api/v1/accounts",
+		withRequestLogging(
+			"GET", "/api/v1/accounts",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::getAccounts(auth_, request, response);
+			})));
+	server.Post(
+		"/api/v1/accounts",
+		withRequestLogging(
+			"POST", "/api/v1/accounts",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::createAccount(auth_, request, response);
+			})));
+	server.Patch(
+		"/api/v1/accounts",
+		withRequestLogging(
+			"PATCH", "/api/v1/accounts",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::updateAccount(auth_, request, response);
+			})));
+	server.Post(
+		"/api/v1/accounts/disable",
+		withRequestLogging(
+			"POST", "/api/v1/accounts/disable",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::disableAccount(auth_, request, response);
+			})));
+	server.Post(
+		"/api/v1/accounts/setup-token",
+		withRequestLogging(
+			"POST", "/api/v1/accounts/setup-token",
+			withSchemaVersion([this](const auto &request, auto &response) {
+				HttpApi::issueAccountSetupToken(auth_, request, response);
 			})));
 	server.Get(
 		"/api/v1/rules",

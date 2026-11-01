@@ -64,7 +64,7 @@ build_release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
 	@$(CC) $(RELEASE_CFLAGS) $^ -o $(NAME) $(LDFLAGS)
 	@echo "Done!"
 
-$(TEST_BINARY): $(TEST_SRCFILES) $(SRC)/auth/auth_crypto.cpp $(SRC)/auth/providers/sqlite_auth_provider.cpp $(SRC)/auth/sqlite_auth_storage.cpp $(SRC)/auth/secret_input.cpp $(SRC)/logger.cpp $(SRC)/logs/log_sources.cpp $(SRC)/cli/firewall_config.cpp $(SRC)/network/address.cpp $(SRC)/firewall/config.cpp $(SRC)/config/runtime_config.cpp $(SRC)/http/authentication.cpp $(SRC)/http/api/auth.cpp $(SRC)/http/api/logs.cpp $(SRC)/firewall/providers/nft_import.cpp $(SRC)/firewall/providers/nft_statistics.cpp $(SRC)/http/api/rules.cpp $(SRC)/http/api/stats.cpp
+$(TEST_BINARY): $(TEST_SRCFILES) $(SRC)/auth/auth_crypto.cpp $(SRC)/auth/providers/sqlite_auth_provider.cpp $(SRC)/auth/sqlite_auth_storage.cpp $(SRC)/auth/secret_input.cpp $(SRC)/logger.cpp $(SRC)/logs/log_sources.cpp $(SRC)/cli/firewall_config.cpp $(SRC)/network/address.cpp $(SRC)/firewall/config.cpp $(SRC)/config/runtime_config.cpp $(SRC)/http/authentication.cpp $(SRC)/http/api/auth.cpp $(SRC)/http/api/accounts.cpp $(SRC)/http/api/logs.cpp $(SRC)/firewall/providers/nft_import.cpp $(SRC)/firewall/providers/nft_statistics.cpp $(SRC)/http/api/rules.cpp $(SRC)/http/api/stats.cpp
 	@mkdir -p $(@D)
 	@echo "Building backend tests"
 	@$(CC) $(TEST_CFLAGS) -I$(CORE)/include -I$(LIB) $^ -o $@ -lsqlite3 -largon2 -lcrypto -lrt -ldl -pthread

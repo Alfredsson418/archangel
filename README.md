@@ -21,7 +21,7 @@ The Firewall Configuration page can filter and sort active rules, and can export
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) to report a suspected security flaw and [docs/security-concerns.md](docs/security-concerns.md) for the current security posture, deployment constraints, and planned controls. The C++ API now authenticates protected requests and enforces firewall roles, but the Flask dashboard has no login integration and the API does not provide TLS. Keep both services on localhost or a trusted, isolated management network.
+See [SECURITY.md](SECURITY.md) to report a suspected security flaw and [docs/security-concerns.md](docs/security-concerns.md) for the current security posture, deployment constraints, and planned controls. The C++ API authenticates protected requests, enforces firewall/account roles, and applies login, API, and firewall-mutation limits. The Flask dashboard authenticates through the backend and stores browser sessions server-side. The API does not provide TLS; keep both services on localhost or a trusted, isolated management network.
 
 The backend has local-account storage, API authentication, firewall role
 enforcement, and an administrator bootstrap command. Bootstrap the initial
@@ -52,6 +52,10 @@ are used; `--config PATH` selects an explicit required file. The runtime config
 does not import or modify firewall rules. Its format, file permissions,
 supported settings, defaults, and current implementation limits are described
 in the [backend runtime configuration guide](docs/runtime-config.md).
+
+Generate a complete default runtime config with `./archangel config generate`;
+use `--output PATH` for a different destination. The command refuses to
+overwrite an existing file.
 
 For local development, the API can be configured through command-line flags:
 
@@ -85,13 +89,25 @@ settings; firewall bundles do not contain listener settings.
 
 ### Run the frontend in Docker
 
-For a same-computer development setup on Linux, with the C++ API running on `127.0.0.1:8080`, start the containerized dashboard:
+For a same-computer development setup on Linux, with the C++ API running on
+`127.0.0.1:8080`, configure a stable Flask signing key before starting the
+containerized dashboard:
 
 ```sh
+export FLASK_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 docker compose up --build -d
 ```
 
-For a separate management computer, deploy the Dockerized webapp independently, configure the dashboard's API connection to the managed server's reachable management address, and make both services reachable only on a trusted management network. The Compose file's localhost defaults and host-network setup are for the same-computer quickstart, not a remote deployment recipe. The C++ API authenticates protected requests, but the dashboard does not yet provide login integration and API traffic is not protected by project-configured HTTPS. Do not expose either service to the public internet.
+Keep the generated key private and stable across restarts and workers. For a
+separate management computer, deploy the Dockerized webapp independently and
+set `ARCHANGEL_API_URL` to the managed server's reachable management address.
+Make both services reachable only on a trusted management network. The
+Compose file's localhost defaults and host-network setup are for the
+same-computer quickstart, not a remote deployment recipe. The dashboard uses
+backend authentication and stores its session data under the private `/data`
+volume. Set `ARCHANGEL_COOKIE_SECURE=true` when dashboard HTTPS is provided by
+an operator-managed reverse proxy. The C++ API still uses plain HTTP, so do
+not expose either service to the public internet.
 
 The web app writes request, backend, and configuration events to stdout. View them with `docker compose logs -f web`; set `WEB_LOG_LEVEL=DEBUG` before starting Compose for more detail. Request logs omit query strings and form values.
 

@@ -31,12 +31,13 @@ The test modules are organized by responsibility:
 | Module | Coverage |
 | --- | --- |
 | `app/web/tests/test_api_client.py` | Backend connectivity and errors, schema-version handling, health checks, and request headers. |
+| `app/web/tests/test_dashboard_authentication.py` | Protected pages, login/session rotation, server-side token storage, logout revocation, CSRF, same-origin checks, and safe redirects. |
 | `app/web/tests/test_dashboard_pages.py` | Server-rendered overview and system pages, log-source rendering and escaping, static assets, and backend-unavailable messaging. |
 | `app/web/tests/test_logging.py` | Dashboard and backend request logging, including omission of query-string values. |
 | `app/web/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export, and preview/confirmed import behavior. |
 | `app/web/tests/test_settings.py` | API URL settings display, validation, persistence, connection tests, and absence of API passthrough routes. |
 
-Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 25 tests. The exact count and incidental application log lines may change as coverage grows.
+Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 28 tests. The exact count and incidental application log lines may change as coverage grows.
 
 ## Backend tests
 
@@ -50,9 +51,9 @@ The test executable is built at `build/core/tests/backend_tests`. The target com
 
 | Module | Coverage |
 | --- | --- |
-| `core/tests/test_auth_provider.cpp` | Initial administrator provisioning, normalized and configurable password policy, configurable Argon2id credential verification, API session creation/validation/revocation and expiry, token/password non-persistence, and private SQLite file permissions. |
+| `core/tests/test_auth_provider.cpp` | Initial administrator provisioning, normalized and configurable password policy, configurable Argon2id credential verification, API session creation/validation/revocation and expiry, account creation/update/disable and one-time setup-token lifecycle, token/password non-persistence, and private SQLite file permissions. |
 | `core/tests/test_runtime_config.cpp` | Runtime config defaults and overrides, strict schema/type/value validation, secure file ownership/permissions, missing-file behavior, and symlink rejection. |
-| `core/tests/test_http_authentication.cpp` | Default route authentication, public health/login allowlist, Bearer session validation, viewer/operator/admin firewall permissions, login/logout API behavior, and fail-closed storage errors. |
+| `core/tests/test_http_authentication.cpp` | Default route authentication, public health/login/account-setup allowlist, Bearer session validation, viewer/operator/admin firewall and account permissions, login/logout API behavior, source/identity/mutation rate limits, and fail-closed storage errors. |
 | `core/tests/test_firewall_config.cpp` | Firewall bundle v1 parsing and serialization, ownership-section classification, listener-setting exclusion, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
 | `core/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |
 | `core/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |

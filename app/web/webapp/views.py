@@ -1,11 +1,19 @@
 import ipaddress
 import json
 import re
-import secrets
 from datetime import datetime
-from pathlib import Path
+from urllib.parse import urlsplit
 
-from flask import Blueprint, current_app, make_response, render_template, request, session
+from flask import (
+    Blueprint,
+    current_app,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
 from .api_client import (
     API_SCHEMA_VERSION,
@@ -16,7 +24,6 @@ from .api_client import (
     request_backend,
     test_api_connection,
 )
-from .settings import save_api_url, valid_api_url
 
 
 pages = Blueprint("pages", __name__)
@@ -36,8 +43,14 @@ def _load(path):
         the backend request fails.
     """
     try:
-        return fetch_json(current_app.config["API_URL"], path), None
+        return fetch_json(
+            current_app.config["API_URL"],
+            path,
+            bearer_token=session.get("access_token"),
+        ), None
     except (ApiConnectionError, ApiResponseError) as error:
+        if isinstance(error, ApiResponseError) and error.status == 401:
+            session.clear()
         return None, str(error)
 
 
@@ -386,6 +399,97 @@ def index():
     return render_template("index.html", **_dashboard_context())
 
 
+def _safe_next_path(value):
+    """Return a local redirect target or the dashboard overview path."""
+    if not isinstance(value, str) or not value.startswith("/") or value.startswith("//"):
+        return url_for("pages.index")
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc:
+        return url_for("pages.index")
+    return value
+
+
+@pages.route("/login", methods=["GET", "POST"])
+def login():
+    """Authenticate with the backend and keep its token server-side.
+
+    Returns:
+        A login page or a redirect after successful backend authentication.
+    """
+    error = ""
+    next_path = _safe_next_path(request.values.get("next"))
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        if not username or not password or len(username) > 64 or len(password) > 512:
+            error = "Enter a valid username and password."
+        else:
+            try:
+                response = request_backend(
+                    current_app.config["API_URL"],
+                    "/api/v1/auth/login",
+                    method="POST",
+                    body=json.dumps(
+                        {"username": username, "password": password}
+                    ).encode("utf-8"),
+                )
+                payload = json.loads(response.body) if response.body else {}
+            except (ApiConnectionError, ApiResponseError, json.JSONDecodeError):
+                current_app.logger.warning("dashboard_login_failed reason=backend_unavailable")
+                error = "Unable to contact the configured backend."
+            else:
+                identity = payload.get("identity") if isinstance(payload, dict) else None
+                token = payload.get("access_token") if isinstance(payload, dict) else None
+                if (
+                    response.status == 200
+                    and response.schema_version == API_SCHEMA_VERSION
+                    and isinstance(token, str)
+                    and isinstance(identity, dict)
+                    and all(
+                        isinstance(identity.get(field), str)
+                        for field in ("id", "username", "role")
+                    )
+                ):
+                    session.clear()
+                    session["access_token"] = token
+                    session.rotate()
+                    current_app.logger.info("dashboard_login_succeeded")
+                    return redirect(next_path)
+                if response.status == 429:
+                    error = "Too many sign-in attempts. Wait before trying again."
+                elif response.status == 401:
+                    error = "Username or password is incorrect."
+                else:
+                    error = "The backend rejected the sign-in request."
+                current_app.logger.warning(
+                    "dashboard_login_failed status=%s", response.status
+                )
+    return render_template("login.html", error=error, next_path=next_path)
+
+
+@pages.post("/logout")
+def logout():
+    """Revoke the backend token and clear the server-side browser session."""
+    token = session.get("access_token")
+    logout_failed = False
+    if isinstance(token, str):
+        try:
+            response = request_backend(
+                current_app.config["API_URL"],
+                "/api/v1/auth/logout",
+                method="POST",
+                bearer_token=token,
+            )
+            logout_failed = response.status != 204
+        except ApiConnectionError:
+            logout_failed = True
+    session.clear()
+    session.rotate()
+    if logout_failed:
+        current_app.logger.warning("dashboard_logout_backend_revoke_failed")
+    return redirect(url_for("pages.login", logged_out="1"))
+
+
 @pages.get("/rules")
 def rules_page():
     """Render the searchable, sortable active firewall rules page.
@@ -472,15 +576,6 @@ def import_rules():
         return render_template("rules_import.html")
 
     if request.form.get("action") == "apply":
-        csrf_token = session.get("rules_import_csrf")
-        if (
-            not isinstance(csrf_token, str)
-            or not secrets.compare_digest(csrf_token, request.form.get("csrf_token", ""))
-        ):
-            return render_template(
-                "rules_import.html",
-                error="The import confirmation expired or is invalid. Preview the bundle again.",
-            ), 400
         if request.form.get("confirm") != "yes":
             return render_template(
                 "rules_import.html",
@@ -504,6 +599,7 @@ def import_rules():
                     "/api/v1/rules",
                     method="POST",
                     body=json.dumps(rule).encode("utf-8"),
+                    bearer_token=session.get("access_token"),
                 )
             except (ApiConnectionError, ApiResponseError) as error:
                 failure = f"Rule {index}: {error}"
@@ -530,7 +626,6 @@ def import_rules():
                 "rules_import.html",
                 error=f"Import stopped after applying {applied} of {len(rules)} rules. {failure}",
             ), 502
-        session.pop("rules_import_csrf", None)
         current_app.logger.info("firewall_rule_bundle_imported applied=%s", applied)
         return render_template(
             "rules_import.html",
@@ -548,13 +643,10 @@ def import_rules():
         rules = _validate_rule_bundle(bundle)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         return render_template("rules_import.html", error=f"Invalid firewall bundle: {error}"), 400
-    csrf_token = secrets.token_urlsafe(32)
-    session["rules_import_csrf"] = csrf_token
     return render_template(
         "rules_import.html",
         preview_rules=rules,
         bundle_json=json.dumps(bundle, separators=(",", ":")),
-        csrf_token=csrf_token,
         omitted_unsupported_rules=bundle.get("omitted_unsupported_rules", 0),
     )
 
@@ -588,43 +680,18 @@ def system_logs_page():
     )
 
 
-@pages.route("/config", methods=["GET", "POST"])
+@pages.get("/config")
 def config_page():
-    """Render or update the dashboard's C++ API connection setting.
+    """Render the deployment-selected API address without allowing browser edits.
 
     Returns:
         A pair of (rendered HTML, HTTP status code) for Flask to return.
     """
     api_url = current_app.config["API_URL"]
-    message = ""
-    message_type = ""
-    status = 200
-    if request.method == "POST":
-        submitted_url = valid_api_url(request.form.get("api_url"))
-        if submitted_url is None:
-            current_app.logger.warning("connection_setting_rejected reason=invalid_url")
-            message, message_type, status = "Enter a valid HTTP or HTTPS API base URL.", "error", 400
-        elif request.form.get("action") == "test":
-            connected, message = test_api_connection(submitted_url)
-            message_type = "success" if connected else "error"
-            log_method = current_app.logger.info if connected else current_app.logger.warning
-            log_method("connection_test completed result=%s", "success" if connected else "failed")
-            api_url = submitted_url
-        else:
-            try:
-                save_api_url(Path(current_app.config["CONFIG_PATH"]), submitted_url)
-            except OSError:
-                current_app.logger.exception("connection_setting_save_failed")
-                message, message_type, status = "Unable to save connection settings.", "error", 500
-            else:
-                current_app.config["API_URL"] = submitted_url
-                api_url = submitted_url
-                message, message_type = "Connection saved.", "success"
-                current_app.logger.info("connection_setting_saved")
-
     return render_template(
         "config.html",
         api_url=api_url,
-        message=message,
-        message_type=message_type,
-    ), status
+        api_url_source="deployment environment" if current_app.config.get(
+            "API_URL_FROM_ENV"
+        ) else "dashboard service configuration",
+    )

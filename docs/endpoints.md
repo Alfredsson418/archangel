@@ -1,5 +1,5 @@
 # Exposed Endpoints
-The C++ API runs separately from the Flask dashboard. The intended deployment places the privileged API binary on the server whose firewall it manages and allows the portable, Dockerized dashboard to run on a separate management computer. Configure the dashboard with an API base URL routable to that server; do not assume localhost refers to the same machine in a split-host setup. Flask reads the API directly while rendering pages and does not expose API passthrough routes. The C++ API requires backend-issued Bearer sessions for every route except health and login. The dashboard does not yet have a login flow to obtain and send those sessions, and API traffic is plain HTTP; keep both services on localhost or a trusted, isolated management network.
+The C++ API runs separately from the Flask dashboard. The intended deployment places the privileged API binary on the server whose firewall it manages and allows the portable, Dockerized dashboard to run on a separate management computer. Configure the dashboard with an API base URL routable to that server; do not assume localhost refers to the same machine in a split-host setup. Flask reads the API directly while rendering pages and does not expose API passthrough routes. The C++ API requires backend authentication on every route except `GET /status/health`, `POST /api/v1/auth/login`, and `POST /api/v1/auth/setup`. The dashboard obtains backend sessions through its login flow and sends them with protected calls. API traffic is still plain HTTP; keep both services on localhost or a trusted, isolated management network.
 
 ## Flask Dashboard
 
@@ -108,19 +108,69 @@ Invalid credentials return HTTP `401`; malformed, oversized, or extra-field requ
 
 Requires a valid Bearer session and the API schema header. Revokes the caller's session and returns HTTP `204` with no body.
 
+### `POST /api/v1/auth/setup`
+
+Public, one-time account setup using a setup token issued by an administrator.
+The request requires the API schema header and a JSON body:
+
+```json
+{
+  "setup_token": "64-character-setup-token",
+  "password": "new-account-password"
+}
+```
+
+Success returns HTTP `204` with no body. Setup tokens are single-use, expire
+after one hour, and are stored by the backend only as hashes. An account is
+enabled after setup and must then sign in through `/api/v1/auth/login`.
+
+### Account management
+
+All account-management routes require an authenticated `administrator` and the
+API schema header. Setup-token values are returned only in the create/issue
+response; deliver them out-of-band and do not log or persist the plaintext.
+
+`GET /api/v1/accounts` returns HTTP `200` with an `accounts` array. Account
+objects contain `id`, `username`, `role`, `enabled`, and `setup_pending`.
+`POST /api/v1/accounts` creates a pending account and returns HTTP `201` with
+`account` and `setup_token`. Its JSON request contains `username` and `role`
+(`viewer`, `operator`, or `administrator`). Usernames must be 3–64 ASCII
+letters, digits, dots, underscores, or hyphens; names are case-insensitive
+and cannot be reused, including after disablement.
+
+`PATCH /api/v1/accounts` updates the username and/or role. Its JSON body
+contains the account `id` and at least one of `username` or `role`. Success
+returns HTTP `200` with an `account` object.
+
+`POST /api/v1/accounts/disable` accepts `{"id": "backend-user-id"}`, disables
+the account, revokes its sessions, and returns HTTP `204`.
+`POST /api/v1/accounts/setup-token` accepts the same body and returns HTTP
+`200` with `account` and `setup_token`. Issuing a new token invalidates
+previous tokens and revokes existing sessions.
+
+Invalid requests return HTTP `400`; missing accounts return `404`; username
+conflicts and attempts to remove the last enabled administrator return `409`.
+There is no hard-delete operation.
+
 ## API schema version
 
-All API calls except `GET /status/health` must send the `X-Archangel-Schema-Version` request header, including the public login endpoint. The backend validates it and returns the supported schema version in the same response header. The current schema version is `1`; a missing or unsupported version is rejected with HTTP `400` and a JSON error response. JSON response bodies retain their documented shapes; the header versions those shapes independently of the `/api/v1` API route version.
+All API calls except `GET /status/health` must send the `X-Archangel-Schema-Version` request header, including the public login and one-time setup endpoints. The backend validates it and returns the supported schema version in the same response header. The current schema version is `1`; a missing or unsupported version is rejected with HTTP `400` and a JSON error response. JSON response bodies retain their documented shapes; the header versions those shapes independently of the `/api/v1` API route version.
 
 The health endpoint is deliberately exempt so basic liveness remains available without schema negotiation or authentication.
 
 ## Authentication and authorization
 
-Login attempts are limited per source IP and return HTTP `429` with `Retry-After` when the configured threshold is exceeded. This is the only implemented API rate limit; general request and firewall-mutation limits remain planned.
+Rate limits return HTTP `429` with a JSON error and `Retry-After`. The backend
+limits API requests per source IP and authenticated identity, and applies an
+additional per-minute limit to firewall mutations per source IP and identity.
+Failed login attempts have a separate configurable per-source limit. Limits
+use bounded in-memory state, reset on backend restart, and use the direct peer
+address rather than forwarded headers. `GET /status/health` is exempt.
 
-The backend applies authentication globally before route handling: all endpoints, including `/status/info` and future routes, require a valid Bearer session unless explicitly added to the narrow public allowlist. Currently only `GET /status/health` and `POST /api/v1/auth/login` are public. Missing, invalid, or expired sessions receive HTTP `401`; session-store failures fail closed with HTTP `500`.
+The backend applies authentication globally before route handling: all endpoints, including `/status/info` and future routes, require a valid Bearer session unless explicitly added to the narrow public allowlist. Currently `GET /status/health`, `POST /api/v1/auth/login`, and
+`POST /api/v1/auth/setup` are public. Missing, invalid, or expired sessions receive HTTP `401`; session-store failures fail closed with HTTP `500`.
 
-All authenticated roles can use read endpoints. `POST /api/v1/rules` and `DELETE /api/v1/rules` require the `operator` or `administrator` role; viewers receive HTTP `403`. Bootstrap creates the initial administrator through `user bootstrap-admin`. The dashboard login/client integration is not implemented yet, so dashboard API-backed views cannot use the protected endpoints until that integration is added. Bearer credentials travel over plain HTTP in the current backend; do not expose the API outside localhost or a trusted, isolated management network. Mutating endpoints apply changes immediately. See [Security](../SECURITY.md).
+All authenticated roles can use read endpoints. `POST /api/v1/rules` and `DELETE /api/v1/rules` require the `operator` or `administrator` role; viewers receive HTTP `403`. Bootstrap creates the initial administrator through `user bootstrap-admin`. The dashboard authenticates through the backend login route and keeps the backend credential in a server-side SQLite session store; all backend API calls except the health check include that credential. Bearer credentials travel over plain HTTP in the current backend; do not expose the API outside localhost or a trusted, isolated management network. Mutating endpoints apply changes immediately. See [Security](../SECURITY.md).
 
 ## Firewall ruleset bundle
 
@@ -203,7 +253,7 @@ Returns a `sources` array. Each source has a stable `id`, display `label`, boole
 - `archangel`: up to 100 entries from `./app.log`, the current C++ logger's working-directory-relative output file.
 - `nftables`: up to 100 recent kernel-journal lines matching packet-log fields, only when the active ruleset contains nftables `log` statements. This source uses `journalctl`; if logging is not configured or journal access is unavailable, the source reports the reason and returns no entries.
 
-This endpoint does not enable firewall logging. Results are bounded, long lines are truncated, and common credential-like fields are redacted. Logs may still contain sensitive system or network details. This endpoint requires a valid backend session; keep the API and dashboard on localhost or a trusted, isolated management network because API traffic is plain HTTP and the dashboard does not yet integrate backend login. Add future sources as separate source objects with explicit availability and failure details.
+This endpoint does not enable firewall logging. Results are bounded, long lines are truncated, and common credential-like fields are redacted. Logs may still contain sensitive system or network details. This endpoint requires a valid backend session; keep the API and dashboard on localhost or a trusted, isolated management network because API traffic is plain HTTP and the dashboard uses backend login with protected server-side sessions. Add future sources as separate source objects with explicit availability and failure details.
 
 ### `POST /api/v1/rules`
 

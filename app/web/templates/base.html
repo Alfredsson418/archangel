@@ -18,20 +18,30 @@
         <span class="brand-mark" aria-hidden="true">A</span>
         <span class="brand-name">archangel<span class="brand-period">.</span></span>
       </a>
-      <div class="sidebar-label">SERVER MANAGEMENT</div>
-      <nav class="navigation">
-        <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('pages.index') }}" {% if page == 'dashboard' %}aria-current="page"{% endif %}><span class="nav-index">01</span>Overview</a>
-        <a class="nav-link {% if page == 'rules' %}active{% endif %}" href="{{ url_for('pages.rules_page') }}" {% if page == 'rules' %}aria-current="page"{% endif %}><span class="nav-index">02</span>Firewall configuration</a>
-        <a class="nav-link {% if page == 'system' %}active{% endif %}" href="{{ url_for('pages.system_page') }}" {% if page == 'system' %}aria-current="page"{% endif %}><span class="nav-index">03</span>System management</a>
-        <a class="nav-link {% if page == 'config' %}active{% endif %}" href="{{ url_for('pages.config_page') }}" {% if page == 'config' %}aria-current="page"{% endif %}><span class="nav-index">04</span>Configuration</a>
-      </nav>
-      <div class="sidebar-foot"><span class="edge-indicator" aria-hidden="true"></span><span>CONNECTED SERVER</span></div>
+      {% if session.get('access_token') %}
+        <div class="sidebar-label">SERVER MANAGEMENT</div>
+        <nav class="navigation">
+          <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('pages.index') }}" {% if page == 'dashboard' %}aria-current="page"{% endif %}><span class="nav-index">01</span>Overview</a>
+          <a class="nav-link {% if page == 'rules' %}active{% endif %}" href="{{ url_for('pages.rules_page') }}" {% if page == 'rules' %}aria-current="page"{% endif %}><span class="nav-index">02</span>Firewall configuration</a>
+          <a class="nav-link {% if page == 'system' %}active{% endif %}" href="{{ url_for('pages.system_page') }}" {% if page == 'system' %}aria-current="page"{% endif %}><span class="nav-index">03</span>System management</a>
+          <a class="nav-link {% if page == 'config' %}active{% endif %}" href="{{ url_for('pages.config_page') }}" {% if page == 'config' %}aria-current="page"{% endif %}><span class="nav-index">04</span>Configuration</a>
+        </nav>
+        <div class="sidebar-foot"><span class="edge-indicator" aria-hidden="true"></span><span>CONNECTED SERVER</span></div>
+      {% endif %}
     </aside>
 
     <main class="main-content">
       <header class="topbar">
         <div class="breadcrumb"><span>ARCHANGEL</span><span>/</span><span>{% block breadcrumb %}OVERVIEW{% endblock %}</span></div>
-        <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+        <div class="topbar-actions">
+          {% block topbar_actions %}{% endblock %}
+          {% if session.get('access_token') %}
+            <form action="{{ url_for('pages.logout') }}" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="text-button" type="submit">Sign out</button>
+            </form>
+          {% endif %}
+        </div>
       </header>
       <section class="page-heading">
         <div>

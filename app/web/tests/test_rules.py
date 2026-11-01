@@ -181,6 +181,7 @@ class RulePageTests(DashboardTestCase):
             "/rules/import",
             data={
                 "action": "preview",
+                "csrf_token": self.csrf_token(),
                 "bundle_file": (io.BytesIO(json.dumps(bundle).encode()), "rules.json"),
             },
             content_type="multipart/form-data",
@@ -189,8 +190,6 @@ class RulePageTests(DashboardTestCase):
         self.assertIn(b"1 rules will be added", preview.data)
         self.assertIn(b"not atomic", preview.data)
         urlopen.assert_not_called()
-        with self.client.session_transaction() as session:
-            csrf_token = session["rules_import_csrf"]
         preview.close()
 
         imported = self.client.post(
@@ -198,7 +197,7 @@ class RulePageTests(DashboardTestCase):
             data={
                 "action": "apply",
                 "confirm": "yes",
-                "csrf_token": csrf_token,
+                "csrf_token": self.csrf_token(),
                 "bundle": json.dumps(bundle),
             },
         )
@@ -210,6 +209,9 @@ class RulePageTests(DashboardTestCase):
         self.assertEqual(json.loads(api_request.data), bundle["rules"][0])
         headers = {name.lower(): value for name, value in api_request.headers.items()}
         self.assertEqual(headers[API_SCHEMA_VERSION_HEADER.lower()], "1")
+        self.assertEqual(
+            headers["authorization"], "Bearer test-api-access-token"
+        )
         imported.close()
 
     def test_rule_import_requires_valid_confirmation_token(self):
@@ -223,5 +225,5 @@ class RulePageTests(DashboardTestCase):
             },
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn(b"confirmation expired or is invalid", response.data)
+        self.assertIn(b"request security token is missing or invalid", response.data)
         response.close()
