@@ -51,9 +51,13 @@ Renders the read-only System Management page with host resource information and 
 
 Renders recent server-side logs grouped by source. It displays the Archangel application log and, when active nftables rules include `log` statements and the host kernel journal is readable, recent packet-log entries. Unavailable or unconfigured sources are shown with an explanation. Additional sources can be added independently.
 
-### `GET, POST /config`
+### `GET /config`
 
-Renders and updates the dashboard's C++ API connection setting.
+Shows the C++ API base URL the dashboard uses and where it came from (`ARCHANGEL_API_URL` or the built-in default). The page is read-only: the destination is fixed at deployment so browser users cannot redirect the backend credentials the dashboard holds, and `POST` returns HTTP `405`.
+
+### `GET /healthz`
+
+Returns an empty HTTP `204` without requiring a dashboard login. The container health check uses it; it does not contact the C++ API or create a session.
 
 ## C++ API
 
