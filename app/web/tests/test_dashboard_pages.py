@@ -32,7 +32,6 @@ class DashboardPageTests(DashboardTestCase):
                 "api_version": "v1",
                 "uptime_seconds": 120,
             },
-            "/status/health": {},
         }
         urlopen.side_effect = lambda request, **_kwargs: UpstreamResponse(
             responses[urlsplit(request.full_url).path]
@@ -57,11 +56,7 @@ class DashboardPageTests(DashboardTestCase):
         self.assertNotIn(b"filter", response.data)
         self.assertNotIn(b"accept", response.data)
         self.assertNotIn(b"/static/app.js", response.data)
-        self.assertEqual(urlopen.call_count, 4)
-        self.assertEqual(
-            urlopen.call_args_list[-1].args[0].full_url,
-            "http://127.0.0.1:8080/status/health",
-        )
+        self.assertEqual(urlopen.call_count, 3)
         self.assertTrue(
             all(
                 {
@@ -69,7 +64,7 @@ class DashboardPageTests(DashboardTestCase):
                     for name, value in call.args[0].headers.items()
                 }.get("x-archangel-schema-version")
                 == "1"
-                for call in urlopen.call_args_list[:3]
+                for call in urlopen.call_args_list
             )
         )
         response.close()
@@ -95,7 +90,6 @@ class DashboardPageTests(DashboardTestCase):
                 "api_version": "v1",
                 "uptime_seconds": 3661,
             },
-            "/status/health": {},
         }
         urlopen.side_effect = lambda request, **_kwargs: UpstreamResponse(
             responses[urlsplit(request.full_url).path]
@@ -178,4 +172,41 @@ class DashboardPageTests(DashboardTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"The C++ API is unavailable", response.data)
         self.assertIn(b"API UNAVAILABLE", response.data)
+        response.close()
+
+    @patch("webapp.api_client.urlopen")
+    def test_overview_stops_requesting_after_backend_is_unreachable(self, urlopen):
+        urlopen.side_effect = OSError("connection refused")
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"API UNAVAILABLE", response.data)
+        self.assertEqual(urlopen.call_count, 1)
+        response.close()
+
+    @patch("webapp.api_client.urlopen")
+    def test_rejected_backend_session_redirects_to_login(self, urlopen):
+        urlopen.return_value = UpstreamResponse(
+            {"error": "A valid Bearer session is required", "code": "invalid_session"},
+            status=401,
+        )
+
+        response = self.client.get("/system?view=full")
+
+        self.assertEqual(response.status_code, 302)
+        location = response.headers["Location"]
+        self.assertIn("/login", location)
+        self.assertIn("expired=1", location)
+        self.assertIn("next=/system?view%3Dfull", location)
+        response.close()
+        with self.client.session_transaction() as browser_session:
+            self.assertNotIn("access_token", browser_session)
+
+    def test_health_endpoint_needs_no_login_or_session(self):
+        with self.client.session_transaction() as browser_session:
+            browser_session.clear()
+        response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 204)
+        self.assertIsNone(response.headers.get("Set-Cookie"))
         response.close()

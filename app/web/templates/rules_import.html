@@ -18,7 +18,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label for="bundle-file">Firewall rules bundle</label>
       <div class="settings-field"><input id="bundle-file" name="bundle_file" type="file" accept="application/json,.json" required></div>
-      <p class="field-hint">Only versioned Archangel structured-rule bundles are accepted (maximum 512 KiB and 1000 rules). Arbitrary nftables commands and native nftables dumps are not imported.</p>
+      <p class="field-hint">Only versioned Archangel structured-rule bundles are accepted (maximum {{ max_bundle_size }} and {{ max_imported_rules }} rules). Arbitrary nftables commands and native nftables dumps are not imported.</p>
       <div class="settings-actions"><button class="refresh-button" type="submit" name="action" value="preview">Preview bundle</button><a class="text-button" href="{{ url_for('pages.rules_page') }}">Cancel</a></div>
     </form>
   </section>

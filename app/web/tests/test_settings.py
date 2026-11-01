@@ -1,7 +1,5 @@
-from pathlib import Path
-
 from server import app
-from webapp.settings import load_api_url
+from webapp.settings import valid_api_url
 
 from .helpers import DashboardTestCase
 
@@ -16,15 +14,17 @@ class SettingsPageTests(DashboardTestCase):
         self.assertNotIn(b"config.js", response.data)
         response.close()
 
-    def test_invalid_saved_api_configuration_is_logged_and_ignored(self):
-        config_path = Path(self.temp_dir.name) / "invalid.json"
-        config_path.write_text("{invalid")
-
-        with self.assertLogs("webapp.settings", level="WARNING") as captured:
-            api_url = load_api_url(config_path, "http://127.0.0.1:8081")
-
-        self.assertEqual(api_url, "http://127.0.0.1:8081")
-        self.assertIn("connection_setting_load_failed", "\n".join(captured.output))
+    def test_api_url_validation_rejects_unsafe_destinations(self):
+        self.assertEqual(valid_api_url(" http://10.0.0.5:8080/ "), "http://10.0.0.5:8080")
+        for value in (
+            "ftp://10.0.0.5",
+            "http://user:secret@10.0.0.5",
+            "http://10.0.0.5/?next=x",
+            "http://10.0.0.5:notaport",
+            None,
+        ):
+            with self.subTest(value=value):
+                self.assertIsNone(valid_api_url(value))
 
     def test_browser_cannot_change_backend_destination(self):
         response = self.client.post(

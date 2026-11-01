@@ -13,6 +13,10 @@ from itsdangerous import BadSignature
 
 
 _SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
+# Bounds database writes on read-only requests: last-use times are refreshed
+# and expired rows purged at most this often, so idle expiry is accurate to
+# within this many seconds.
+_WRITE_INTERVAL_SECONDS = 60
 
 
 class ServerSideSession(dict, SessionMixin):
@@ -55,6 +59,9 @@ class SqliteSessionInterface(SecureCookieSessionInterface):
     """Stores JSON session values in an owner-only SQLite database."""
 
     session_class = ServerSideSession
+
+    def __init__(self):
+        self._last_purge = 0
 
     def _connect(self, app):
         path = Path(app.config["SESSION_DATABASE"])
@@ -135,11 +142,13 @@ class SqliteSessionInterface(SecureCookieSessionInterface):
         idle_seconds = int(app.config["SESSION_IDLE_TIMEOUT"])
         connection = self._connect(app)
         try:
-            connection.execute(
-                "DELETE FROM web_sessions WHERE expires_at <= ? OR last_used_at <= ?",
-                (now, now - idle_seconds),
-            )
-            connection.commit()
+            if now - self._last_purge >= _WRITE_INTERVAL_SECONDS:
+                connection.execute(
+                    "DELETE FROM web_sessions WHERE expires_at <= ? OR last_used_at <= ?",
+                    (now, now - idle_seconds),
+                )
+                connection.commit()
+                self._last_purge = now
             row = connection.execute(
                 "SELECT payload, created_at, last_used_at, expires_at "
                 "FROM web_sessions WHERE session_hash = ?",
@@ -147,9 +156,12 @@ class SqliteSessionInterface(SecureCookieSessionInterface):
             ).fetchone()
             if row is None:
                 return self.session_class(new=True)
-            payload, created_at, _last_used_at, expires_at = row
-            if expires_at <= now or now - created_at >= int(
-                app.config["SESSION_ABSOLUTE_TIMEOUT"]
+            payload, created_at, last_used_at, expires_at = row
+            # Purging is periodic, so expiry must also be checked per row.
+            if (
+                expires_at <= now
+                or now - created_at >= int(app.config["SESSION_ABSOLUTE_TIMEOUT"])
+                or now - last_used_at >= idle_seconds
             ):
                 connection.execute(
                     "DELETE FROM web_sessions WHERE session_hash = ?",
@@ -163,16 +175,23 @@ class SqliteSessionInterface(SecureCookieSessionInterface):
                 raise RuntimeError("Dashboard session data is invalid.") from error
             if not isinstance(data, dict):
                 raise RuntimeError("Dashboard session data has an invalid shape.")
-            connection.execute(
-                "UPDATE web_sessions SET last_used_at = ? WHERE session_hash = ?",
-                (now, self._hash(sid)),
-            )
-            connection.commit()
+            if now - last_used_at >= _WRITE_INTERVAL_SECONDS:
+                connection.execute(
+                    "UPDATE web_sessions SET last_used_at = ? WHERE session_hash = ?",
+                    (now, self._hash(sid)),
+                )
+                connection.commit()
             return self.session_class(data, sid=sid)
         finally:
             connection.close()
 
     def save_session(self, app, session, response):
+        # Unchanged sessions keep their stored row and already-issued cookie;
+        # an empty new session has nothing stored to delete.
+        if not session.modified and not session.rotate_id:
+            return
+        if not session and session.new and not session.rotate_id:
+            return
         cookie_name = self.get_cookie_name(app)
         connection = self._connect(app)
         try:

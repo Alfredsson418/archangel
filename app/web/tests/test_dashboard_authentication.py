@@ -126,6 +126,40 @@ class DashboardAuthenticationTests(DashboardTestCase):
         self.assertEqual(response.status_code, 403)
         response.close()
 
+    def test_unchanged_session_is_not_rewritten(self):
+        with self.client.session_transaction() as browser_session:
+            browser_session["access_token"] = "test-api-access-token"
+        first = self.client.get("/config")
+        self.assertEqual(first.status_code, 200)
+        first.close()
+
+        response = self.client.get("/config")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.headers.get("Set-Cookie"))
+        response.close()
+
+    @patch("webapp.api_client.urlopen")
+    def test_login_limits_match_validation_and_count_password_bytes(self, urlopen):
+        login_page = self.client.get("/login")
+        self.assertIn(b'maxlength="64"', login_page.data)
+        self.assertIn(b'maxlength="512"', login_page.data)
+        login_page.close()
+
+        # 200 three-byte characters fit the character limit but not the
+        # backend's 512-byte bound, so they must not be sent.
+        response = self.client.post(
+            "/login",
+            data={
+                "csrf_token": "test-csrf-token",
+                "username": "operator",
+                "password": "\u20ac" * 200,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Enter a valid username and password.", response.data)
+        urlopen.assert_not_called()
+        response.close()
+
     def test_login_rejects_external_next_redirect(self):
         response = self.client.get("/login?next=https://attacker.example")
         self.assertEqual(response.status_code, 200)

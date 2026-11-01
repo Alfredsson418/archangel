@@ -144,35 +144,3 @@ def fetch_json(api_url, path, timeout=10, bearer_token=None):
             status=response.status,
         )
     return payload
-
-
-def check_api_health(api_url):
-    """Check whether the backend is online using its unauthenticated health route.
-
-    Returns:
-        A pair of (online, human-readable result).
-
-    Raises:
-        ApiConnectionError: If the API cannot be reached.
-        ApiResponseError: If the health endpoint returns a non-success status.
-    """
-    response = request_backend(
-        api_url, "/status/health", timeout=5, schema_version=None
-    )
-    if not 200 <= response.status < 300:
-        raise ApiResponseError(
-            f"The API health check returned HTTP {response.status}."
-        )
-    return True, "Health check successful. The API is online."
-
-
-def test_api_connection(api_url):
-    """Check API connectivity using the health route.
-
-    Returns:
-        A pair of (connected, human-readable result).
-    """
-    try:
-        return check_api_health(api_url)
-    except (ApiConnectionError, ApiResponseError) as error:
-        return False, str(error)

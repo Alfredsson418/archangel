@@ -7,7 +7,7 @@ from flask import Flask, abort, redirect, request, session, url_for
 
 from .logging_config import configure_logging
 from .server_sessions import SqliteSessionInterface
-from .settings import CONFIG_PATH, load_api_url, valid_api_url
+from .settings import DEFAULT_API_URL, valid_api_url
 from .views import pages
 
 
@@ -29,12 +29,12 @@ def create_app():
         app.logger.warning(
             "dashboard_session_key_ephemeral sessions_will_reset_on_restart"
         )
+    # The API destination is fixed at deployment so browser users cannot
+    # redirect the backend credentials the dashboard holds.
     configured_api_url = os.getenv("ARCHANGEL_API_URL")
-    api_url = valid_api_url(configured_api_url)
-    if configured_api_url and api_url is None:
-        raise RuntimeError("ARCHANGEL_API_URL is invalid.")
+    api_url = valid_api_url(configured_api_url or DEFAULT_API_URL)
     if api_url is None:
-        api_url = load_api_url()
+        raise RuntimeError("ARCHANGEL_API_URL is invalid.")
     secure_cookie = os.getenv("ARCHANGEL_COOKIE_SECURE", "").lower()
     if secure_cookie not in ("", "true", "false"):
         raise RuntimeError("ARCHANGEL_COOKIE_SECURE must be true or false.")
@@ -51,7 +51,6 @@ def create_app():
         ),
         API_URL=api_url,
         API_URL_FROM_ENV=bool(configured_api_url),
-        CONFIG_PATH=Path(os.getenv("ARCHANGEL_WEB_CONFIG", CONFIG_PATH)),
     )
     app.session_interface = SqliteSessionInterface()
 
@@ -82,7 +81,7 @@ def create_app():
 
     @app.before_request
     def require_dashboard_login():
-        if request.endpoint == "static":
+        if request.endpoint in ("static", "pages.healthz"):
             return None
         if request.endpoint == "pages.login":
             if session.get("access_token"):

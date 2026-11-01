@@ -19,10 +19,8 @@ from .api_client import (
     API_SCHEMA_VERSION,
     ApiConnectionError,
     ApiResponseError,
-    check_api_health,
     fetch_json,
     request_backend,
-    test_api_connection,
 )
 
 
@@ -30,9 +28,57 @@ pages = Blueprint("pages", __name__)
 RULE_BUNDLE_FORMAT = "archangel-firewall-rules"
 RULE_BUNDLE_VERSION = 1
 MAX_RULE_BUNDLE_BYTES = 512 * 1024
+MAX_RULE_BUNDLE_SIZE_TEXT = f"{MAX_RULE_BUNDLE_BYTES // 1024} KiB"
 MAX_IMPORTED_RULES = 1000
+# Mirror the backend's credential limits (Auth::MAX_USERNAME_LENGTH and
+# Auth::MAX_PASSWORD_BYTES) so oversized input is rejected before it is sent.
+# The backend remains authoritative.
+MAX_USERNAME_LENGTH = 64
+MAX_PASSWORD_BYTES = 512
 SORTABLE_RULE_FIELDS = ("family", "table", "chain", "handle", "expr")
 RULE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,63}$")
+# nftables lists layer-4 protocols by number when no port match implies them.
+L4_PROTOCOLS = {"tcp": "tcp", "udp": "udp", 6: "tcp", 17: "udp"}
+
+
+class BackendSessionExpired(Exception):
+    """Raised when the backend rejects the dashboard's stored session."""
+
+
+@pages.errorhandler(BackendSessionExpired)
+def _backend_session_expired(_error):
+    """Send the user back to sign in after the backend revoked the session.
+
+    Returns:
+        A redirect to the login page that preserves the requested path.
+    """
+    target = request.full_path if request.query_string else request.path
+    return redirect(url_for("pages.login", next=target, expired="1"))
+
+
+def _fetch(path):
+    """Fetch one API JSON resource with the browser session's credential.
+
+    Returns:
+        The decoded JSON payload.
+
+    Raises:
+        BackendSessionExpired: If the backend rejects the session; the browser
+            session is cleared first.
+        ApiConnectionError: If the backend cannot be reached.
+        ApiResponseError: For other unsuccessful or invalid responses.
+    """
+    try:
+        return fetch_json(
+            current_app.config["API_URL"],
+            path,
+            bearer_token=session.get("access_token"),
+        )
+    except ApiResponseError as error:
+        if error.status == 401:
+            session.clear()
+            raise BackendSessionExpired from error
+        raise
 
 
 def _load(path):
@@ -41,17 +87,38 @@ def _load(path):
     Returns:
         A pair of (decoded payload, None) on success, or (None, error text) if
         the backend request fails.
+
+    Raises:
+        BackendSessionExpired: If the backend rejects the session.
     """
     try:
-        return fetch_json(
-            current_app.config["API_URL"],
-            path,
-            bearer_token=session.get("access_token"),
-        ), None
+        return _fetch(path), None
     except (ApiConnectionError, ApiResponseError) as error:
-        if isinstance(error, ApiResponseError) and error.status == 401:
-            session.clear()
         return None, str(error)
+
+
+def _load_all(*paths):
+    """Load several API resources, stopping once the backend is unreachable.
+
+    Returns:
+        A tuple of (payloads keyed by path, error messages, connected flag).
+        Payloads are None for paths that failed or were skipped.
+
+    Raises:
+        BackendSessionExpired: If the backend rejects the session.
+    """
+    payloads = dict.fromkeys(paths)
+    errors = []
+    for path in paths:
+        try:
+            payloads[path] = _fetch(path)
+        except ApiConnectionError as error:
+            # Later requests would wait for the same unreachable backend.
+            errors.append(str(error))
+            return payloads, errors, False
+        except ApiResponseError as error:
+            errors.append(str(error))
+    return payloads, errors, True
 
 
 def _rules_from(ruleset):
@@ -115,14 +182,16 @@ def _portable_rule(rule):
             return None
         if "meta" in left:
             meta = left["meta"]
+            hashable = isinstance(right, (str, int)) and not isinstance(right, bool)
+            l4_protocol = L4_PROTOCOLS.get(right) if hashable else None
             if (
                 not isinstance(meta, dict)
                 or meta.get("key") != "l4proto"
-                or right not in ("tcp", "udp")
+                or l4_protocol is None
                 or protocol is not None
             ):
                 return None
-            protocol = right
+            protocol = l4_protocol
             continue
         payload = left.get("payload")
         if not isinstance(payload, dict):
@@ -149,6 +218,8 @@ def _portable_rule(rule):
             continue
         return None
 
+    # nftables omits the l4proto match when a port match already implies it.
+    protocol = protocol or matches.get("port_protocol")
     if protocol not in ("tcp", "udp") or action not in ("accept", "drop", "reject"):
         return None
     if matches.get("port_protocol", protocol) != protocol:
@@ -254,6 +325,21 @@ def _validate_rule_bundle(bundle):
     return normalized
 
 
+@pages.context_processor
+def _input_limits():
+    """Expose input limits to templates so forms and hints match validation.
+
+    Returns:
+        Template variables for credential and rule-bundle limits.
+    """
+    return {
+        "max_username_length": MAX_USERNAME_LENGTH,
+        "max_password_bytes": MAX_PASSWORD_BYTES,
+        "max_bundle_size": MAX_RULE_BUNDLE_SIZE_TEXT,
+        "max_imported_rules": MAX_IMPORTED_RULES,
+    }
+
+
 def _display_bytes(value):
     """Format a byte count for human-readable dashboard display.
 
@@ -311,47 +397,44 @@ def _format_uptime(value):
     return " ".join(parts)
 
 
+def _host_context(system, backend):
+    """Format host and backend metrics shared by the overview and system pages.
+
+    Returns:
+        A dictionary of display values consumed by the page templates.
+    """
+    system = system or {}
+    backend = backend or {}
+    loads = system.get("load_average") or []
+    cpu_load = " / ".join("—" if value is None else f"{float(value):.2f}" for value in loads[:3]) or "Unavailable"
+    return {
+        "system": system,
+        "backend": backend,
+        "cpu_load": cpu_load,
+        "host_uptime": _format_uptime(system.get("uptime_seconds")),
+        "backend_uptime": _format_uptime(backend.get("uptime_seconds")),
+        "memory_percent": system.get("memory_usage_percent"),
+        "memory_detail": f"{_display_bytes(system.get('memory_used_bytes'))} used of {_display_bytes(system.get('memory_total_bytes'))}",
+        "disk_percent": system.get("disk_usage_percent"),
+        "disk_detail": f"{_display_bytes(system.get('disk_used_bytes'))} used of {_display_bytes(system.get('disk_total_bytes'))}",
+    }
+
+
 def _dashboard_context():
     """Build the overview from backend, firewall, and host-health data.
 
     Returns:
         A dictionary of values consumed by the overview template.
     """
-    ruleset, rules_error = _load("/api/v1/rules")
-    system, system_error = _load("/api/v1/system")
-    backend, backend_error = _load("/status/info")
-    try:
-        check_api_health(current_app.config["API_URL"])
-    except (ApiConnectionError, ApiResponseError) as error:
-        health_error = str(error)
-    else:
-        health_error = None
-    errors = [
-        error
-        for error in (health_error, rules_error, system_error, backend_error)
-        if error
-    ]
-    system = system or {}
-    backend = backend or {}
-    loads = system.get("load_average") or []
-    cpu_load = " / ".join("—" if value is None else f"{float(value):.2f}" for value in loads[:3]) or "Unavailable"
-    firewall_status, active_base_chains = _firewall_status(ruleset)
-    if health_error or rules_error:
-        firewall_status = "Unavailable"
+    payloads, errors, connected = _load_all("/api/v1/rules", "/api/v1/system", "/status/info")
+    firewall_status, active_base_chains = _firewall_status(payloads["/api/v1/rules"])
     return {
+        **_host_context(payloads["/api/v1/system"], payloads["/status/info"]),
         "firewall_status": firewall_status,
         "active_base_chains": active_base_chains,
-        "system": system,
-        "backend": backend,
         "errors": errors,
-        "api_connected": health_error is None,
+        "api_connected": connected,
         "last_updated": datetime.now().strftime("%H:%M:%S"),
-        "cpu_load": cpu_load,
-        "host_uptime": _format_uptime(system.get("uptime_seconds")),
-        "memory_percent": system.get("memory_usage_percent"),
-        "memory_detail": f"{_display_bytes(system.get('memory_used_bytes'))} used of {_display_bytes(system.get('memory_total_bytes'))}",
-        "disk_percent": system.get("disk_usage_percent"),
-        "disk_detail": f"{_display_bytes(system.get('disk_used_bytes'))} used of {_display_bytes(system.get('disk_total_bytes'))}",
     }
 
 
@@ -361,32 +444,25 @@ def _system_context():
     Returns:
         A dictionary of diagnostic data consumed by the system page.
     """
-    system, system_error = _load("/api/v1/system")
-    backend, backend_error = _load("/status/info")
-    try:
-        check_api_health(current_app.config["API_URL"])
-    except (ApiConnectionError, ApiResponseError) as error:
-        health_error = str(error)
-    else:
-        health_error = None
-    system = system or {}
-    backend = backend or {}
-    loads = system.get("load_average") or []
-    cpu_load = " / ".join("—" if value is None else f"{float(value):.2f}" for value in loads[:3]) or "Unavailable"
-    errors = [error for error in (health_error, system_error, backend_error) if error]
+    payloads, errors, connected = _load_all("/api/v1/system", "/status/info")
     return {
-        "system": system,
-        "backend": backend,
+        **_host_context(payloads["/api/v1/system"], payloads["/status/info"]),
         "errors": errors,
-        "api_connected": health_error is None,
-        "cpu_load": cpu_load,
-        "host_uptime": _format_uptime(system.get("uptime_seconds")),
-        "backend_uptime": _format_uptime(backend.get("uptime_seconds")),
-        "memory_percent": system.get("memory_usage_percent"),
-        "memory_detail": f"{_display_bytes(system.get('memory_used_bytes'))} used of {_display_bytes(system.get('memory_total_bytes'))}",
-        "disk_percent": system.get("disk_usage_percent"),
-        "disk_detail": f"{_display_bytes(system.get('disk_used_bytes'))} used of {_display_bytes(system.get('disk_total_bytes'))}",
+        "api_connected": connected,
     }
+
+
+@pages.get("/healthz")
+def healthz():
+    """Report that the dashboard process is serving requests.
+
+    Used by the container health check; it does not contact the backend or
+    touch the session store.
+
+    Returns:
+        An empty HTTP 204 response.
+    """
+    return "", 204
 
 
 @pages.get("/")
@@ -421,7 +497,12 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "")
         password = request.form.get("password", "")
-        if not username or not password or len(username) > 64 or len(password) > 512:
+        if (
+            not username
+            or not password
+            or len(username) > MAX_USERNAME_LENGTH
+            or len(password.encode("utf-8")) > MAX_PASSWORD_BYTES
+        ):
             error = "Enter a valid username and password."
         else:
             try:
@@ -583,7 +664,7 @@ def import_rules():
             ), 400
         raw_bundle = request.form.get("bundle", "")
         if len(raw_bundle.encode("utf-8")) > MAX_RULE_BUNDLE_BYTES:
-            return render_template("rules_import.html", error="The bundle exceeds the 512 KiB limit."), 413
+            return render_template("rules_import.html", error=f"The bundle exceeds the {MAX_RULE_BUNDLE_SIZE_TEXT} limit."), 413
         try:
             bundle = json.loads(raw_bundle)
             rules = _validate_rule_bundle(bundle)
@@ -604,6 +685,14 @@ def import_rules():
             except (ApiConnectionError, ApiResponseError) as error:
                 failure = f"Rule {index}: {error}"
                 break
+            if result.status == 401:
+                current_app.logger.warning(
+                    "firewall_rule_bundle_import_partial applied=%s total=%s",
+                    applied,
+                    len(rules),
+                )
+                session.clear()
+                raise BackendSessionExpired
             if result.schema_version != API_SCHEMA_VERSION:
                 failure = f"Rule {index}: the API returned an unsupported schema version."
                 break
@@ -637,7 +726,7 @@ def import_rules():
         return render_template("rules_import.html", error="Choose a JSON bundle to preview."), 400
     content = raw_bundle.stream.read(MAX_RULE_BUNDLE_BYTES + 1)
     if len(content) > MAX_RULE_BUNDLE_BYTES:
-        return render_template("rules_import.html", error="The bundle exceeds the 512 KiB limit."), 413
+        return render_template("rules_import.html", error=f"The bundle exceeds the {MAX_RULE_BUNDLE_SIZE_TEXT} limit."), 413
     try:
         bundle = json.loads(content.decode("utf-8"))
         rules = _validate_rule_bundle(bundle)
@@ -687,11 +776,10 @@ def config_page():
     Returns:
         A pair of (rendered HTML, HTTP status code) for Flask to return.
     """
-    api_url = current_app.config["API_URL"]
     return render_template(
         "config.html",
-        api_url=api_url,
-        api_url_source="deployment environment" if current_app.config.get(
+        api_url=current_app.config["API_URL"],
+        api_url_source="ARCHANGEL_API_URL" if current_app.config.get(
             "API_URL_FROM_ENV"
-        ) else "dashboard service configuration",
+        ) else "built-in default",
     )

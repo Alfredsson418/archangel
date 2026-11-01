@@ -158,6 +158,58 @@ class RulePageTests(DashboardTestCase):
         response.close()
 
     @patch("webapp.api_client.urlopen")
+    def test_rules_export_accepts_kernel_listing_shapes(self, urlopen):
+        # nftables drops the l4proto match when a port implies it and lists the
+        # protocol by number otherwise.
+        address_match = {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": "192.0.2.1"}}
+        urlopen.return_value = UpstreamResponse(
+            {
+                "nftables": [
+                    {
+                        "rule": {
+                            "family": "inet",
+                            "table": "filter",
+                            "chain": "input",
+                            "handle": 3,
+                            "expr": [
+                                address_match,
+                                {"match": {"op": "==", "left": {"payload": {"protocol": "tcp", "field": "dport"}}, "right": 22}},
+                                {"accept": None},
+                            ],
+                        }
+                    },
+                    {
+                        "rule": {
+                            "family": "inet",
+                            "table": "filter",
+                            "chain": "input",
+                            "handle": 4,
+                            "expr": [
+                                address_match,
+                                {"match": {"op": "==", "left": {"meta": {"key": "l4proto"}}, "right": 17}},
+                                {"drop": None},
+                            ],
+                        }
+                    },
+                ]
+            }
+        )
+
+        response = self.client.get("/rules/export")
+
+        self.assertEqual(response.status_code, 200)
+        bundle = json.loads(response.data)
+        self.assertEqual(bundle["omitted_unsupported_rules"], 0)
+        self.assertEqual(
+            bundle["rules"],
+            [
+                {"family": "inet", "table": "filter", "chain": "input", "protocol": "tcp", "action": "accept", "source_address": "192.0.2.1", "destination_port": 22},
+                {"family": "inet", "table": "filter", "chain": "input", "protocol": "udp", "action": "drop", "source_address": "192.0.2.1"},
+            ],
+        )
+        response.close()
+
+    @patch("webapp.api_client.urlopen")
     def test_rule_import_previews_then_applies_after_confirmation(self, urlopen):
         urlopen.return_value = UpstreamResponse(
             {"status": "created"},
@@ -213,6 +265,12 @@ class RulePageTests(DashboardTestCase):
             headers["authorization"], "Bearer test-api-access-token"
         )
         imported.close()
+
+    def test_rule_import_page_states_the_enforced_limits(self):
+        response = self.client.get("/rules/import")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"maximum 512 KiB and 1000 rules", response.data)
+        response.close()
 
     def test_rule_import_requires_valid_confirmation_token(self):
         response = self.client.post(
