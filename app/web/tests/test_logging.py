@@ -10,7 +10,7 @@ from server import app
 from webapp.api_client import ApiClient, UrllibTransport, create_ssl_context
 from webapp.logging_config import JsonlFileHandler
 
-from .helpers import DashboardTestCase, UpstreamResponse
+from .helpers import TEST_ACTOR_ID, DashboardTestCase, UpstreamResponse
 
 
 def read_records(path):
@@ -24,8 +24,9 @@ class LoggingTests(DashboardTestCase):
 
         self.assertEqual(response.status_code, 200)
         messages = "\n".join(captured.output)
-        self.assertIn("request_started method=GET path=/config", messages)
-        self.assertIn("request_completed method=GET path=/config status=200", messages)
+        self.assertIn(
+            "request_completed method=GET path=/config status=200 outcome=success", messages
+        )
         self.assertNotIn("do-not-log", messages)
         response.close()
 
@@ -54,21 +55,42 @@ class LoggingTests(DashboardTestCase):
         response.close()
 
         records = read_records(log_path)
+        authorized = [r for r in records if r["event"] == "dashboard_request_authorized"][-1]
+        self.assertEqual(authorized["path"], "/config")
+        self.assertEqual(authorized["actor_id"], TEST_ACTOR_ID)
         completed = [r for r in records if r["event"] == "request_completed"][-1]
         self.assertEqual(completed["service"], "dashboard")
         self.assertEqual(completed["path"], "/config")
         self.assertEqual(completed["status"], "200")
+        self.assertEqual(completed["outcome"], "success")
+        self.assertEqual(completed["actor_id"], TEST_ACTOR_ID)
         self.assertEqual(len(completed["request_id"]), 32)
         self.assertIn("source_ip", completed)
         self.assertNotIn("do-not-log", log_path.read_text())
         self.assertEqual(stat.S_IMODE(log_path.stat().st_mode), 0o600)
 
-    def test_state_changes_fail_closed_when_audit_log_is_unavailable(self):
+    def test_requests_fail_closed_when_audit_log_is_unavailable(self):
         handler = app.extensions["archangel_audit_log"]
         with patch.object(handler, "write_audit", return_value=False):
-            response = self.client.post("/logout", data={"csrf_token": self.csrf_token()})
-        self.assertEqual(response.status_code, 503)
+            post = self.client.post("/logout", data={"csrf_token": self.csrf_token()})
+            page = self.client.get("/config")
+            health = self.client.get("/healthz")
+        self.assertEqual(post.status_code, 503)
+        self.assertEqual(page.status_code, 503)
+        self.assertEqual(health.status_code, 204)
+        for response in (post, page, health):
+            response.close()
+
+    def test_unregistered_paths_are_not_recorded_verbatim(self):
+        log_path = Path(os.environ["ARCHANGEL_WEB_LOG_PATH"])
+        response = self.client.get("/no-such-page-secret-value")
+        self.assertEqual(response.status_code, 404)
         response.close()
+        records = read_records(log_path)
+        completed = [r for r in records if r["event"] == "request_completed"][-1]
+        self.assertEqual(completed["path"], "unregistered")
+        self.assertEqual(completed["outcome"], "rejected")
+        self.assertNotIn("secret-value", log_path.read_text())
 
     def test_state_changes_are_audited_before_running(self):
         log_path = Path(os.environ["ARCHANGEL_WEB_LOG_PATH"])

@@ -130,7 +130,7 @@ to its path inside the container. The dashboard verifies the certificate and
 has no option to skip verification. Do not expose either service to the public
 internet.
 
-The web app writes request, backend, and configuration events to stdout. View them with `docker compose logs -f web`; set `WEB_LOG_LEVEL=DEBUG` before starting Compose for more detail. It also writes the same events as JSONL audit records to `/data/archangel-frontend.jsonl` (set `ARCHANGEL_WEB_LOG_PATH` to change it); rotate that file by renaming it, and the dashboard reopens it automatically. If the file cannot be written, state-changing requests such as sign-in and imports are refused with HTTP `503`. Logs omit query strings and form values.
+The web app writes request, backend, and configuration events to stdout. View them with `docker compose logs -f web`; set `WEB_LOG_LEVEL=DEBUG` before starting Compose for more detail. It also writes the same events as JSONL audit records to `/data/archangel-frontend.jsonl` (set `ARCHANGEL_WEB_LOG_PATH` to change it); rotate that file by renaming it, and the dashboard reopens it automatically. If the file cannot be written, every request except the health check is refused with HTTP `503`. Logs omit query strings and form values, and record unknown paths as `unregistered`.
 
 ## Project goal
 

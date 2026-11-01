@@ -10,20 +10,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 
-from flask import Flask, abort, g, has_request_context, request
+from flask import Flask, abort, g, has_request_context, request, session
 
 
 DEFAULT_LOG_PATH = "/data/archangel-frontend.jsonl"
-STATE_CHANGING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+# Endpoints served without an audit record, so they stay available when the
+# log cannot be written.
+UNAUDITED_ENDPOINTS = {"static", "pages.healthz"}
 _EVENT = re.compile(r"[a-z][a-z0-9_]*")
 _FIELD = re.compile(r"([a-z][a-z0-9_]*)=(\S*)")
 
 
 class RequestContextFilter(logging.Filter):
-    """Adds the dashboard request ID and client address to records."""
+    """Adds the request ID, client address, and backend actor ID to records."""
 
     def filter(self, record):
-        """Attach request_id and source_ip when inside a request.
+        """Attach request_id, source_ip, and actor_id when inside a request.
+
+        actor_id is the backend user ID stored at login; it is omitted for
+        signed-out requests.
 
         Returns:
             True, so the record is always emitted.
@@ -31,6 +36,8 @@ class RequestContextFilter(logging.Filter):
         if has_request_context():
             record.request_id = getattr(g, "request_id", None)
             record.source_ip = request.remote_addr
+            actor_id = session.get("actor_id")
+            record.actor_id = actor_id if isinstance(actor_id, str) else None
         return True
 
 
@@ -67,7 +74,7 @@ class JsonlFormatter(logging.Formatter):
         else:
             line["event"] = "message"
             line["message"] = message
-        for key in ("request_id", "source_ip"):
+        for key in ("request_id", "source_ip", "actor_id"):
             value = getattr(record, key, None)
             if value is not None:
                 line.setdefault(key, value)
@@ -199,40 +206,54 @@ def configure_logging(app: Flask) -> None:
     app.extensions["archangel_audit_log"] = file_handler
 
     @app.before_request
-    def log_request_start():
-        """Assign a request ID and record the start time and method/path."""
+    def start_request():
+        """Assign a request ID and record the start time."""
         g.request_id = secrets.token_hex(16)
         g.request_started_at = perf_counter()
-        app.logger.info("request_started method=%s path=%s", request.method, request.path)
 
     @app.after_request
     def log_request_complete(response):
-        """Log response status and elapsed time, then return the response."""
+        """Log response status, outcome, and elapsed time, then return the response."""
         started_at = getattr(g, "request_started_at", perf_counter())
         duration_ms = (perf_counter() - started_at) * 1000
+        status = response.status_code
         app.logger.info(
-            "request_completed method=%s path=%s status=%s duration_ms=%.1f",
+            "request_completed method=%s path=%s status=%s outcome=%s duration_ms=%.1f",
             request.method,
-            request.path,
-            response.status_code,
+            audited_path(),
+            status,
+            "error" if status >= 500 else "rejected" if status >= 400 else "success",
             duration_ms,
         )
         return response
 
 
-def install_audit_gate(app: Flask) -> None:
-    """Refuse state-changing requests whose audit record cannot be written.
+def audited_path():
+    """Return the request path safe to record in the audit log.
 
-    Register after the CSRF and login checks so only requests that passed
-    them are recorded.
+    Paths that match no dashboard route are recorded as "unregistered" so
+    arbitrary caller-supplied text never reaches the log.
+
+    Returns:
+        The request path, or "unregistered".
+    """
+    return request.path if request.url_rule is not None else "unregistered"
+
+
+def install_audit_gate(app: Flask) -> None:
+    """Refuse requests whose audit record cannot be written.
+
+    Every request except UNAUDITED_ENDPOINTS is recorded before it runs and
+    gets HTTP 503 if the record cannot be written. Register after the CSRF
+    and login checks so only requests that passed them are recorded.
 
     Returns:
         None. The Flask app is configured in place.
     """
 
     @app.before_request
-    def record_state_change():
-        if request.method not in STATE_CHANGING_METHODS:
+    def record_request():
+        if request.endpoint in UNAUDITED_ENDPOINTS:
             return None
         record = app.logger.makeRecord(
             app.logger.name,
@@ -240,7 +261,7 @@ def install_audit_gate(app: Flask) -> None:
             __file__,
             0,
             "dashboard_request_authorized method=%s path=%s",
-            (request.method, request.path),
+            (request.method, audited_path()),
             None,
         )
         if not app.extensions["archangel_audit_log"].write_audit(record):

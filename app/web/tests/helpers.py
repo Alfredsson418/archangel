@@ -10,6 +10,9 @@ from server import app
 from webapp.api_client import API_SCHEMA_VERSION, API_SCHEMA_VERSION_HEADER
 
 
+TEST_ACTOR_ID = "0b6e4f0a-8a51-4c3e-9d2b-7f1e3c5a9d10"
+
+
 class DashboardTestCase(unittest.TestCase):
     def setUp(self):
         self.original_api_url = app.config["API_URL"]
@@ -20,11 +23,7 @@ class DashboardTestCase(unittest.TestCase):
         self.client = app.test_client()
         with self.client.session_transaction() as browser_session:
             browser_session["access_token"] = "test-api-access-token"
-            browser_session["identity"] = {
-                "id": "test-user",
-                "username": "test-user",
-                "role": "administrator",
-            }
+            browser_session["actor_id"] = TEST_ACTOR_ID
             browser_session["_csrf_token"] = "test-csrf-token"
 
     def tearDown(self):

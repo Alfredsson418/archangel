@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from urllib.parse import urlsplit
 
@@ -38,6 +39,8 @@ pages = Blueprint("pages", __name__)
 # before it is sent. The backend remains authoritative.
 MAX_USERNAME_LENGTH = 64
 MAX_PASSWORD_BYTES = 512
+# Backend user IDs are UUIDs; anything else is rejected before it reaches the log.
+ACTOR_ID = re.compile(r"[0-9A-Fa-f-]{1,64}")
 SORTABLE_RULE_FIELDS = ("family", "table", "chain", "handle", "expr")
 
 
@@ -176,9 +179,12 @@ def login():
                         isinstance(identity.get(field), str)
                         for field in ("id", "username", "role")
                     )
+                    and ACTOR_ID.fullmatch(identity["id"])
                 ):
                     session.clear()
                     session["access_token"] = token
+                    # Kept only to attribute audit records; never used for authorization.
+                    session["actor_id"] = identity["id"]
                     session.rotate()
                     current_app.logger.info("dashboard_login_succeeded")
                     return redirect(next_path)

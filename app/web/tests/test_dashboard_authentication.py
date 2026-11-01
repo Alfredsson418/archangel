@@ -33,7 +33,7 @@ class DashboardAuthenticationTests(DashboardTestCase):
                 "access_token": "backend-session-secret",
                 "token_type": "Bearer",
                 "identity": {
-                    "id": "user-uuid",
+                    "id": "3f2b8c1e-5d4a-4e7b-9c1f-2a6d8e0b7c45",
                     "username": "operator",
                     "role": "operator",
                 },
@@ -76,6 +76,11 @@ class DashboardAuthenticationTests(DashboardTestCase):
                 browser_session["access_token"], "backend-session-secret"
             )
             self.assertNotIn("identity", browser_session)
+            self.assertEqual(
+                browser_session["actor_id"], "3f2b8c1e-5d4a-4e7b-9c1f-2a6d8e0b7c45"
+            )
+            self.assertNotIn("username", browser_session)
+            self.assertNotIn("role", browser_session)
 
         database = app.config["SESSION_DATABASE"]
         connection = sqlite3.connect(database)
@@ -90,6 +95,28 @@ class DashboardAuthenticationTests(DashboardTestCase):
             connection.close()
         self.assertIn(b"backend-session-secret", database.read_bytes())
         self.assertEqual(stat.S_IMODE(database.stat().st_mode), 0o600)
+
+    @patch("webapp.api_client.urlopen")
+    def test_login_rejects_identity_with_unsafe_actor_id(self, urlopen):
+        urlopen.return_value = UpstreamResponse(
+            {
+                "access_token": "backend-session-secret",
+                "identity": {"id": "x forged=1", "username": "operator", "role": "operator"},
+            }
+        )
+        with self.client.session_transaction() as browser_session:
+            browser_session.clear()
+            browser_session["_csrf_token"] = "test-csrf-token"
+        response = self.client.post(
+            "/login",
+            data={"csrf_token": "test-csrf-token", "username": "operator", "password": "secret"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"The backend rejected the sign-in request.", response.data)
+        response.close()
+        with self.client.session_transaction() as browser_session:
+            self.assertNotIn("access_token", browser_session)
+            self.assertNotIn("actor_id", browser_session)
 
     @patch("webapp.api_client.urlopen")
     def test_logout_revokes_backend_token_and_clears_session(self, urlopen):

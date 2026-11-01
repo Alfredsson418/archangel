@@ -85,7 +85,7 @@ The same rules apply when an OIDC provider is added behind `auth.provider`.
 | `app/web/webapp/firewall_rules.py` | Ruleset inspection and portable rule-bundle conversion and validation; no Flask dependency. |
 | `app/web/webapp/formatting.py` | Display formatting for host and backend metrics. |
 | `app/web/webapp/server_sessions.py`, `settings.py` | Server-side session store and deployment-fixed API settings. |
-| `app/web/webapp/logging_config.py` | Stdout and JSONL audit logging, request IDs, and the fail-closed audit gate for state-changing requests. |
+| `app/web/webapp/logging_config.py` | Stdout and JSONL audit logging, request IDs, and the fail-closed audit gate for every request except health and static files. |
 | `app/web/templates/` | Server-rendered Jinja templates. Page templates extend `base.html`. |
 | `app/web/static/` | Shared frontend assets such as stylesheets. |
 | `app/web/tests/` | Dashboard tests grouped by responsibility. |
