@@ -60,6 +60,19 @@ Provider contracts and implementations are grouped in `providers/` beneath their
 
 Select implementations at startup or configuration boundaries. Avoid plugin loading or generalized frameworks; compile-time implementations selected at composition time are sufficient for the currently planned backends. Contract tests should exercise behavior independently of concrete implementations, using fakes where integration with a real service or host would be unsafe or unavailable.
 
+### Selecting an implementation
+
+Each contract currently has one implementation, so the composition layer in `core/src/app/application.cpp` constructs it directly: `Nftables` for `Firewall` and `SqliteAuthProvider` for `AuthProvider`. The runtime config already names the authentication provider (`auth.provider`, which accepts only `local`); there is no firewall setting while nftables is the only backend, because a choice with one option adds configuration without value. When a contract gains a second implementation:
+
+- **Name the choice in the runtime config.** Add a setting such as `firewall.backend`, alongside `auth.provider`, with a documented default. Validate it against the implementations compiled into the binary and fail startup on an unknown or unavailable value; never fall back silently to a different backend.
+- **Construct it in one factory.** Map the setting to an implementation in a single factory function in `core/src/app/` that returns the contract type, for example `std::unique_ptr<Firewall>`. No other module names a concrete implementation or branches on the configured value.
+- **Detect optional capabilities on the instance.** Check the selected object for optional contracts, as `FirewallConfigCommand::requireProvider` does with `dynamic_cast<FirewallConfigProvider *>`, and report unsupported use clearly. Do not infer capabilities from the configured name.
+- **Keep implementation settings separate.** Put settings specific to one implementation in its own config section and pass them to it from the factory; shared code never reads them.
+- **Test the contract once for every implementation.** Run a shared contract test suite against each implementation and against a test fake, and give implementation-specific behavior, such as nftables JSON parsing, its own tests. Tests that need a privileged host or live firewall stay out of `make test`.
+- **Document it.** Describe the setting in the [runtime config guide](runtime-config.md) and the implementation in this document.
+
+The same rules apply when an OIDC provider is added behind `auth.provider`.
+
 ## Dashboard layout
 
 | Area | Responsibility |
