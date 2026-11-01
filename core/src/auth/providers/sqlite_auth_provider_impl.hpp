@@ -18,37 +18,38 @@
 #include <string>
 
 namespace Auth {
-namespace SqliteProviderDetail {
+
+namespace Detail {
 inline const std::string INVALID_USERNAME_MESSAGE =
-	"Username must be " + std::to_string(AppConfigLimits::MIN_USERNAME_LENGTH) +
-	"-" + std::to_string(AppConfigLimits::MAX_USERNAME_LENGTH) +
+	"Username must be " + std::to_string(Config::Limits::MIN_USERNAME_LENGTH) +
+	"-" + std::to_string(Config::Limits::MAX_USERNAME_LENGTH) +
 	" ASCII letters, digits, dots, underscores, or hyphens";
 
-inline Auth::Role parseRole(int role) {
+inline Role parseRole(int role) {
 	switch (role) {
 	case 0:
-		return Auth::Role::Viewer;
+		return Role::Viewer;
 	case 1:
-		return Auth::Role::Operator;
+		return Role::Operator;
 	case 2:
-		return Auth::Role::Administrator;
+		return Role::Administrator;
 	default:
 		throw std::runtime_error(
 			"Authentication database contains invalid role");
 	}
 }
 
-inline int roleValue(Auth::Role role) {
+inline int roleValue(Role role) {
 	switch (role) {
-	case Auth::Role::Viewer:
+	case Role::Viewer:
 		return 0;
-	case Auth::Role::Operator:
+	case Role::Operator:
 		return 1;
-	case Auth::Role::Administrator:
+	case Role::Administrator:
 		return 2;
 	}
-	throw Auth::AccountOperationError(
-		Auth::AccountOperationError::Code::Invalid, "Account role is invalid");
+	throw AccountOperationError(AccountOperationError::Code::Invalid,
+								"Account role is invalid");
 }
 
 inline std::int64_t unixTimeNow() {
@@ -56,7 +57,7 @@ inline std::int64_t unixTimeNow() {
 			   std::chrono::system_clock::now().time_since_epoch())
 		.count();
 }
-} // namespace SqliteProviderDetail
+} // namespace Detail
 
 struct SqliteAuthProvider::Impl {
 	explicit Impl(const std::string &path, std::chrono::seconds idle,
@@ -69,31 +70,31 @@ struct SqliteAuthProvider::Impl {
 			throw std::runtime_error("Invalid API session lifetime settings");
 		}
 		if (passwordPolicy.minimumCharacters <
-				AppConfigLimits::MIN_PASSWORD_LENGTH ||
+				Config::Limits::MIN_PASSWORD_LENGTH ||
 			passwordPolicy.maximumCharacters >
-				AppConfigLimits::MAX_PASSWORD_LENGTH ||
+				Config::Limits::MAX_PASSWORD_LENGTH ||
 			passwordPolicy.minimumCharacters >
 				passwordPolicy.maximumCharacters) {
 			throw std::runtime_error(
 				"Invalid local-account password policy settings");
 		}
 		if (argon2idParameters.memoryKiB <
-				AppConfigLimits::MIN_ARGON2ID_MEMORY_KIB ||
+				Config::Limits::MIN_ARGON2ID_MEMORY_KIB ||
 			argon2idParameters.memoryKiB >
-				AppConfigLimits::MAX_ARGON2ID_MEMORY_KIB ||
+				Config::Limits::MAX_ARGON2ID_MEMORY_KIB ||
 			argon2idParameters.iterations <
-				AppConfigLimits::MIN_ARGON2ID_ITERATIONS ||
+				Config::Limits::MIN_ARGON2ID_ITERATIONS ||
 			argon2idParameters.iterations >
-				AppConfigLimits::MAX_ARGON2ID_ITERATIONS ||
+				Config::Limits::MAX_ARGON2ID_ITERATIONS ||
 			argon2idParameters.parallelism <
-				AppConfigLimits::MIN_ARGON2ID_PARALLELISM ||
+				Config::Limits::MIN_ARGON2ID_PARALLELISM ||
 			argon2idParameters.parallelism >
-				AppConfigLimits::MAX_ARGON2ID_PARALLELISM ||
+				Config::Limits::MAX_ARGON2ID_PARALLELISM ||
 			argon2idParameters.memoryKiB < argon2idParameters.parallelism * 8) {
 			throw std::runtime_error(
 				"Invalid Argon2id password hashing settings");
 		}
-		storage			  = std::make_unique<AuthStorage::Database>(path);
+		storage			  = std::make_unique<Detail::Database>(path);
 		database		  = storage->get();
 		dummyPasswordHash = Detail::hashPassword(
 			"archangel-dummy-password-value", argon2idParameters);
@@ -108,9 +109,8 @@ struct SqliteAuthProvider::Impl {
 			throw std::runtime_error(
 				"Authentication database contains an invalid user");
 		}
-		return Identity{
-			id, username,
-			SqliteProviderDetail::parseRole(sqlite3_column_int(statement, 2))};
+		return Identity{id, username,
+						Detail::parseRole(sqlite3_column_int(statement, 2))};
 	}
 
 	Account accountFrom(sqlite3_stmt *statement) const {
@@ -119,14 +119,14 @@ struct SqliteAuthProvider::Impl {
 					   sqlite3_column_int(statement, 4) != 0};
 	}
 
-	std::unique_ptr<AuthStorage::Database> storage;
-	sqlite3								  *database = nullptr;
-	std::string							   dummyPasswordHash;
-	std::chrono::seconds				   idleTimeout;
-	std::chrono::seconds				   absoluteTimeout;
-	PasswordPolicy						   passwordPolicy;
-	Argon2idParameters					   argon2idParameters;
-	std::mutex							   databaseMutex;
+	std::unique_ptr<Detail::Database> storage;
+	sqlite3							 *database = nullptr;
+	std::string						  dummyPasswordHash;
+	std::chrono::seconds			  idleTimeout;
+	std::chrono::seconds			  absoluteTimeout;
+	PasswordPolicy					  passwordPolicy;
+	Argon2idParameters				  argon2idParameters;
+	std::mutex						  databaseMutex;
 };
 
 } // namespace Auth

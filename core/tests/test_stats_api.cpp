@@ -6,12 +6,12 @@
 #include <string>
 
 namespace {
-class StatisticsFirewall final : public Firewall {
+class StatisticsFirewall final : public Firewall::Backend {
   public:
 	std::string listRules() override { return R"({"nftables":[]})"; }
 
-	FirewallStatistics getStatistics() override {
-		FirewallStatistics statistics;
+	Firewall::Statistics getStatistics() override {
+		Firewall::Statistics statistics;
 		statistics.total_rules	   = 3;
 		statistics.total_tables	   = 2;
 		statistics.total_chains	   = 4;
@@ -30,7 +30,7 @@ class StatisticsFirewall final : public Firewall {
 		return statistics;
 	}
 
-	void addRule(const RuleSpec &) override {}
+	void addRule(const Firewall::RuleSpec &) override {}
 
 	void deleteRule(const std::string &, const std::string &,
 					const std::string &, std::uint64_t) override {}
@@ -39,7 +39,7 @@ class StatisticsFirewall final : public Firewall {
 void serializesStatisticsResponse() {
 	StatisticsFirewall firewall;
 	httplib::Response  response;
-	HttpApi::getStatistics(firewall, httplib::Request{}, response);
+	Http::getStatistics(firewall, httplib::Request{}, response);
 
 	TestSupport::require(response.body.find("\"total_rules\":3") !=
 							 std::string::npos,

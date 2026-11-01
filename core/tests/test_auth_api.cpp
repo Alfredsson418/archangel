@@ -13,13 +13,13 @@ using TestSupport::MockAuthProvider;
 using TestSupport::requestWithSchema;
 
 void supportsLoginAndLogoutHandlers() {
-	MockAuthProvider	 auth;
-	HttpApi::RateLimiter limiter(5, std::chrono::minutes(5));
-	httplib::Request request = requestWithSchema("POST", "/api/v1/auth/login");
+	MockAuthProvider  auth;
+	Http::RateLimiter limiter(5, std::chrono::minutes(5));
+	httplib::Request  request = requestWithSchema("POST", "/api/v1/auth/login");
 	request.body = R"({"username":"admin","password":"correct test password"})";
 	request.remote_addr = "192.0.2.10";
 	httplib::Response response;
-	HttpApi::login(auth, limiter, request, response);
+	Http::login(auth, limiter, request, response);
 	TestSupport::require(response.status == 200,
 						 "valid credentials should create a session");
 	const auto login = nlohmann::json::parse(response.body);
@@ -31,44 +31,44 @@ void supportsLoginAndLogoutHandlers() {
 
 	request.body = R"({"username":"admin","password":"incorrect password"})";
 	response	 = httplib::Response{};
-	HttpApi::login(auth, limiter, request, response);
+	Http::login(auth, limiter, request, response);
 	TestSupport::require(response.status == 401,
 						 "invalid credentials should be rejected");
 
 	request.body =
 		R"({"username":"admin","password":"correct test password","role":"administrator"})";
 	response = httplib::Response{};
-	HttpApi::login(auth, limiter, request, response);
+	Http::login(auth, limiter, request, response);
 	TestSupport::require(response.status == 400,
 						 "login should reject unexpected credential fields");
 
 	request = requestWithSchema("POST", "/api/v1/auth/logout");
 	request.set_header("Authorization", "Bearer admin-token");
 	response = httplib::Response{};
-	HttpApi::logout(auth, request, response);
+	Http::logout(auth, request, response);
 	TestSupport::require(response.status == 204 &&
 							 auth.revoked_token == "admin-token",
 						 "logout should revoke the caller's session");
 }
 
 void limitsFailedLoginAttemptsPerSource() {
-	MockAuthProvider	 auth;
-	HttpApi::RateLimiter limiter(2, std::chrono::minutes(5));
-	httplib::Request request = requestWithSchema("POST", "/api/v1/auth/login");
+	MockAuthProvider  auth;
+	Http::RateLimiter limiter(2, std::chrono::minutes(5));
+	httplib::Request  request = requestWithSchema("POST", "/api/v1/auth/login");
 	request.body = R"({"username":"admin","password":"incorrect password"})";
 	request.remote_addr = "192.0.2.20";
 	httplib::Response response;
-	HttpApi::login(auth, limiter, request, response);
+	Http::login(auth, limiter, request, response);
 	TestSupport::require(
 		response.status == 401,
 		"first failed login should return invalid credentials");
 	response = httplib::Response{};
-	HttpApi::login(auth, limiter, request, response);
+	Http::login(auth, limiter, request, response);
 	TestSupport::require(
 		response.status == 401,
 		"second failed login should return invalid credentials");
 	response = httplib::Response{};
-	HttpApi::login(auth, limiter, request, response);
+	Http::login(auth, limiter, request, response);
 	TestSupport::require(
 		response.status == 429 &&
 			response.get_header_value("Retry-After") == "300",
@@ -76,7 +76,7 @@ void limitsFailedLoginAttemptsPerSource() {
 
 	request.remote_addr = "192.0.2.21";
 	response			= httplib::Response{};
-	HttpApi::login(auth, limiter, request, response);
+	Http::login(auth, limiter, request, response);
 	TestSupport::require(
 		response.status == 401,
 		"failed attempts should be tracked per source address");

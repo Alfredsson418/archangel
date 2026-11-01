@@ -11,11 +11,12 @@
 #include <sys/wait.h>
 #include <utility>
 
+namespace Logs {
+
 namespace {
-using Logging::LogSourceResult;
 using Json = nlohmann::json;
 
-bool hasNftablesLogRules(Firewall &firewall) {
+bool hasNftablesLogRules(Firewall::Backend &firewall) {
 	const Json ruleset = Json::parse(firewall.listRules());
 	if (!ruleset.is_object()) {
 		throw std::runtime_error("Invalid nftables ruleset");
@@ -54,7 +55,7 @@ bool readBoundedLine(FILE *stream, std::string &line) {
 			return readAny;
 		}
 		readAny = true;
-		if (line.size() < AppConfigLimits::MAX_LOG_LINE_BYTES) {
+		if (line.size() < Config::Limits::MAX_LOG_LINE_BYTES) {
 			line.push_back(static_cast<char>(character));
 		}
 	}
@@ -82,7 +83,7 @@ LogSourceResult readNftablesJournal() {
 		}
 		entries.push_back(line);
 		// Keep only what can be returned; older lines are dropped.
-		if (entries.size() > AppConfigLimits::MAX_LOG_ENTRIES) {
+		if (entries.size() > Config::Limits::MAX_LOG_ENTRIES) {
 			entries.erase(entries.begin());
 		}
 	}
@@ -104,9 +105,7 @@ LogSourceResult readNftablesJournal() {
 }
 } // namespace
 
-namespace Logging {
-
-NftablesJournalSource::NftablesJournalSource(Firewall &firewall)
+NftablesJournalSource::NftablesJournalSource(Firewall::Backend &firewall)
 	: firewall_(firewall) {}
 
 LogSourceResult NftablesJournalSource::read() {
@@ -130,4 +129,4 @@ LogSourceResult NftablesJournalSource::read() {
 			{}};
 }
 
-} // namespace Logging
+} // namespace Logs

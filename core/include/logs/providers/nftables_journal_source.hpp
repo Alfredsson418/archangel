@@ -3,7 +3,7 @@
 #include "firewall/firewall.hpp"
 #include "logs/log_source.hpp"
 
-namespace Logging {
+namespace Logs {
 
 /**
  * @brief Reads nftables packet-log lines from the host kernel journal.
@@ -18,12 +18,12 @@ class NftablesJournalSource final : public LogSource {
 	 * @param firewall Backend whose active ruleset decides availability; it
 	 * must outlive this source.
 	 */
-	explicit NftablesJournalSource(Firewall &firewall);
+	explicit NftablesJournalSource(Firewall::Backend &firewall);
 
 	LogSourceResult read() override;
 
   private:
-	Firewall &firewall_;
+	Firewall::Backend &firewall_;
 };
 
-} // namespace Logging
+} // namespace Logs

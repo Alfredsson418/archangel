@@ -3,7 +3,7 @@
 #include "auth/auth_provider.hpp"
 #include "cpp-httplib/cpp-httplib.hpp"
 
-namespace HttpApi {
+namespace Http {
 
 /**
  * @brief Returns backend-owned account metadata.
@@ -41,4 +41,4 @@ void issueAccountSetupToken(Auth::AuthProvider	   &auth,
 							const httplib::Request &request,
 							httplib::Response	   &response);
 
-} // namespace HttpApi
+} // namespace Http

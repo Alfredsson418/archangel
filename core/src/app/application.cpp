@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace App {
+
 namespace {
 /**
  * @brief Opens the configured JSONL log sink and installs it in Logger.
@@ -33,17 +35,17 @@ namespace {
  * @param config Validated application settings.
  * @return True when logging is configured; false after printing the reason.
  */
-bool startLogging(const AppConfig &config) {
+bool startLogging(const Config::AppConfig &config) {
 	try {
-		Logger::configure(std::make_shared<Logging::JsonlFileSink>(
-							  config.logging.path, "backend"),
-						  Logger::parseLevel(config.logging.level));
+		Logs::Logger::configure(std::make_shared<Logs::JsonlFileSink>(
+									config.logging.path, "backend"),
+								Logs::Logger::parseLevel(config.logging.level));
 	} catch (const std::exception &error) {
 		std::cerr << "Unable to open the backend log: " << error.what() << '\n';
 		return false;
 	}
 	// Reopen the log after external rotation (rename, then SIGHUP).
-	std::signal(SIGHUP, [](int) { Logger::requestReopen(); });
+	std::signal(SIGHUP, [](int) { Logs::Logger::requestReopen(); });
 	return true;
 }
 
@@ -54,7 +56,7 @@ bool startLogging(const AppConfig &config) {
  * @throws std::runtime_error If the password blocklist or database cannot be
  * loaded safely.
  */
-Auth::SqliteAuthProvider makeAuthProvider(const AppConfig &config) {
+Auth::SqliteAuthProvider makeAuthProvider(const Config::AppConfig &config) {
 	Auth::PasswordPolicy policy;
 	policy.minimumCharacters = config.auth.password_min_length;
 	policy.maximumCharacters = config.auth.password_max_length;
@@ -141,10 +143,10 @@ int runApplication(int argc, char *argv[]) {
 			return 2;
 		}
 		const std::string outputPath = generatedConfigPath.empty()
-										   ? AppConfigDefaults::configPath()
+										   ? Config::Defaults::configPath()
 										   : generatedConfigPath;
 		try {
-			writeRuntimeConfig(outputPath);
+			Config::writeRuntimeConfig(outputPath);
 			std::cout << "Generated runtime config at " << outputPath << '\n';
 			return 0;
 		} catch (const std::exception &error) {
@@ -154,13 +156,12 @@ int runApplication(int argc, char *argv[]) {
 		}
 	}
 
-	AppConfig appConfig;
+	Config::AppConfig appConfig;
 	try {
 		const bool explicitConfig = runtimeConfigOption->count() > 0;
-		appConfig =
-			loadRuntimeConfig(explicitConfig ? runtimeConfigPath
-											 : AppConfigDefaults::configPath(),
-							  !explicitConfig);
+		appConfig				  = Config::loadRuntimeConfig(
+			explicitConfig ? runtimeConfigPath : Config::Defaults::configPath(),
+			!explicitConfig);
 	} catch (const std::exception &error) {
 		std::cerr << "Runtime configuration failed: " << error.what() << '\n';
 		return 1;
@@ -177,7 +178,7 @@ int runApplication(int argc, char *argv[]) {
 				recoverDatabaseOption->count() > 0) {
 				appConfig.auth.database_path = authDatabasePathOverride;
 			}
-			validateAppConfig(appConfig);
+			Config::validateAppConfig(appConfig);
 			if (!startLogging(appConfig)) {
 				return 1;
 			}
@@ -195,7 +196,7 @@ int runApplication(int argc, char *argv[]) {
 														   password.value())
 						   : provider.bootstrapAdministrator(bootstrapUsername,
 															 password.value());
-			if (!Logger::audit({
+			if (!Logs::Logger::audit({
 					{},
 					"INFO",
 					"PROGRAM",
@@ -221,17 +222,17 @@ int runApplication(int argc, char *argv[]) {
 		appConfig.server.bind_address = hostOverride;
 	}
 	if (portOption->count() > 0) {
-		if (portOverride < AppConfigLimits::MIN_SERVER_PORT ||
-			portOverride > AppConfigLimits::MAX_SERVER_PORT) {
+		if (portOverride < Config::Limits::MIN_SERVER_PORT ||
+			portOverride > Config::Limits::MAX_SERVER_PORT) {
 			std::cerr << "--port must be between "
-					  << AppConfigLimits::MIN_SERVER_PORT << " and "
-					  << AppConfigLimits::MAX_SERVER_PORT << '\n';
+					  << Config::Limits::MIN_SERVER_PORT << " and "
+					  << Config::Limits::MAX_SERVER_PORT << '\n';
 			return 2;
 		}
 		appConfig.server.port = static_cast<std::uint16_t>(portOverride);
 	}
 	try {
-		validateAppConfig(appConfig);
+		Config::validateAppConfig(appConfig);
 	} catch (const std::exception &error) {
 		std::cerr << "Effective application configuration is invalid: "
 				  << error.what() << '\n';
@@ -242,7 +243,7 @@ int runApplication(int argc, char *argv[]) {
 	}
 	if (appConfig.tls.enabled) {
 		try {
-			HttpApi::validateTlsFiles(appConfig.tls);
+			Http::validateTlsFiles(appConfig.tls);
 		} catch (const std::exception &error) {
 			std::cerr << "TLS configuration is invalid: " << error.what()
 					  << '\n';
@@ -275,30 +276,30 @@ int runApplication(int argc, char *argv[]) {
 	}
 	if (!appConfig.tls.enabled &&
 		!Network::isLoopbackAddress(appConfig.server.bind_address)) {
-		Logger::Program::log(
+		Logs::Logger::Program::log(
 			"SECURITY WARNING: API listener is non-loopback and TLS is not "
 			"enabled; network traffic is unprotected",
-			Logger::Level::WARNING);
+			Logs::Logger::Level::WARNING);
 	}
 #ifdef ARCHANGEL_DEV_BUILD
-	Logger::Program::log(
+	Logs::Logger::Program::log(
 		"Development build: local-account passwords may be as short as " +
-			std::to_string(AppConfigLimits::MIN_PASSWORD_LENGTH) +
+			std::to_string(Config::Limits::MIN_PASSWORD_LENGTH) +
 			" characters; use a release build outside local testing",
-		Logger::Level::WARNING);
+		Logs::Logger::Level::WARNING);
 #endif
-	Logger::Program::log("Starting program");
+	Logs::Logger::Program::log("Starting program");
 
 	try {
-		Nftables nftables;
+		Firewall::Nftables nftables;
 
 		if (!exportFirewallBundlePath.empty()) {
-			FirewallBundleProvider &configProvider =
-				FirewallBundleCommand::requireProvider(nftables);
-			FirewallBundleCommand::writeBundle(
-				exportFirewallBundlePath,
-				configProvider.exportFirewallBundle());
-			Logger::Program::log("Exported Archangel firewall config bundle");
+			Firewall::BundleProvider &configProvider =
+				Cli::requireBundleProvider(nftables);
+			Cli::writeBundle(exportFirewallBundlePath,
+							 configProvider.exportBundle());
+			Logs::Logger::Program::log(
+				"Exported Archangel firewall config bundle");
 			return 0;
 		}
 
@@ -306,43 +307,45 @@ int runApplication(int argc, char *argv[]) {
 
 		// Sources for GET /api/v1/logs, in display order.
 		const auto logSources = [&] {
-			std::vector<std::unique_ptr<Logging::LogSource>> sources;
-			sources.push_back(std::make_unique<Logging::ApplicationLogSource>(
+			std::vector<std::unique_ptr<Logs::LogSource>> sources;
+			sources.push_back(std::make_unique<Logs::ApplicationLogSource>(
 				appConfig.logging.path));
 			sources.push_back(
-				std::make_unique<Logging::NftablesJournalSource>(nftables));
+				std::make_unique<Logs::NftablesJournalSource>(nftables));
 			return sources;
 		};
 
 		if (!importFirewallBundlePath.empty()) {
-			FirewallBundleProvider &configProvider =
-				FirewallBundleCommand::requireProvider(nftables);
-			const FirewallBundleImportMode importMode =
-				resolveFirewallBundleImportMode(rulesModeText);
-			configProvider.importFirewallBundle(
-				FirewallBundleCommand::readBundle(importFirewallBundlePath),
-				importMode);
-			Logger::Program::log("Imported Archangel firewall config bundle");
-			HttpServer server(nftables, authProvider, logSources(),
-							  appConfig.server, appConfig.tls,
-							  appConfig.rate_limits);
+			Firewall::BundleProvider &configProvider =
+				Cli::requireBundleProvider(nftables);
+			const Firewall::BundleImportMode importMode =
+				Firewall::resolveBundleImportMode(rulesModeText);
+			configProvider.importBundle(
+				Cli::readBundle(importFirewallBundlePath), importMode);
+			Logs::Logger::Program::log(
+				"Imported Archangel firewall config bundle");
+			Http::Server server(nftables, authProvider, logSources(),
+								appConfig.server, appConfig.tls,
+								appConfig.rate_limits);
 			server.run();
-			Logger::Program::log("Program stopped");
+			Logs::Logger::Program::log("Program stopped");
 			return 0;
 		}
 
-		HttpServer server(nftables, authProvider, logSources(),
-						  appConfig.server, appConfig.tls,
-						  appConfig.rate_limits);
+		Http::Server server(nftables, authProvider, logSources(),
+							appConfig.server, appConfig.tls,
+							appConfig.rate_limits);
 
 		server.run();
-		Logger::Program::log("Program stopped");
+		Logs::Logger::Program::log("Program stopped");
 	} catch (const std::exception &exception) {
-		Logger::Program::log("Archangel error: " +
-							 std::string(exception.what()));
+		Logs::Logger::Program::log("Archangel error: " +
+								   std::string(exception.what()));
 
 		return 1;
 	}
 
 	return 0;
 }
+
+} // namespace App

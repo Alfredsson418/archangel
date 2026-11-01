@@ -5,6 +5,8 @@
 #include <memory>
 #include <string>
 
+namespace Logs {
+
 class Logger {
   public:
 	Logger() = delete;
@@ -20,8 +22,7 @@ class Logger {
 	 * @param minimum Messages below this level are dropped.
 	 * @return No value.
 	 */
-	static void configure(std::shared_ptr<Logging::LogSink> sink,
-						  Level								minimum);
+	static void configure(std::shared_ptr<LogSink> sink, Level minimum);
 
 	/**
 	 * @brief Converts a configured level name to a Level.
@@ -40,7 +41,7 @@ class Logger {
 	 * @return False when a configured sink failed to write the record; true
 	 * when it was written or no sink is configured.
 	 */
-	static bool audit(Logging::LogRecord record);
+	static bool audit(LogRecord record);
 
 	/**
 	 * @brief Asks the sink to reopen its destination before the next write.
@@ -97,3 +98,5 @@ class Logger {
 		static void log(const std::string &msg, Level level = Level::INFO);
 	};
 };
+
+} // namespace Logs

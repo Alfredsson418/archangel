@@ -5,7 +5,9 @@
 #include <string>
 #include <string_view>
 
-namespace AuthStorage {
+namespace Auth {
+
+namespace Detail {
 
 class Statement {
   public:
@@ -61,4 +63,6 @@ class Database {
 
 void executeSql(sqlite3 *database, const char *sql);
 
-} // namespace AuthStorage
+} // namespace Detail
+
+} // namespace Auth

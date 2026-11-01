@@ -6,7 +6,7 @@
 #include <chrono>
 #include <string>
 
-namespace HttpApi {
+namespace Http {
 
 // Response header carrying the backend's identifier for a request, so clients
 // can correlate their own logs with the backend audit record.
@@ -60,4 +60,4 @@ recordAuthorizedRequest(const RequestAudit &audit, httplib::Response &response);
 void recordCompletedRequest(const RequestAudit		&audit,
 							const httplib::Response &response);
 
-} // namespace HttpApi
+} // namespace Http

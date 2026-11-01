@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 
+namespace Firewall {
+
 /**
  * @brief Thrown when a firewall backend rejects a rule or rule target as
  * invalid, as opposed to failing to apply it.
@@ -29,7 +31,7 @@ struct RuleSpec {
 	std::string					 action;
 };
 
-struct FirewallStatistics {
+struct Statistics {
 	std::uint64_t						 total_rules  = 0;
 	std::uint64_t						 total_tables = 0;
 	std::uint64_t						 total_chains = 0;
@@ -38,10 +40,10 @@ struct FirewallStatistics {
 	std::map<std::string, std::uint64_t> rules_by_verdict;
 };
 
-class Firewall {
+class Backend {
   public:
 	/** @brief Destroys the backend through the interface. */
-	virtual ~Firewall() = default;
+	virtual ~Backend() = default;
 
 	/**
 	 * @brief Returns the active firewall ruleset in the backend's JSON format.
@@ -53,7 +55,7 @@ class Firewall {
 	 * @brief Summarizes tables, chains, rules, protocols, and verdicts.
 	 * @return Aggregated statistics for the active ruleset.
 	 */
-	virtual FirewallStatistics getStatistics() = 0;
+	virtual Statistics getStatistics() = 0;
 
 	/**
 	 * @brief Adds a validated rule to the selected firewall backend.
@@ -77,3 +79,5 @@ class Firewall {
 	virtual void deleteRule(const std::string &family, const std::string &table,
 							const std::string &chain, std::uint64_t handle) = 0;
 };
+
+} // namespace Firewall

@@ -4,6 +4,8 @@
 #include <regex>
 #include <string>
 
+namespace Logs {
+
 namespace {
 
 /**
@@ -30,20 +32,18 @@ std::string redactSensitiveValues(const std::string &line) {
 }
 } // namespace
 
-namespace Logging {
-
 std::vector<LogSourceResult>
 readLogSources(const std::vector<std::unique_ptr<LogSource>> &sources) {
 	std::vector<LogSourceResult> results;
 	results.reserve(sources.size());
 	for (const auto &source : sources) {
 		LogSourceResult result = source->read();
-		if (result.entries.size() > AppConfigLimits::MAX_LOG_ENTRIES) {
-			result.entries.resize(AppConfigLimits::MAX_LOG_ENTRIES);
+		if (result.entries.size() > Config::Limits::MAX_LOG_ENTRIES) {
+			result.entries.resize(Config::Limits::MAX_LOG_ENTRIES);
 		}
 		for (std::string &entry : result.entries) {
-			if (entry.size() > AppConfigLimits::MAX_LOG_LINE_BYTES) {
-				entry.resize(AppConfigLimits::MAX_LOG_LINE_BYTES);
+			if (entry.size() > Config::Limits::MAX_LOG_LINE_BYTES) {
+				entry.resize(Config::Limits::MAX_LOG_LINE_BYTES);
 			}
 			entry = redactSensitiveValues(entry);
 		}
@@ -52,4 +52,4 @@ readLogSources(const std::vector<std::unique_ptr<LogSource>> &sources) {
 	return results;
 }
 
-} // namespace Logging
+} // namespace Logs

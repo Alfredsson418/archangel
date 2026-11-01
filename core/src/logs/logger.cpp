@@ -10,10 +10,12 @@
 #include <sstream>
 #include <stdexcept>
 
+namespace Logs {
+
 namespace {
-std::mutex						  logMutex;
-std::shared_ptr<Logging::LogSink> configuredSink;
-Logger::Level					  minimumLevel = Logger::Level::INFO;
+std::mutex				 logMutex;
+std::shared_ptr<LogSink> configuredSink;
+Logger::Level			 minimumLevel = Logger::Level::INFO;
 // Lock-free so requestReopen() is safe in a signal handler.
 std::atomic<bool> reopenRequested{false};
 static_assert(std::atomic<bool>::is_always_lock_free);
@@ -51,7 +53,7 @@ std::string typeName(Logger::Type type) {
  * @param record Record to format.
  * @return Timestamp, level, category, event, then key=value fields.
  */
-std::string textLine(const Logging::LogRecord &record) {
+std::string textLine(const LogRecord &record) {
 	const std::time_t seconds =
 		std::chrono::system_clock::to_time_t(record.time);
 	std::tm utc{};
@@ -78,7 +80,7 @@ std::string textLine(const Logging::LogRecord &record) {
  * @param record Record whose event and fields are filled in.
  * @return No value.
  */
-void parseMessage(const std::string &message, Logging::LogRecord &record) {
+void parseMessage(const std::string &message, LogRecord &record) {
 	static const std::regex eventPattern("^[a-z][a-z0-9_]*$");
 	static const std::regex fieldPattern("^([a-z][a-z0-9_]*)=(\\S*)$");
 	std::istringstream		tokens(message);
@@ -111,7 +113,7 @@ void parseMessage(const std::string &message, Logging::LogRecord &record) {
  * @param record Record to write.
  * @return False when the configured sink failed.
  */
-bool writeLocked(const Logging::LogRecord &record) {
+bool writeLocked(const LogRecord &record) {
 	std::cout << textLine(record) << std::endl;
 	if (!configuredSink) {
 		return true;
@@ -123,7 +125,7 @@ bool writeLocked(const Logging::LogRecord &record) {
 }
 } // namespace
 
-void Logger::configure(std::shared_ptr<Logging::LogSink> sink, Level minimum) {
+void Logger::configure(std::shared_ptr<LogSink> sink, Level minimum) {
 	std::lock_guard<std::mutex> lock(logMutex);
 	configuredSink = std::move(sink);
 	minimumLevel   = minimum;
@@ -139,7 +141,7 @@ Logger::Level Logger::parseLevel(const std::string &name) {
 	throw std::invalid_argument("Unknown log level: " + name);
 }
 
-bool Logger::audit(Logging::LogRecord record) {
+bool Logger::audit(LogRecord record) {
 	if (record.time == std::chrono::system_clock::time_point{}) {
 		record.time = std::chrono::system_clock::now();
 	}
@@ -154,7 +156,7 @@ void Logger::log(const std::string &message, Level level, Type type) {
 	if (level < minimumLevel) {
 		return;
 	}
-	Logging::LogRecord record;
+	LogRecord record;
 	record.time		= std::chrono::system_clock::now();
 	record.level	= levelName(level);
 	record.category = typeName(type);
@@ -173,3 +175,5 @@ void Logger::Program::log(const std::string &message, Level level) {
 void Logger::API::log(const std::string &message, Level level) {
 	Logger::log(message, level, Type::API);
 }
+
+} // namespace Logs

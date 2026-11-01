@@ -62,17 +62,18 @@ fs::path writeFile(const fs::path &path, const char *content, mode_t mode) {
 	return path;
 }
 
-AppConfig::Tls tlsConfig(const fs::path &certificate, const fs::path &key) {
-	AppConfig::Tls tls;
+Config::AppConfig::Tls tlsConfig(const fs::path &certificate,
+								 const fs::path &key) {
+	Config::AppConfig::Tls tls;
 	tls.enabled			 = true;
 	tls.certificate_file = certificate.string();
 	tls.private_key_file = key.string();
 	return tls;
 }
 
-bool configure(const AppConfig::Tls &tls, std::string &error) {
+bool configure(const Config::AppConfig::Tls &tls, std::string &error) {
 	SSL_CTX	  *context = SSL_CTX_new(TLS_server_method());
-	const bool ok	   = HttpApi::configureTlsContext(context, tls, error);
+	const bool ok	   = Http::configureTlsContext(context, tls, error);
 	if (ok) {
 		TestSupport::require(SSL_CTX_get_min_proto_version(context) ==
 								 TLS1_2_VERSION,
@@ -87,7 +88,7 @@ void acceptsAMatchingCertificateAndKey() {
 	const auto		   tls = tlsConfig(
 		writeFile(directory.path / "server.crt", TEST_CERTIFICATE, 0644),
 		writeFile(directory.path / "server.key", TEST_PRIVATE_KEY, 0600));
-	HttpApi::validateTlsFiles(tls);
+	Http::validateTlsFiles(tls);
 	std::string error;
 	TestSupport::require(
 		configure(tls, error),
@@ -108,7 +109,7 @@ void rejectsMismatchedOrMissingFiles() {
 		"reports the mismatch while loading the key)");
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
-			HttpApi::validateTlsFiles(
+			Http::validateTlsFiles(
 				tlsConfig(certificate, directory.path / "missing.key"));
 		},
 		"a missing private key must fail validation");
@@ -126,7 +127,7 @@ void rejectsUnsafeKeyPermissions() {
 		writeFile(directory.path / "server.crt", TEST_CERTIFICATE, 0644);
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
-			HttpApi::validateTlsFiles(
+			Http::validateTlsFiles(
 				tlsConfig(certificate, writeFile(directory.path / "shared.key",
 												 TEST_PRIVATE_KEY, 0640)));
 		},
@@ -136,13 +137,13 @@ void rejectsUnsafeKeyPermissions() {
 	fs::create_symlink(key, directory.path / "linked.key");
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
-			HttpApi::validateTlsFiles(
+			Http::validateTlsFiles(
 				tlsConfig(certificate, directory.path / "linked.key"));
 		},
 		"a symlinked private key must be rejected");
 	chmod(certificate.c_str(), 0666);
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { HttpApi::validateTlsFiles(tlsConfig(certificate, key)); },
+		[&] { Http::validateTlsFiles(tlsConfig(certificate, key)); },
 		"a certificate writable by others must be rejected");
 }
 } // namespace

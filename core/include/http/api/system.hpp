@@ -2,7 +2,8 @@
 
 #include "cpp-httplib/cpp-httplib.hpp"
 
-namespace HttpApi {
+namespace Http {
+
 /**
  * @brief Collects host resource information and writes it as JSON.
  * @param request Incoming HTTP request.
@@ -11,4 +12,5 @@ namespace HttpApi {
  */
 void getSystemStatistics(const httplib::Request &request,
 						 httplib::Response		&response);
-} // namespace HttpApi
+
+} // namespace Http

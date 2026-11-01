@@ -71,7 +71,7 @@ class TerminalPasswordPrompt {
 				if (character == '\n' || character == '\r') {
 					break;
 				}
-				if (password.size() < AppConfigLimits::MAX_PASSWORD_BYTES) {
+				if (password.size() < Config::Limits::MAX_PASSWORD_BYTES) {
 					password.push_back(character);
 				} else {
 					tooLong = true;

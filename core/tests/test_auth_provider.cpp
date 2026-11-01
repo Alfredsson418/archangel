@@ -437,7 +437,7 @@ void rejectsBlocklistedPasswords() {
 	const Auth::PasswordBlocklist parsed = Auth::PasswordBlocklist::fromContent(
 		"Correct Horse Battery Staple\r\n\nletmein-letmein-letmein\n"
 		"letmein-letmein-letmein\n" +
-		std::string(AppConfigLimits::MAX_PASSWORD_BYTES + 1, 'x'));
+		std::string(Config::Limits::MAX_PASSWORD_BYTES + 1, 'x'));
 	TestSupport::require(
 		parsed.size() == 2,
 		"blocklists should skip empty, duplicate, and oversized "

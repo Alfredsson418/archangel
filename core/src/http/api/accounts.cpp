@@ -5,7 +5,8 @@
 #include <string>
 #include <string_view>
 
-namespace HttpApi {
+namespace Http {
+
 namespace {
 
 const char *roleName(Auth::Role role) {
@@ -49,7 +50,7 @@ Detail::Json accountJson(const Auth::Account &account) {
 
 bool parseBody(const httplib::Request &request, Detail::Json &document,
 			   httplib::Response &response) {
-	if (request.body.size() > AppConfigLimits::MAX_ACCOUNT_BODY_BYTES) {
+	if (request.body.size() > Config::Limits::MAX_ACCOUNT_BODY_BYTES) {
 		Detail::sendError(response, ApiError(413, "request_too_large",
 											 "Account request is too large"));
 		return false;
@@ -192,7 +193,7 @@ void updateAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 		!document.contains("id") || !document["id"].is_string() ||
 		document["id"].get<std::string>().empty() ||
 		document["id"].get<std::string>().size() >
-			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
+			Config::Limits::MAX_ACCOUNT_ID_LENGTH) {
 		Detail::sendError(response, ApiError(400, "invalid_request",
 											 "Account update is invalid"));
 		return;
@@ -238,7 +239,7 @@ void disableAccount(Auth::AuthProvider &auth, const httplib::Request &request,
 		!document["id"].is_string() ||
 		document["id"].get<std::string>().empty() ||
 		document["id"].get<std::string>().size() >
-			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
+			Config::Limits::MAX_ACCOUNT_ID_LENGTH) {
 		Detail::sendError(response, ApiError(400, "invalid_request",
 											 "Account request is invalid"));
 		return;
@@ -261,7 +262,7 @@ void issueAccountSetupToken(Auth::AuthProvider	   &auth,
 		!document["id"].is_string() ||
 		document["id"].get<std::string>().empty() ||
 		document["id"].get<std::string>().size() >
-			AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
+			Config::Limits::MAX_ACCOUNT_ID_LENGTH) {
 		Detail::sendError(response, ApiError(400, "invalid_request",
 											 "Account request is invalid"));
 		return;
@@ -280,4 +281,4 @@ void issueAccountSetupToken(Auth::AuthProvider	   &auth,
 	});
 }
 
-} // namespace HttpApi
+} // namespace Http

@@ -20,13 +20,15 @@
 #include <string_view>
 #include <utility>
 
+namespace Http {
+
 namespace {
 // Audit context of the request in flight. cpp-httplib runs the pre-routing
 // handler, the route, and the logger for one request on the same worker
 // thread, so the context is kept per thread. It lives at namespace scope
 // because a function-local thread_local is only constructed on threads that
-// reach its declaration, and the worker threads never run HttpServer::run.
-thread_local HttpApi::RequestAudit currentAudit;
+// reach its declaration, and the worker threads never run Server::run.
+thread_local RequestAudit currentAudit;
 
 /**
  * @brief Registers a route together with its access policy.
@@ -43,8 +45,8 @@ thread_local HttpApi::RequestAudit currentAudit;
  * @throws std::logic_error If the method is unsupported or the route is
  * declared twice.
  */
-void addRoute(httplib::Server &server, HttpApi::RoutePolicies &policies,
-			  const char *method, const char *path, HttpApi::RoutePolicy policy,
+void addRoute(httplib::Server &server, RoutePolicies &policies,
+			  const char *method, const char *path, RoutePolicy policy,
 			  httplib::Server::Handler handler) {
 	// Schema negotiation and request auditing happen around every route in
 	// the pre-routing handler and logger, so handlers need no wrapper.
@@ -64,16 +66,16 @@ void addRoute(httplib::Server &server, HttpApi::RoutePolicies &policies,
 }
 } // namespace
 
-HttpServer::HttpServer(
-	Firewall &firewall, Auth::AuthProvider &auth,
-	std::vector<std::unique_ptr<Logging::LogSource>> logSources,
-	AppConfig::Server serverConfig, AppConfig::Tls tlsConfig,
-	AppConfig::RateLimits rateLimits)
+Server::Server(Firewall::Backend &firewall, Auth::AuthProvider &auth,
+			   std::vector<std::unique_ptr<Logs::LogSource>> logSources,
+			   Config::AppConfig::Server					 serverConfig,
+			   Config::AppConfig::Tls						 tlsConfig,
+			   Config::AppConfig::RateLimits				 rateLimits)
 	: firewall_(firewall), auth_(auth), log_sources_(std::move(logSources)),
 	  login_limiter_(
 		  rateLimits.failed_auth_attempts,
 		  std::chrono::seconds(rateLimits.failed_auth_window_seconds),
-		  AppConfigLimits::MAX_TRACKED_LOGIN_SOURCES),
+		  Config::Limits::MAX_TRACKED_LOGIN_SOURCES),
 	  source_rate_limiter_(rateLimits.api_requests_per_minute,
 						   std::chrono::minutes(1)),
 	  identity_rate_limiter_(rateLimits.api_requests_per_minute,
@@ -86,8 +88,7 @@ HttpServer::HttpServer(
 	  tls_config_(std::move(tlsConfig)),
 	  started_at_(std::chrono::steady_clock::now()) {}
 
-void HttpServer::run() {
-	using HttpApi::RouteAccess;
+void Server::run() {
 	// With TLS enabled the listener only speaks HTTPS; startup fails rather
 	// than falling back to plaintext when the TLS setup is invalid.
 	std::unique_ptr<httplib::Server> listener;
@@ -95,8 +96,8 @@ void HttpServer::run() {
 		std::string tlsError;
 		auto		secure = std::make_unique<httplib::SSLServer>(
 			   [this, &tlsError](httplib::tls::ctx_t context) {
-				   return HttpApi::configureTlsContext(
-					   static_cast<SSL_CTX *>(context), tls_config_, tlsError);
+				   return configureTlsContext(static_cast<SSL_CTX *>(context),
+												  tls_config_, tlsError);
 			   });
 		if (!secure->is_valid()) {
 			throw std::runtime_error("TLS setup failed: " + tlsError);
@@ -105,25 +106,24 @@ void HttpServer::run() {
 	} else {
 		listener = std::make_unique<httplib::Server>();
 	}
-	httplib::Server		  &server = *listener;
-	HttpApi::RoutePolicies routes;
+	httplib::Server &server = *listener;
+	RoutePolicies	 routes;
 	server.set_pre_routing_handler([this,
 									&routes](const httplib::Request &request,
 											 httplib::Response		&response) {
-		currentAudit = HttpApi::beginRequestAudit(request, routes, response);
+		currentAudit = beginRequestAudit(request, routes, response);
 		std::optional<Auth::Identity> identity;
-		auto						  result = HttpApi::authorizeApiRequest(
+		auto						  result = authorizeApiRequest(
 			 auth_, routes, request, response, source_rate_limiter_,
 			 identity_rate_limiter_, firewall_mutation_source_limiter_,
 			 firewall_mutation_identity_limiter_, &identity);
 		if (identity) {
 			currentAudit.actorId = identity->id;
 		}
-		const HttpApi::RoutePolicy *route =
-			routes.find(request.method, request.path);
+		const RoutePolicy *route = routes.find(request.method, request.path);
 		if (result == httplib::Server::HandlerResponse::Unhandled &&
 			route != nullptr && route->access != RouteAccess::Liveness) {
-			result = HttpApi::recordAuthorizedRequest(currentAudit, response);
+			result = recordAuthorizedRequest(currentAudit, response);
 		}
 		return result;
 	});
@@ -133,98 +133,100 @@ void HttpServer::run() {
 		// malformed ones, have no context yet.
 		if (currentAudit.requestId.empty()) {
 			httplib::Response unused;
-			currentAudit = HttpApi::beginRequestAudit(request, routes, unused);
+			currentAudit = beginRequestAudit(request, routes, unused);
 		}
-		HttpApi::recordCompletedRequest(currentAudit, response);
+		recordCompletedRequest(currentAudit, response);
 		currentAudit = {};
 	});
 
 	addRoute(server, routes, "GET", "/status/health", {RouteAccess::Liveness},
 			 [](const auto &request, auto &response) {
-				 HttpApi::getHealth(request, response);
+				 getHealth(request, response);
 			 });
 	addRoute(server, routes, "GET", "/status/info", {RouteAccess::Viewer},
 			 [this](const auto &request, auto &response) {
 				 const auto uptime =
 					 std::chrono::duration_cast<std::chrono::seconds>(
 						 std::chrono::steady_clock::now() - started_at_);
-				 HttpApi::getStatus(request, response, ARCHANGEL_GIT_COMMIT,
-									static_cast<std::uint64_t>(uptime.count()));
+				 getStatus(request, response, ARCHANGEL_GIT_COMMIT,
+						   static_cast<std::uint64_t>(uptime.count()));
 			 });
 	addRoute(server, routes, "POST", "/api/v1/auth/login",
 			 {RouteAccess::Public},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::login(auth_, login_limiter_, request, response);
+				 login(auth_, login_limiter_, request, response);
 			 });
 	addRoute(server, routes, "POST", "/api/v1/auth/logout",
 			 {RouteAccess::Viewer},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::logout(auth_, request, response);
+				 logout(auth_, request, response);
 			 });
 	addRoute(server, routes, "POST", "/api/v1/auth/setup",
 			 {RouteAccess::Public},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::completeAccountSetup(auth_, request, response);
+				 completeAccountSetup(auth_, request, response);
 			 });
 	addRoute(server, routes, "GET", "/api/v1/accounts",
 			 {RouteAccess::Administrator},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::getAccounts(auth_, request, response);
+				 getAccounts(auth_, request, response);
 			 });
 	addRoute(server, routes, "POST", "/api/v1/accounts",
 			 {RouteAccess::Administrator},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::createAccount(auth_, request, response);
+				 createAccount(auth_, request, response);
 			 });
 	addRoute(server, routes, "PATCH", "/api/v1/accounts",
 			 {RouteAccess::Administrator},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::updateAccount(auth_, request, response);
+				 updateAccount(auth_, request, response);
 			 });
 	addRoute(server, routes, "POST", "/api/v1/accounts/disable",
 			 {RouteAccess::Administrator},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::disableAccount(auth_, request, response);
+				 disableAccount(auth_, request, response);
 			 });
 	addRoute(server, routes, "POST", "/api/v1/accounts/setup-token",
 			 {RouteAccess::Administrator},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::issueAccountSetupToken(auth_, request, response);
+				 issueAccountSetupToken(auth_, request, response);
 			 });
 	addRoute(server, routes, "GET", "/api/v1/rules", {RouteAccess::Viewer},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::getRules(firewall_, request, response);
+				 getRules(firewall_, request, response);
 			 });
 	addRoute(server, routes, "POST", "/api/v1/rules",
 			 {RouteAccess::Operator, true},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::createRule(firewall_, request, response);
+				 createRule(firewall_, request, response);
 			 });
 	addRoute(server, routes, "DELETE", "/api/v1/rules",
 			 {RouteAccess::Operator, true},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::deleteRule(firewall_, request, response);
+				 deleteRule(firewall_, request, response);
 			 });
 	addRoute(server, routes, "GET", "/api/v1/stats", {RouteAccess::Viewer},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::getStatistics(firewall_, request, response);
+				 getStatistics(firewall_, request, response);
 			 });
 	addRoute(server, routes, "GET", "/api/v1/system", {RouteAccess::Viewer},
 			 [](const auto &request, auto &response) {
-				 HttpApi::getSystemStatistics(request, response);
+				 getSystemStatistics(request, response);
 			 });
 	addRoute(server, routes, "GET", "/api/v1/logs", {RouteAccess::Viewer},
 			 [this](const auto &request, auto &response) {
-				 HttpApi::getLogs(log_sources_, request, response);
+				 getLogs(log_sources_, request, response);
 			 });
 
-	Logger::Firewall::log(std::string("Archangel listening on ") +
-						  (tls_config_.enabled ? "https://" : "http://") +
-						  server_config_.bind_address + ":" +
-						  std::to_string(server_config_.port));
+	Logs::Logger::Firewall::log(std::string("Archangel listening on ") +
+								(tls_config_.enabled ? "https://" : "http://") +
+								server_config_.bind_address + ":" +
+								std::to_string(server_config_.port));
 
 	if (!server.listen(server_config_.bind_address.c_str(),
 					   server_config_.port)) {
 		throw std::runtime_error("Failed to start HTTP server");
 	}
 }
+
+} // namespace Http

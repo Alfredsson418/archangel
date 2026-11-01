@@ -13,6 +13,8 @@
 #include <stdexcept>
 #include <string>
 
+namespace Auth {
+
 namespace {
 constexpr std::size_t ARGON2_SALT_BYTES = 16;
 constexpr std::size_t ARGON2_HASH_BYTES = 32;
@@ -77,11 +79,11 @@ std::size_t passwordCodepoints(std::string_view password) {
 }
 } // namespace
 
-namespace Auth::Detail {
+namespace Detail {
 
 std::string normalizeUsername(std::string_view username) {
-	if (username.size() < AppConfigLimits::MIN_USERNAME_LENGTH ||
-		username.size() > AppConfigLimits::MAX_USERNAME_LENGTH) {
+	if (username.size() < Config::Limits::MIN_USERNAME_LENGTH ||
+		username.size() > Config::Limits::MAX_USERNAME_LENGTH) {
 		return {};
 	}
 	std::string normalized;
@@ -102,7 +104,7 @@ std::string normalizeUsername(std::string_view username) {
 }
 
 void validatePassword(std::string_view password, const PasswordPolicy &policy) {
-	if (password.size() > AppConfigLimits::MAX_PASSWORD_BYTES) {
+	if (password.size() > Config::Limits::MAX_PASSWORD_BYTES) {
 		throw std::runtime_error("Password exceeds the maximum encoded size");
 	}
 	const std::size_t length = passwordCodepoints(password);
@@ -163,7 +165,7 @@ bool needsRehash(std::string_view		   encoded,
 }
 
 std::string createSessionToken() {
-	const auto bytes = secureRandomBytes<AppConfigLimits::TOKEN_BYTES>();
+	const auto bytes = secureRandomBytes<Config::Limits::TOKEN_BYTES>();
 	return hexEncode(bytes.data(), bytes.size());
 }
 
@@ -187,4 +189,6 @@ std::string makeUuid() {
 		   value.substr(20);
 }
 
-} // namespace Auth::Detail
+} // namespace Detail
+
+} // namespace Auth

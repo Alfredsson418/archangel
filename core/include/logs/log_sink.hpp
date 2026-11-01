@@ -4,7 +4,7 @@
 #include <map>
 #include <string>
 
-namespace Logging {
+namespace Logs {
 
 /**
  * @brief One structured log event.
@@ -48,4 +48,4 @@ class LogSink {
 	virtual void reopen() = 0;
 };
 
-} // namespace Logging
+} // namespace Logs

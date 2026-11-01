@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+namespace Auth {
+
 namespace {
 constexpr int CURRENT_SCHEMA_VERSION = 2;
 
@@ -63,7 +65,7 @@ std::string createPrivateDatabasePath(const std::string &requestedPath) {
 }
 } // namespace
 
-namespace AuthStorage {
+namespace Detail {
 
 Statement::Statement(sqlite3 *database, const char *sql) : database_(database) {
 	const int result =
@@ -243,4 +245,6 @@ void Database::migrate() {
 	}
 }
 
-} // namespace AuthStorage
+} // namespace Detail
+
+} // namespace Auth

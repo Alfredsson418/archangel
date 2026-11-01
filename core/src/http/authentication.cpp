@@ -10,7 +10,8 @@
 #include <stdexcept>
 #include <string>
 
-namespace HttpApi {
+namespace Http {
+
 namespace {
 using Json = nlohmann::json;
 
@@ -53,8 +54,8 @@ rateLimitResponse(httplib::Response &response,
 	response.set_header("Retry-After", std::to_string(retryAfterSeconds));
 	reject(response, 429, "rate_limited",
 		   "API request rate limit exceeded; try again later");
-	Logger::API::log("request_rejected code=rate_limited",
-					 Logger::Level::WARNING);
+	Logs::Logger::API::log("request_rejected code=rate_limited",
+						   Logs::Logger::Level::WARNING);
 	return httplib::Server::HandlerResponse::Handled;
 }
 } // namespace
@@ -157,7 +158,7 @@ std::optional<std::string> bearerToken(const httplib::Request &request) {
 	}
 	const std::string token = authorization.substr(sizeof(scheme) - 1);
 	if (token.find_first_of(" \t\r\n") != std::string::npos ||
-		token.size() > AppConfigLimits::MAX_BEARER_TOKEN_LENGTH) {
+		token.size() > Config::Limits::MAX_BEARER_TOKEN_LENGTH) {
 		return std::nullopt;
 	}
 	return token;
@@ -196,8 +197,8 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 		response.set_header("WWW-Authenticate", "Bearer");
 		reject(response, 401, "authentication_required",
 			   "A valid Bearer session is required");
-		Logger::API::log("request_rejected code=authentication_required",
-						 Logger::Level::WARNING);
+		Logs::Logger::API::log("request_rejected code=authentication_required",
+							   Logs::Logger::Level::WARNING);
 		return httplib::Server::HandlerResponse::Handled;
 	}
 
@@ -207,17 +208,18 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 	} catch (const std::exception &) {
 		reject(response, 500, "authentication_unavailable",
 			   "Authentication service is unavailable");
-		Logger::API::log("operation_failed operation=authenticate_session "
-						 "error_code=authentication_storage_error",
-						 Logger::Level::ERROR);
+		Logs::Logger::API::log(
+			"operation_failed operation=authenticate_session "
+			"error_code=authentication_storage_error",
+			Logs::Logger::Level::ERROR);
 		return httplib::Server::HandlerResponse::Handled;
 	}
 	if (!identity) {
 		response.set_header("WWW-Authenticate", "Bearer");
 		reject(response, 401, "invalid_session",
 			   "A valid Bearer session is required");
-		Logger::API::log("request_rejected code=invalid_session",
-						 Logger::Level::WARNING);
+		Logs::Logger::API::log("request_rejected code=invalid_session",
+							   Logs::Logger::Level::WARNING);
 		return httplib::Server::HandlerResponse::Handled;
 	}
 
@@ -226,8 +228,8 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 	}
 	if (route == nullptr) {
 		reject(response, 404, "not_found", "API route not found");
-		Logger::API::log("request_rejected code=not_found",
-						 Logger::Level::WARNING);
+		Logs::Logger::API::log("request_rejected code=not_found",
+							   Logs::Logger::Level::WARNING);
 		return httplib::Server::HandlerResponse::Handled;
 	}
 	if (!satisfies(identity->role, route->access)) {
@@ -235,8 +237,8 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 			   route->access == RouteAccess::Administrator
 				   ? "Administrator role is required"
 				   : "Operator or administrator role is required");
-		Logger::API::log("request_rejected code=insufficient_role",
-						 Logger::Level::WARNING);
+		Logs::Logger::API::log("request_rejected code=insufficient_role",
+							   Logs::Logger::Level::WARNING);
 		return httplib::Server::HandlerResponse::Handled;
 	}
 
@@ -254,4 +256,4 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 	return httplib::Server::HandlerResponse::Unhandled;
 }
 
-} // namespace HttpApi
+} // namespace Http

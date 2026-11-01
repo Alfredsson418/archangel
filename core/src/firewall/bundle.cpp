@@ -5,6 +5,8 @@
 #include <string>
 #include <utility>
 
+namespace Firewall {
+
 namespace {
 using Json = nlohmann::json;
 
@@ -37,7 +39,7 @@ Json parseJson(const std::string &content) {
 }
 } // namespace
 
-FirewallBundle parseFirewallBundle(const std::string &content) {
+Bundle parseBundle(const std::string &content) {
 	const Json document = parseJson(content);
 	if (!document.is_object() || !document.contains("format") ||
 		!document["format"].is_string() ||
@@ -88,21 +90,20 @@ FirewallBundle parseFirewallBundle(const std::string &content) {
 	return {combined.dump(), archangelRules.dump()};
 }
 
-FirewallBundleImportMode
-resolveFirewallBundleImportMode(const std::string &mode) {
+BundleImportMode resolveBundleImportMode(const std::string &mode) {
 	if (mode == "merge") {
-		return FirewallBundleImportMode::Merge;
+		return BundleImportMode::Merge;
 	}
 	if (mode == "replace-all") {
-		return FirewallBundleImportMode::ReplaceAll;
+		return BundleImportMode::ReplaceAll;
 	}
 	if (mode == "replace") {
-		return FirewallBundleImportMode::ReplaceArchangel;
+		return BundleImportMode::ReplaceArchangel;
 	}
 	throw std::runtime_error("Unsupported config import mode");
 }
 
-std::string serializeFirewallBundle(const std::string &ruleset) {
+std::string serializeBundle(const std::string &ruleset) {
 	const Json documentRuleset = parseRuleset(parseJson(ruleset), "Ruleset");
 	Json	   otherRuleset{
 			  {"nftables", Json::array()}
@@ -128,3 +129,5 @@ std::string serializeFirewallBundle(const std::string &ruleset) {
 			   .dump(2) +
 		   "\n";
 }
+
+} // namespace Firewall

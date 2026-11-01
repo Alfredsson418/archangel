@@ -12,8 +12,9 @@
 #include <unistd.h>
 #include <utility>
 
+namespace Logs {
+
 namespace {
-using Logging::LogSourceResult;
 
 /**
  * @brief Renders one JSONL record as a readable line.
@@ -53,8 +54,6 @@ std::string renderRecord(const std::string &line) {
 }
 } // namespace
 
-namespace Logging {
-
 ApplicationLogSource::ApplicationLogSource(std::string path)
 	: path_(std::move(path)) {}
 
@@ -80,7 +79,7 @@ LogSourceResult ApplicationLogSource::read() {
 	}
 	const off_t fileSize = fileInfo.st_size;
 	const off_t bytesToRead =
-		std::min<off_t>(fileSize, AppConfigLimits::MAX_LOG_READ_BYTES);
+		std::min<off_t>(fileSize, Config::Limits::MAX_LOG_READ_BYTES);
 	const off_t offset = fileSize - bytesToRead;
 	std::string tail(static_cast<std::size_t>(bytesToRead), '\0');
 	ssize_t		bytesRead = 0;
@@ -119,4 +118,4 @@ LogSourceResult ApplicationLogSource::read() {
 			std::move(entries)};
 }
 
-} // namespace Logging
+} // namespace Logs

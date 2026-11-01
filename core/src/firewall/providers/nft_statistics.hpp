@@ -3,6 +3,8 @@
 #include "firewall/firewall.hpp"
 #include <string>
 
+namespace Firewall {
+
 /**
  * @brief Extracts aggregate firewall counts from an nftables JSON ruleset.
  * @param ruleset Serialized nftables ruleset JSON.
@@ -10,4 +12,6 @@
  * @throws std::exception If parsing fails or the expected nftables array is
  * absent.
  */
-FirewallStatistics statisticsFromNftRuleset(const std::string &ruleset);
+Statistics statisticsFromNftRuleset(const std::string &ruleset);
+
+} // namespace Firewall

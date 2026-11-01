@@ -22,7 +22,7 @@ class PasswordBlocklist {
 	 * ignored; a trailing carriage return is removed from each line.
 	 * @param path File that must be a regular, non-symlinked file owned by
 	 * root or the service user, not writable by group or others, and no larger
-	 * than AppConfigLimits::MAX_PASSWORD_BLOCKLIST_BYTES.
+	 * than Config::Limits::MAX_PASSWORD_BLOCKLIST_BYTES.
 	 * @return The loaded blocklist.
 	 * @throws std::runtime_error If the file is unsafe, unreadable, too large,
 	 * or contains no entries.

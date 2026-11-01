@@ -24,7 +24,7 @@ The backend tests use mocks and controlled fixtures; they must not alter a live 
 ## Implementation expectations
 
 - Follow the [development guidelines](docs/development-guidelines.md) for code organization, limits and defaults, documentation comments, and logging, and the [architecture](docs/architecture.md) for service and module boundaries.
-- Keep HTTP parsing and validation in the API layer, firewall operations behind the `Firewall` abstraction, and response serialization at the API boundary.
+- Keep HTTP parsing and validation in the API layer, firewall operations behind the `Firewall::Backend` abstraction, and response serialization at the API boundary.
 - Use the existing versioned JSON API contract. Do not add raw nftables command execution from request data or introduce a second transport without prior design discussion.
 - Keep deployment-specific addresses configurable. Do not assume the dashboard and managed backend share a host.
 - Treat backend changes as privileged operations. Describe their impact, failure behavior, and recovery implications; do not imply changes roll back unless that behavior exists.

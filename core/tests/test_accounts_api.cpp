@@ -18,7 +18,7 @@ void supportsAccountLifecycleHandlers() {
 	httplib::Response response;
 
 	request.body = R"({"username":"operator","role":"operator"})";
-	HttpApi::createAccount(auth, request, response);
+	Http::createAccount(auth, request, response);
 	TestSupport::require(response.status == 201,
 						 "account creation should return HTTP 201");
 	auto payload = nlohmann::json::parse(response.body);
@@ -31,13 +31,13 @@ void supportsAccountLifecycleHandlers() {
 	response = httplib::Response{};
 	request.body =
 		R"({"username":"operator","role":"operator","unexpected":true})";
-	HttpApi::createAccount(auth, request, response);
+	Http::createAccount(auth, request, response);
 	TestSupport::require(response.status == 400,
 						 "account creation should reject unknown fields");
 
 	request.body.clear();
 	response = httplib::Response{};
-	HttpApi::getAccounts(auth, request, response);
+	Http::getAccounts(auth, request, response);
 	payload = nlohmann::json::parse(response.body);
 	TestSupport::require(payload["accounts"].size() == 1 &&
 							 payload["accounts"][0]["role"] == "operator",
@@ -45,7 +45,7 @@ void supportsAccountLifecycleHandlers() {
 
 	request.body = R"({"id":"account-id","role":"administrator"})";
 	response	 = httplib::Response{};
-	HttpApi::updateAccount(auth, request, response);
+	Http::updateAccount(auth, request, response);
 	payload = nlohmann::json::parse(response.body);
 	TestSupport::require(
 		response.status == 200 && payload["account"]["role"] == "administrator",
@@ -54,14 +54,14 @@ void supportsAccountLifecycleHandlers() {
 
 	request.body = R"({"id":"account-id"})";
 	response	 = httplib::Response{};
-	HttpApi::disableAccount(auth, request, response);
+	Http::disableAccount(auth, request, response);
 	TestSupport::require(
 		response.status == 204 && auth.disabled_account_id == "account-id",
 		"account disablement should return HTTP 204 and call the provider");
 
 	request.body = R"({"id":"account-id"})";
 	response	 = httplib::Response{};
-	HttpApi::issueAccountSetupToken(auth, request, response);
+	Http::issueAccountSetupToken(auth, request, response);
 	payload = nlohmann::json::parse(response.body);
 	TestSupport::require(
 		response.status == 200 && payload["setup_token"] == "replacement-token",
@@ -70,7 +70,7 @@ void supportsAccountLifecycleHandlers() {
 	request.body = "{\"setup_token\":\"" + std::string(64, 'a') +
 				   "\",\"password\":\"a sufficiently long password\"}";
 	response = httplib::Response{};
-	HttpApi::completeAccountSetup(auth, request, response);
+	Http::completeAccountSetup(auth, request, response);
 	TestSupport::require(response.status == 204,
 						 "valid account setup should return HTTP 204");
 }

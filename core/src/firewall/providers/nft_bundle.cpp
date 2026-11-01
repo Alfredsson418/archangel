@@ -3,23 +3,26 @@
 
 #include <stdexcept>
 
-std::string Nftables::exportFirewallBundle() {
-	return serializeFirewallBundle(exportRuleset());
+namespace Firewall {
+
+std::string Nftables::exportBundle() {
+	return serializeBundle(exportRuleset());
 }
 
-void Nftables::importFirewallBundle(const std::string		&bundle,
-									FirewallBundleImportMode mode) {
-	const FirewallBundle config = parseFirewallBundle(bundle);
+void Nftables::importBundle(const std::string &bundle, BundleImportMode mode) {
+	const Bundle config = parseBundle(bundle);
 	switch (mode) {
-	case FirewallBundleImportMode::Merge:
+	case BundleImportMode::Merge:
 		importRuleset(config.ruleset, false);
 		return;
-	case FirewallBundleImportMode::ReplaceArchangel:
+	case BundleImportMode::ReplaceArchangel:
 		replaceArchangelRuleset(config.archangel_rules);
 		return;
-	case FirewallBundleImportMode::ReplaceAll:
+	case BundleImportMode::ReplaceAll:
 		importRuleset(config.ruleset, true);
 		return;
 	}
 	throw std::runtime_error("Unsupported firewall config import mode");
 }
+
+} // namespace Firewall

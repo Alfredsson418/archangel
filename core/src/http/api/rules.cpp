@@ -4,8 +4,10 @@
 #include <optional>
 #include <string>
 
+namespace Http {
+
 namespace {
-using HttpApi::Detail::Json;
+using Detail::Json;
 
 /**
  * @brief Parses the request body and requires a JSON object at its root.
@@ -66,8 +68,8 @@ std::optional<std::string> optionalString(const Json &body, const char *field) {
  * @return Structured rule ready to pass to the firewall backend.
  * @throws ValidationError If a required field or destination port is invalid.
  */
-RuleSpec parseRule(const Json &body) {
-	RuleSpec rule;
+Firewall::RuleSpec parseRule(const Json &body) {
+	Firewall::RuleSpec rule;
 	rule.family				 = requiredString(body, "family");
 	rule.table				 = requiredString(body, "table");
 	rule.chain				 = requiredString(body, "chain");
@@ -125,9 +127,7 @@ std::uint64_t parseHandle(const Json &body) {
 }
 } // namespace
 
-namespace HttpApi {
-
-void getRules(Firewall			&firewall, const httplib::Request &,
+void getRules(Firewall::Backend &firewall, const httplib::Request &,
 			  httplib::Response &response) {
 	try {
 		response.set_content(firewall.listRules(), "application/json");
@@ -138,7 +138,7 @@ void getRules(Firewall			&firewall, const httplib::Request &,
 	}
 }
 
-void createRule(Firewall &firewall, const httplib::Request &request,
+void createRule(Firewall::Backend &firewall, const httplib::Request &request,
 				httplib::Response &response) {
 	try {
 		firewall.addRule(parseRule(parseObject(request)));
@@ -151,7 +151,7 @@ void createRule(Firewall &firewall, const httplib::Request &request,
 			"application/json");
 	} catch (const ApiError &error) {
 		Detail::sendError(response, error);
-	} catch (const InvalidRuleError &error) {
+	} catch (const Firewall::InvalidRuleError &error) {
 		Detail::sendError(response, ValidationError(error.what()));
 	} catch (const std::exception &error) {
 		Detail::sendOperationError(response, "POST /api/v1/rules", error,
@@ -160,7 +160,7 @@ void createRule(Firewall &firewall, const httplib::Request &request,
 	}
 }
 
-void deleteRule(Firewall &firewall, const httplib::Request &request,
+void deleteRule(Firewall::Backend &firewall, const httplib::Request &request,
 				httplib::Response &response) {
 	try {
 		const Json body = parseObject(request);
@@ -175,7 +175,7 @@ void deleteRule(Firewall &firewall, const httplib::Request &request,
 			"application/json");
 	} catch (const ApiError &error) {
 		Detail::sendError(response, error);
-	} catch (const InvalidRuleError &error) {
+	} catch (const Firewall::InvalidRuleError &error) {
 		Detail::sendError(response, ValidationError(error.what()));
 	} catch (const std::exception &error) {
 		Detail::sendOperationError(response, "DELETE /api/v1/rules", error,
@@ -184,4 +184,4 @@ void deleteRule(Firewall &firewall, const httplib::Request &request,
 	}
 }
 
-} // namespace HttpApi
+} // namespace Http

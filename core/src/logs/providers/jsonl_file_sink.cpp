@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <utility>
 
+namespace Logs {
+
 namespace {
 
 /**
@@ -117,8 +119,6 @@ bool writeAll(int descriptor, const std::string &data) {
 
 } // namespace
 
-namespace Logging {
-
 JsonlFileSink::JsonlFileSink(std::string path, std::string service)
 	: path_(std::move(path)), service_(std::move(service)) {
 	descriptor_ = openLogFile(path_);
@@ -178,4 +178,4 @@ void JsonlFileSink::reopen() {
 	descriptor_ = replacement;
 }
 
-} // namespace Logging
+} // namespace Logs

@@ -21,38 +21,38 @@
 namespace {
 namespace fs = std::filesystem;
 
-class CapturingSink final : public Logging::LogSink {
+class CapturingSink final : public Logs::LogSink {
   public:
-	bool write(const Logging::LogRecord &record) override {
+	bool write(const Logs::LogRecord &record) override {
 		records.push_back(record);
 		return !fail;
 	}
 	void reopen() override { ++reopens; }
 
-	std::vector<Logging::LogRecord> records;
-	bool							fail	= false;
-	int								reopens = 0;
+	std::vector<Logs::LogRecord> records;
+	bool						 fail	 = false;
+	int							 reopens = 0;
 };
 
-class RulesetFirewall final : public Firewall {
+class RulesetFirewall final : public Firewall::Backend {
   public:
 	explicit RulesetFirewall(std::string ruleset)
 		: ruleset_(std::move(ruleset)) {}
-	std::string		   listRules() override { return ruleset_; }
-	FirewallStatistics getStatistics() override { return {}; }
-	void			   addRule(const RuleSpec &) override {}
-	void			   deleteRule(const std::string &, const std::string &,
-								  const std::string &, std::uint64_t) override {}
+	std::string			 listRules() override { return ruleset_; }
+	Firewall::Statistics getStatistics() override { return {}; }
+	void				 addRule(const Firewall::RuleSpec &) override {}
+	void				 deleteRule(const std::string &, const std::string &,
+									const std::string &, std::uint64_t) override {}
 
   private:
 	std::string ruleset_;
 };
 
-class FixedSource final : public Logging::LogSource {
+class FixedSource final : public Logs::LogSource {
   public:
 	explicit FixedSource(std::vector<std::string> entries)
 		: entries_(std::move(entries)) {}
-	Logging::LogSourceResult read() override {
+	Logs::LogSourceResult read() override {
 		return {"fixed", "Fixed", true, "Fixed entries.", entries_};
 	}
 
@@ -87,8 +87,8 @@ std::vector<nlohmann::json> readJsonLines(const fs::path &file) {
 	return lines;
 }
 
-Logging::LogRecord record(std::string						 event,
-						  std::map<std::string, std::string> fields = {}) {
+Logs::LogRecord record(std::string						  event,
+					   std::map<std::string, std::string> fields = {}) {
 	return {std::chrono::system_clock::now(), "INFO", "API", std::move(event),
 			std::move(fields)};
 }
@@ -97,7 +97,7 @@ void writesOwnerOnlyJsonLines() {
 	TemporaryDirectory directory;
 	const fs::path	   file = directory.path / "logs" / "backend.jsonl";
 	{
-		Logging::JsonlFileSink sink(file.string(), "backend");
+		Logs::JsonlFileSink sink(file.string(), "backend");
 		TestSupport::require(
 			sink.write(record(
 				"rule_added",
@@ -134,7 +134,7 @@ void rejectsUnsafeLogPaths() {
 	const fs::path link = directory.path / "link.jsonl";
 	fs::create_symlink(target, link);
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { Logging::JsonlFileSink sink(link.string(), "backend"); },
+		[&] { Logs::JsonlFileSink sink(link.string(), "backend"); },
 		"a symlinked log path must be rejected");
 
 	const fs::path shared = directory.path / "shared";
@@ -142,8 +142,8 @@ void rejectsUnsafeLogPaths() {
 	chmod(shared.c_str(), 0777);
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
-			Logging::JsonlFileSink sink((shared / "backend.jsonl").string(),
-										"backend");
+			Logs::JsonlFileSink sink((shared / "backend.jsonl").string(),
+									 "backend");
 		},
 		"a group- or world-writable log directory must be rejected");
 
@@ -151,14 +151,14 @@ void rejectsUnsafeLogPaths() {
 	std::ofstream(readable).close();
 	chmod(readable.c_str(), 0644);
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { Logging::JsonlFileSink sink(readable.string(), "backend"); },
+		[&] { Logs::JsonlFileSink sink(readable.string(), "backend"); },
 		"an existing log file readable by others must be rejected");
 }
 
 void reopensAfterRotation() {
-	TemporaryDirectory	   directory;
-	const fs::path		   file = directory.path / "backend.jsonl";
-	Logging::JsonlFileSink sink(file.string(), "backend");
+	TemporaryDirectory	directory;
+	const fs::path		file = directory.path / "backend.jsonl";
+	Logs::JsonlFileSink sink(file.string(), "backend");
 	sink.write(record("before_rotation"));
 	fs::rename(file, directory.path / "backend.jsonl.1");
 	sink.reopen();
@@ -173,11 +173,11 @@ void reopensAfterRotation() {
 
 void structuresLegacyMessagesAndFiltersLevels() {
 	const auto sink = std::make_shared<CapturingSink>();
-	Logger::configure(sink, Logger::Level::INFO);
-	Logger::API::log("request_rejected code=rate_limited",
-					 Logger::Level::WARNING);
-	Logger::Program::log("Starting program");
-	Logger::Program::log("hidden detail", Logger::Level::DEBUG);
+	Logs::Logger::configure(sink, Logs::Logger::Level::INFO);
+	Logs::Logger::API::log("request_rejected code=rate_limited",
+						   Logs::Logger::Level::WARNING);
+	Logs::Logger::Program::log("Starting program");
+	Logs::Logger::Program::log("hidden detail", Logs::Logger::Level::DEBUG);
 	TestSupport::require(sink->records.size() == 2,
 						 "messages below the minimum level should be dropped");
 	TestSupport::require(sink->records[0].event == "request_rejected" &&
@@ -191,43 +191,43 @@ void structuresLegacyMessagesAndFiltersLevels() {
 								 "Starting program",
 						 "other messages should be kept as a message field");
 
-	Logger::configure(sink, Logger::Level::ERROR);
-	TestSupport::require(Logger::audit(record("audit_event")) &&
+	Logs::Logger::configure(sink, Logs::Logger::Level::ERROR);
+	TestSupport::require(Logs::Logger::audit(record("audit_event")) &&
 							 sink->records.back().event == "audit_event",
 						 "audit records should ignore the minimum level");
 
-	Logger::requestReopen();
-	Logger::Program::log("after_reopen", Logger::Level::ERROR);
+	Logs::Logger::requestReopen();
+	Logs::Logger::Program::log("after_reopen", Logs::Logger::Level::ERROR);
 	TestSupport::require(sink->reopens == 1,
 						 "a requested reopen should happen before the next "
 						 "write");
 	TestSupport::requireThrows<std::invalid_argument>(
-		[] { Logger::parseLevel("VERBOSE"); },
+		[] { Logs::Logger::parseLevel("VERBOSE"); },
 		"unknown log levels should be rejected");
-	Logger::configure(nullptr, Logger::Level::INFO);
+	Logs::Logger::configure(nullptr, Logs::Logger::Level::INFO);
 }
 
 void auditsRequestsAndFailsClosed() {
-	HttpApi::RoutePolicies routes;
-	routes.add("POST", "/api/v1/rules", {HttpApi::RouteAccess::Operator, true});
+	Http::RoutePolicies routes;
+	routes.add("POST", "/api/v1/rules", {Http::RouteAccess::Operator, true});
 	httplib::Request request;
 	request.method		= "POST";
 	request.path		= "/api/v1/rules";
 	request.remote_addr = "192.0.2.80";
-	httplib::Response	  response;
-	HttpApi::RequestAudit audit =
-		HttpApi::beginRequestAudit(request, routes, response);
+	httplib::Response  response;
+	Http::RequestAudit audit =
+		Http::beginRequestAudit(request, routes, response);
 	audit.actorId = "operator-id";
 	TestSupport::require(
 		audit.requestId.size() == 32 &&
-			response.get_header_value(HttpApi::REQUEST_ID_HEADER) ==
+			response.get_header_value(Http::REQUEST_ID_HEADER) ==
 				audit.requestId &&
 			audit.operation == "POST /api/v1/rules",
 		"requests should get a 128-bit ID returned in X-Request-ID");
 
 	const auto sink = std::make_shared<CapturingSink>();
-	Logger::configure(sink, Logger::Level::INFO);
-	TestSupport::require(HttpApi::recordAuthorizedRequest(audit, response) ==
+	Logs::Logger::configure(sink, Logs::Logger::Level::INFO);
+	TestSupport::require(Http::recordAuthorizedRequest(audit, response) ==
 							 httplib::Server::HandlerResponse::Unhandled,
 						 "a recorded request should proceed");
 	const auto &authorized = sink->records.back();
@@ -240,7 +240,7 @@ void auditsRequestsAndFailsClosed() {
 		"request, actor, operation, and source");
 
 	response.status = 201;
-	HttpApi::recordCompletedRequest(audit, response);
+	Http::recordCompletedRequest(audit, response);
 	const auto &completed = sink->records.back();
 	TestSupport::require(completed.event == "api_request_completed" &&
 							 completed.fields.at("status") == "201" &&
@@ -251,7 +251,7 @@ void auditsRequestsAndFailsClosed() {
 	sink->fail = true;
 	httplib::Response failed;
 	TestSupport::require(
-		HttpApi::recordAuthorizedRequest(audit, failed) ==
+		Http::recordAuthorizedRequest(audit, failed) ==
 				httplib::Server::HandlerResponse::Handled &&
 			failed.status == 503 &&
 			nlohmann::json::parse(failed.body)["code"] ==
@@ -262,30 +262,30 @@ void auditsRequestsAndFailsClosed() {
 	unknown.method = "GET";
 	unknown.path   = "/api/v1/private-token-in-path";
 	TestSupport::require(
-		HttpApi::beginRequestAudit(unknown, routes, failed).operation ==
+		Http::beginRequestAudit(unknown, routes, failed).operation ==
 			"GET unregistered",
 		"unregistered paths must not be recorded verbatim");
-	Logger::configure(nullptr, Logger::Level::INFO);
+	Logs::Logger::configure(nullptr, Logs::Logger::Level::INFO);
 }
 
 void appliesSharedSourceBoundsAndRedaction() {
-	std::vector<std::string> entries(AppConfigLimits::MAX_LOG_ENTRIES + 5,
+	std::vector<std::string> entries(Config::Limits::MAX_LOG_ENTRIES + 5,
 									 "entry");
 	entries[0] = "password=hunter2 token: \"abc\"";
-	entries[1] = std::string(AppConfigLimits::MAX_LOG_LINE_BYTES + 10, 'x');
-	std::vector<std::unique_ptr<Logging::LogSource>> sources;
+	entries[1] = std::string(Config::Limits::MAX_LOG_LINE_BYTES + 10, 'x');
+	std::vector<std::unique_ptr<Logs::LogSource>> sources;
 	sources.push_back(std::make_unique<FixedSource>(entries));
-	const auto results = Logging::readLogSources(sources);
+	const auto results = Logs::readLogSources(sources);
 	TestSupport::require(results.size() == 1 &&
 							 results[0].entries.size() ==
-								 AppConfigLimits::MAX_LOG_ENTRIES,
+								 Config::Limits::MAX_LOG_ENTRIES,
 						 "entries should be limited per source");
 	TestSupport::require(
 		results[0].entries[0].find("hunter2") == std::string::npos &&
 			results[0].entries[0].find("abc") == std::string::npos,
 		"credential values should be redacted");
 	TestSupport::require(results[0].entries[1].size() ==
-							 AppConfigLimits::MAX_LOG_LINE_BYTES,
+							 Config::Limits::MAX_LOG_LINE_BYTES,
 						 "long entries should be truncated");
 }
 
@@ -293,7 +293,7 @@ void readsTheApplicationLog() {
 	TemporaryDirectory directory;
 	const fs::path	   file = directory.path / "backend.jsonl";
 	{
-		Logging::JsonlFileSink sink(file.string(), "backend");
+		Logs::JsonlFileSink sink(file.string(), "backend");
 		sink.write(record("first_event", {
 											 {"status", "200"}
 		  }));
@@ -301,12 +301,12 @@ void readsTheApplicationLog() {
 										 {"message", "Starting program"}
 		}));
 	}
-	std::vector<std::unique_ptr<Logging::LogSource>> sources;
+	std::vector<std::unique_ptr<Logs::LogSource>> sources;
 	sources.push_back(
-		std::make_unique<Logging::ApplicationLogSource>(file.string()));
-	sources.push_back(std::make_unique<Logging::ApplicationLogSource>(
+		std::make_unique<Logs::ApplicationLogSource>(file.string()));
+	sources.push_back(std::make_unique<Logs::ApplicationLogSource>(
 		(directory.path / "missing.jsonl").string()));
-	const auto results = Logging::readLogSources(sources);
+	const auto results = Logs::readLogSources(sources);
 	TestSupport::require(
 		results[0].available && results[0].entries.size() == 2 &&
 			results[0].entries[0].find("Starting program") !=
@@ -322,10 +322,10 @@ void reportsNftablesSourceState() {
 	RulesetFirewall withoutLogging(
 		R"({"nftables":[{"rule":{"expr":[{"accept":null}]}}]})");
 	TestSupport::require(
-		!Logging::NftablesJournalSource(withoutLogging).read().available,
+		!Logs::NftablesJournalSource(withoutLogging).read().available,
 		"the journal source should be unavailable without log statements");
 	RulesetFirewall broken("not json");
-	const auto		result = Logging::NftablesJournalSource(broken).read();
+	const auto		result = Logs::NftablesJournalSource(broken).read();
 	TestSupport::require(!result.available &&
 							 result.detail.find("could not be inspected") !=
 								 std::string::npos,

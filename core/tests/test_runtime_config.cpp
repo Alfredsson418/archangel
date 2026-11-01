@@ -40,12 +40,13 @@ const std::string DEFAULT_CONFIG =
 	R"({"format":"archangel-runtime-config","version":1})";
 
 void parsesDefaultsAndOverrides() {
-	const AppConfig defaults = parseRuntimeConfig(DEFAULT_CONFIG);
+	const Config::AppConfig defaults =
+		Config::parseRuntimeConfig(DEFAULT_CONFIG);
 	TestSupport::require(defaults.server.bind_address == "localhost" &&
 							 defaults.server.port == 8080,
 						 "runtime config should provide server defaults");
 	TestSupport::require(defaults.auth.database_path ==
-								 AppConfigDefaults::AUTH_DATABASE_PATH &&
+								 Config::Defaults::AUTH_DATABASE_PATH &&
 							 defaults.auth.argon2id_memory_kib == 19 * 1024 &&
 							 defaults.auth.password_blocklist_path.empty(),
 						 "runtime config should provide local-auth defaults");
@@ -55,11 +56,11 @@ void parsesDefaultsAndOverrides() {
 						 "runtime config should provide session defaults");
 	TestSupport::require(
 		!defaults.tls.enabled &&
-			defaults.logging.path == AppConfigDefaults::LOG_PATH &&
+			defaults.logging.path == Config::Defaults::LOG_PATH &&
 			defaults.rate_limits.api_requests_per_minute == 120,
 		"application defaults should be centralized");
 
-	const AppConfig config = parseRuntimeConfig(R"({
+	const Config::AppConfig config = Config::parseRuntimeConfig(R"({
 		"format":"archangel-runtime-config",
 		"version":1,
 		"server":{"bind_address":"127.0.0.1","port":9443},
@@ -96,22 +97,22 @@ void parsesDefaultsAndOverrides() {
 }
 
 void validatesEffectiveCliOverrides() {
-	AppConfig config;
+	Config::AppConfig config;
 	config.server.bind_address = "127.0.0.1";
 	config.server.port		   = 9443;
-	validateAppConfig(config);
+	Config::validateAppConfig(config);
 	TestSupport::require(
 		config.server.bind_address == "127.0.0.1" && config.server.port == 9443,
 		"CLI overrides should be valid effective app settings");
 
 	config.server.bind_address = "invalid address";
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { validateAppConfig(config); },
+		[&] { Config::validateAppConfig(config); },
 		"invalid CLI bind-address overrides should fail validation");
 }
 
 void generatesAndWritesRuntimeConfig() {
-	AppConfig config;
+	Config::AppConfig config;
 	config.server.bind_address				   = "127.0.0.1";
 	config.server.port						   = 9443;
 	config.auth.database_path				   = "/tmp/generated-auth.db";
@@ -120,8 +121,8 @@ void generatesAndWritesRuntimeConfig() {
 	config.tls.private_key_file				   = "/etc/archangel/key.pem";
 	config.rate_limits.api_requests_per_minute = 60;
 
-	const std::string generated = generateRuntimeConfig(config);
-	const AppConfig	  parsed	= parseRuntimeConfig(generated);
+	const std::string		generated = Config::generateRuntimeConfig(config);
+	const Config::AppConfig parsed	  = Config::parseRuntimeConfig(generated);
 	TestSupport::require(
 		parsed.server.bind_address == config.server.bind_address &&
 			parsed.server.port == config.server.port &&
@@ -135,53 +136,53 @@ void generatesAndWritesRuntimeConfig() {
 
 	TemporaryDirectory directory;
 	const auto		   path = directory.path() / "nested" / "config.json";
-	writeRuntimeConfig(path.string(), config);
+	Config::writeRuntimeConfig(path.string(), config);
 	struct stat info {};
 	TestSupport::require(
 		stat(path.c_str(), &info) == 0 && (info.st_mode & 0777) == 0644,
 		"generated config should be readable but not writable by others");
 	TestSupport::require(
-		loadRuntimeConfig(path.string(), false).server.port == 9443,
+		Config::loadRuntimeConfig(path.string(), false).server.port == 9443,
 		"generated config should be accepted by the runtime loader");
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { writeRuntimeConfig(path.string()); },
+		[&] { Config::writeRuntimeConfig(path.string()); },
 		"config generation must not overwrite an existing file");
 }
 
 void rejectsInvalidSchemaAndSecurityValues() {
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseRuntimeConfig(
+			Config::parseRuntimeConfig(
 				R"({"format":"archangel-runtime-config","version":2})");
 		},
 		"unsupported runtime-config versions must be rejected");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseRuntimeConfig(
+			Config::parseRuntimeConfig(
 				R"({"format":"archangel-runtime-config","version":1,"server":{"extra":1}})");
 		},
 		"unknown keys must be rejected");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseRuntimeConfig(
+			Config::parseRuntimeConfig(
 				R"({"format":"archangel-runtime-config","version":1,"tls":{"enabled":true}})");
 		},
 		"enabled TLS must require certificate and private-key paths");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseRuntimeConfig(
+			Config::parseRuntimeConfig(
 				R"({"format":"archangel-runtime-config","version":1,"auth":{"argon2id":{"memory_kib":1024}}})");
 		},
 		"Argon2id parameters must not lower the security baseline");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseRuntimeConfig(
+			Config::parseRuntimeConfig(
 				R"({"format":"archangel-runtime-config","version":1,"sessions":{"idle_timeout_seconds":500,"absolute_timeout_seconds":400}})");
 		},
 		"absolute session expiry must exceed idle expiry");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseRuntimeConfig(
+			Config::parseRuntimeConfig(
 				R"({"format":"archangel-runtime-config","version":1,"server":{"port":"8080"}})");
 		},
 		"wrongly typed settings must be rejected");
@@ -191,10 +192,10 @@ void loadsOnlyPrivateConfigFiles() {
 	TemporaryDirectory directory;
 	const auto		   path = directory.path() / "config.json";
 	TestSupport::require(
-		loadRuntimeConfig(path.string(), true).server.port == 8080,
+		Config::loadRuntimeConfig(path.string(), true).server.port == 8080,
 		"an absent implicit config should return built-in defaults");
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { loadRuntimeConfig(path.string(), false); },
+		[&] { Config::loadRuntimeConfig(path.string(), false); },
 		"an absent explicit config must fail");
 
 	{
@@ -202,19 +203,19 @@ void loadsOnlyPrivateConfigFiles() {
 		output << DEFAULT_CONFIG;
 	}
 	chmod(path.c_str(), 0600);
-	TestSupport::require(loadRuntimeConfig(path.string(), false).server.port ==
-							 8080,
-						 "a private owner-controlled config should load");
+	TestSupport::require(
+		Config::loadRuntimeConfig(path.string(), false).server.port == 8080,
+		"a private owner-controlled config should load");
 	chmod(path.c_str(), 0664);
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { loadRuntimeConfig(path.string(), false); },
+		[&] { Config::loadRuntimeConfig(path.string(), false); },
 		"group/world-writable config files must be rejected");
 
 	chmod(path.c_str(), 0600);
 	const auto link = directory.path() / "config-link.json";
 	std::filesystem::create_symlink(path, link);
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { loadRuntimeConfig(link.string(), false); },
+		[&] { Config::loadRuntimeConfig(link.string(), false); },
 		"runtime config symlinks must be rejected");
 }
 } // namespace

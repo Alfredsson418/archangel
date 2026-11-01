@@ -12,7 +12,9 @@
 #include <string>
 #include <vector>
 
-class HttpServer {
+namespace Http {
+
+class Server {
   public:
 	/**
 	 * @brief Initializes the HTTP server with the supplied backend abstraction.
@@ -25,10 +27,11 @@ class HttpServer {
 	 * @param rateLimits Effective request and login rate limits.
 	 * @return No value.
 	 */
-	HttpServer(Firewall &firewall, Auth::AuthProvider &auth,
-			   std::vector<std::unique_ptr<Logging::LogSource>> logSources,
-			   AppConfig::Server serverConfig, AppConfig::Tls tlsConfig,
-			   AppConfig::RateLimits rateLimits);
+	Server(Firewall::Backend &firewall, Auth::AuthProvider &auth,
+		   std::vector<std::unique_ptr<Logs::LogSource>> logSources,
+		   Config::AppConfig::Server					 serverConfig,
+		   Config::AppConfig::Tls						 tlsConfig,
+		   Config::AppConfig::RateLimits				 rateLimits);
 
 	/**
 	 * @brief Registers API routes and serves requests on the configured
@@ -40,15 +43,17 @@ class HttpServer {
 	void run();
 
   private:
-	Firewall										&firewall_;
-	Auth::AuthProvider								&auth_;
-	std::vector<std::unique_ptr<Logging::LogSource>> log_sources_;
-	HttpApi::RateLimiter							 login_limiter_;
-	HttpApi::RateLimiter							 source_rate_limiter_;
-	HttpApi::RateLimiter							 identity_rate_limiter_;
-	HttpApi::RateLimiter				  firewall_mutation_source_limiter_;
-	HttpApi::RateLimiter				  firewall_mutation_identity_limiter_;
-	AppConfig::Server					  server_config_;
-	AppConfig::Tls						  tls_config_;
+	Firewall::Backend							 &firewall_;
+	Auth::AuthProvider							 &auth_;
+	std::vector<std::unique_ptr<Logs::LogSource>> log_sources_;
+	RateLimiter									  login_limiter_;
+	RateLimiter									  source_rate_limiter_;
+	RateLimiter									  identity_rate_limiter_;
+	RateLimiter							  firewall_mutation_source_limiter_;
+	RateLimiter							  firewall_mutation_identity_limiter_;
+	Config::AppConfig::Server			  server_config_;
+	Config::AppConfig::Tls				  tls_config_;
 	std::chrono::steady_clock::time_point started_at_;
 };
+
+} // namespace Http

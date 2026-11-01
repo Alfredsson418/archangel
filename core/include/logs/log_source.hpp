@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace Logging {
+namespace Logs {
 
 /**
  * @brief Recent entries from one independently identified log source.
@@ -42,10 +42,10 @@ class LogSource {
  * @brief Reads every source and applies the shared bounds and redaction.
  * @param sources Sources in display order.
  * @return One result per source, each with at most
- * AppConfigLimits::MAX_LOG_ENTRIES entries truncated to
- * AppConfigLimits::MAX_LOG_LINE_BYTES and common credential values redacted.
+ * Config::Limits::MAX_LOG_ENTRIES entries truncated to
+ * Config::Limits::MAX_LOG_LINE_BYTES and common credential values redacted.
  */
 std::vector<LogSourceResult>
 readLogSources(const std::vector<std::unique_ptr<LogSource>> &sources);
 
-} // namespace Logging
+} // namespace Logs

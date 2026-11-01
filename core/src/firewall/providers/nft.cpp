@@ -10,6 +10,8 @@
 #include <set>
 #include <utility>
 
+namespace Firewall {
+
 namespace {
 
 /**
@@ -27,7 +29,7 @@ bool isIdentifier(const std::string &value) {
 	};
 
 	if (value.empty() ||
-		value.size() > AppConfigLimits::MAX_FIREWALL_IDENTIFIER_LENGTH ||
+		value.size() > Config::Limits::MAX_FIREWALL_IDENTIFIER_LENGTH ||
 		!(isAlpha(static_cast<unsigned char>(value.front())) ||
 		  value.front() == '_')) {
 		return false;
@@ -275,7 +277,7 @@ void Nftables::importRuleset(const std::string &ruleset, bool replaceAll) {
 
 	std::lock_guard<std::mutex> lock(mutex_);
 	executeJson(input);
-	Logger::Firewall::log(
+	Logs::Logger::Firewall::log(
 		replaceAll ? "Replaced the complete nftables ruleset from JSON config"
 				   : "Merged nftables JSON config into the active ruleset");
 }
@@ -295,12 +297,13 @@ void Nftables::replaceArchangelRuleset(const std::string &rules) {
 	if (!replacement.transaction.empty()) {
 		executeJson(replacement.transaction);
 	}
-	Logger::Firewall::log("Replaced Archangel-managed firewall rules removed=" +
-						  std::to_string(replacement.removed) +
-						  " added=" + std::to_string(replacement.added));
+	Logs::Logger::Firewall::log(
+		"Replaced Archangel-managed firewall rules removed=" +
+		std::to_string(replacement.removed) +
+		" added=" + std::to_string(replacement.added));
 }
 
-FirewallStatistics Nftables::getStatistics() {
+Statistics Nftables::getStatistics() {
 	return statisticsFromNftRuleset(listRules());
 }
 
@@ -338,8 +341,9 @@ void Nftables::addRule(const RuleSpec &rule) {
 
 	std::lock_guard<std::mutex> lock(mutex_);
 	executeJson(ruleCommand("add", std::move(command)));
-	Logger::Firewall::log("Added a " + rule.protocol + " rule to " +
-						  rule.family + " " + rule.table + " " + rule.chain);
+	Logs::Logger::Firewall::log("Added a " + rule.protocol + " rule to " +
+								rule.family + " " + rule.table + " " +
+								rule.chain);
 }
 
 void Nftables::deleteRule(const std::string &family, const std::string &table,
@@ -357,8 +361,9 @@ void Nftables::deleteRule(const std::string &family, const std::string &table,
 	command["handle"] = handle;
 	std::lock_guard<std::mutex> lock(mutex_);
 	executeJson(ruleCommand("delete", std::move(command)));
-	Logger::Firewall::log("Deleted rule handle " + std::to_string(handle) +
-						  " from " + family + " " + table + " " + chain);
+	Logs::Logger::Firewall::log("Deleted rule handle " +
+								std::to_string(handle) + " from " + family +
+								" " + table + " " + chain);
 }
 
 void Nftables::executeJson(const std::string &commands) {
@@ -393,3 +398,5 @@ void Nftables::execute(const std::string &command) {
 		throw std::runtime_error("Failed to execute nftables command");
 	}
 }
+
+} // namespace Firewall

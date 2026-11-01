@@ -2,7 +2,9 @@
 #include "json/json.hpp"
 #include <stdexcept>
 
-FirewallStatistics statisticsFromNftRuleset(const std::string &rulesetJson) {
+namespace Firewall {
+
+Statistics statisticsFromNftRuleset(const std::string &rulesetJson) {
 	using Json		   = nlohmann::json;
 	const Json ruleset = Json::parse(rulesetJson);
 	if (!ruleset.is_object() || !ruleset.contains("nftables") ||
@@ -10,7 +12,7 @@ FirewallStatistics statisticsFromNftRuleset(const std::string &rulesetJson) {
 		throw std::runtime_error("Invalid nftables ruleset JSON");
 	}
 
-	FirewallStatistics statistics;
+	Statistics statistics;
 	// nftables JSON is a sequence of typed objects (tables, chains, rules, and
 	// metadata); count each type independently before inspecting rule
 	// expressions.
@@ -77,3 +79,5 @@ FirewallStatistics statisticsFromNftRuleset(const std::string &rulesetJson) {
 
 	return statistics;
 }
+
+} // namespace Firewall

@@ -7,6 +7,8 @@
 #include <string>
 #include <utility>
 
+namespace Firewall {
+
 namespace {
 using Json = nlohmann::json;
 
@@ -91,3 +93,5 @@ buildArchangelRulesReplacement(const std::string &activeRuleset,
 							 : Json{{"nftables", std::move(commands)}}.dump(),
 			removed, managedRules.size()};
 }
+
+} // namespace Firewall

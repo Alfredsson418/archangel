@@ -2,7 +2,8 @@
 
 #include "cpp-httplib/cpp-httplib.hpp"
 
-namespace HttpApi {
+namespace Http {
+
 /**
  * @brief Writes an empty HTTP 200 response when the service is online.
  * @param request Incoming HTTP request (unused by the health response).
@@ -10,4 +11,5 @@ namespace HttpApi {
  * @return No value; sets only the HTTP status code.
  */
 void getHealth(const httplib::Request &request, httplib::Response &response);
-} // namespace HttpApi
+
+} // namespace Http

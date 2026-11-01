@@ -7,7 +7,9 @@
 #include <stdexcept>
 #include <string>
 
-class Nftables : public Firewall, public FirewallBundleProvider {
+namespace Firewall {
+
+class Nftables : public Backend, public BundleProvider {
   public:
 	/**
 	 * @brief Creates an nftables context configured for buffered JSON output.
@@ -22,7 +24,7 @@ class Nftables : public Firewall, public FirewallBundleProvider {
 	Nftables &operator=(const Nftables &) = delete;
 
 	/**
-	 * @brief Implements Firewall::listRules.
+	 * @brief Implements Backend::listRules.
 	 * @return Serialized nftables ruleset JSON.
 	 */
 	std::string listRules() override;
@@ -32,7 +34,7 @@ class Nftables : public Firewall, public FirewallBundleProvider {
 	 * @return Versioned firewall bundle JSON.
 	 * @throws std::exception If the active configuration cannot be exported.
 	 */
-	std::string exportFirewallBundle() override;
+	std::string exportBundle() override;
 
 	/**
 	 * @brief Validates and applies a versioned firewall bundle.
@@ -41,17 +43,17 @@ class Nftables : public Firewall, public FirewallBundleProvider {
 	 * @return No value.
 	 * @throws std::exception If the bundle is invalid or cannot be applied.
 	 */
-	void importFirewallBundle(const std::string		  &bundle,
-							  FirewallBundleImportMode mode) override;
+	void importBundle(const std::string &bundle,
+					  BundleImportMode	 mode) override;
 
 	/**
-	 * @brief Implements Firewall::getStatistics.
+	 * @brief Implements Backend::getStatistics.
 	 * @return Aggregated statistics for the active ruleset.
 	 */
-	FirewallStatistics getStatistics() override;
+	Statistics getStatistics() override;
 
 	/**
-	 * @brief Implements Firewall::addRule using libnftables.
+	 * @brief Implements Backend::addRule using libnftables.
 	 * @param rule Structured rule description.
 	 * @return No value.
 	 * @throws InvalidRuleError If the rule is invalid; std::exception if
@@ -60,7 +62,7 @@ class Nftables : public Firewall, public FirewallBundleProvider {
 	void addRule(const RuleSpec &rule) override;
 
 	/**
-	 * @brief Implements Firewall::deleteRule using libnftables.
+	 * @brief Implements Backend::deleteRule using libnftables.
 	 * @param family Firewall address family.
 	 * @param table Table containing the rule.
 	 * @param chain Chain containing the rule.
@@ -118,3 +120,5 @@ class Nftables : public Firewall, public FirewallBundleProvider {
 	std::mutex		mutex_;
 	struct nft_ctx *context_;
 };
+
+} // namespace Firewall

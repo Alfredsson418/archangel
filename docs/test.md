@@ -65,7 +65,7 @@ The test executable is built at `build/core/tests/backend_tests`. The target com
 | `core/tests/test_rules_api.cpp` | Structured rule creation and deletion, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
 | `core/tests/test_stats_api.cpp` | JSON response shape and content type for firewall statistics. |
 
-Authentication tests use isolated temporary SQLite files. Rule-handler tests use a mock `Firewall`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.
+Authentication tests use isolated temporary SQLite files. Rule-handler tests use a mock `Firewall::Backend`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.
 
 Expected result: the command exits with status 0 and prints:
 

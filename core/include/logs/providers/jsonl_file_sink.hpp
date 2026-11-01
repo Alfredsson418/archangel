@@ -5,7 +5,7 @@
 #include <mutex>
 #include <string>
 
-namespace Logging {
+namespace Logs {
 
 /**
  * @brief Appends records as JSON lines to an owner-only file.
@@ -46,4 +46,4 @@ class JsonlFileSink final : public LogSink {
 	bool failing_ = false;
 };
 
-} // namespace Logging
+} // namespace Logs

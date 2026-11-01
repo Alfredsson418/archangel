@@ -12,18 +12,19 @@
 #include <string>
 
 namespace Auth {
+
 namespace {
-using Auth::Detail::hashPassword;
-using Auth::Detail::hashSessionToken;
-using Auth::Detail::makeUuid;
-using Auth::Detail::normalizeUsername;
-using Auth::Detail::validatePassword;
-using Auth::Detail::verifyPassword;
-using AuthStorage::Statement;
-using AuthStorage::Transaction;
-using SqliteProviderDetail::INVALID_USERNAME_MESSAGE;
-using SqliteProviderDetail::roleValue;
-using SqliteProviderDetail::unixTimeNow;
+using Detail::hashPassword;
+using Detail::hashSessionToken;
+using Detail::INVALID_USERNAME_MESSAGE;
+using Detail::makeUuid;
+using Detail::normalizeUsername;
+using Detail::roleValue;
+using Detail::Statement;
+using Detail::Transaction;
+using Detail::unixTimeNow;
+using Detail::validatePassword;
+using Detail::verifyPassword;
 } // namespace
 
 Identity SqliteAuthProvider::bootstrapAdministrator(std::string_view username,
@@ -172,7 +173,7 @@ AccountSetup SqliteAuthProvider::createAccount(std::string_view username,
 	}
 	const int		   storedRole = roleValue(role);
 	const std::string  userId	  = makeUuid();
-	const std::string  token	  = Auth::Detail::createSessionToken();
+	const std::string  token	  = Detail::createSessionToken();
 	const std::string  tokenHash  = hashSessionToken(token);
 	const std::int64_t now		  = unixTimeNow();
 	Transaction		   transaction(impl_->database);
@@ -210,7 +211,7 @@ AccountSetup SqliteAuthProvider::createAccount(std::string_view username,
 	setup.bindText(2, userId);
 	setup.bindInteger(3, now);
 	setup.bindInteger(
-		4, now + AppConfigLimits::ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
+		4, now + Config::Limits::ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
 	setup.execute();
 	transaction.commit();
 	return {
@@ -224,7 +225,7 @@ Account SqliteAuthProvider::updateAccount(std::string_view	   id,
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (id.empty() || id.size() > AppConfigLimits::MAX_ACCOUNT_ID_LENGTH ||
+	if (id.empty() || id.size() > Config::Limits::MAX_ACCOUNT_ID_LENGTH ||
 		(!update.username && !update.role)) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									"Account update is invalid");
@@ -315,7 +316,7 @@ void SqliteAuthProvider::disableAccount(std::string_view id) {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (id.empty() || id.size() > AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
+	if (id.empty() || id.size() > Config::Limits::MAX_ACCOUNT_ID_LENGTH) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									"Account ID is invalid");
 	}
@@ -372,7 +373,7 @@ AccountSetup SqliteAuthProvider::issueAccountSetupToken(std::string_view id) {
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (id.empty() || id.size() > AppConfigLimits::MAX_ACCOUNT_ID_LENGTH) {
+	if (id.empty() || id.size() > Config::Limits::MAX_ACCOUNT_ID_LENGTH) {
 		throw AccountOperationError(AccountOperationError::Code::Invalid,
 									"Account ID is invalid");
 	}
@@ -398,7 +399,7 @@ AccountSetup SqliteAuthProvider::issueAccountSetupToken(std::string_view id) {
 			AccountOperationError::Code::Invalid,
 			"Disabled accounts cannot receive setup tokens");
 	}
-	const std::string  token	 = Auth::Detail::createSessionToken();
+	const std::string  token	 = Detail::createSessionToken();
 	const std::string  tokenHash = hashSessionToken(token);
 	const std::int64_t now		 = unixTimeNow();
 	Statement		   revokeTokens(
@@ -412,7 +413,7 @@ AccountSetup SqliteAuthProvider::issueAccountSetupToken(std::string_view id) {
 	insert.bindText(2, id);
 	insert.bindInteger(3, now);
 	insert.bindInteger(
-		4, now + AppConfigLimits::ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
+		4, now + Config::Limits::ACCOUNT_SETUP_TOKEN_LIFETIME_SECONDS);
 	insert.execute();
 	Statement revokeSessions(impl_->database,
 							 "DELETE FROM api_sessions WHERE user_id = ?1");
@@ -427,7 +428,7 @@ Identity SqliteAuthProvider::completeAccountSetup(std::string_view token,
 	if (!impl_) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
-	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||
+	if (token.size() != Config::Limits::TOKEN_HEX_LENGTH ||
 		!std::all_of(token.begin(), token.end(), [](unsigned char character) {
 			return std::isxdigit(character) != 0;
 		})) {

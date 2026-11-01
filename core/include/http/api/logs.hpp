@@ -6,7 +6,8 @@
 #include <memory>
 #include <vector>
 
-namespace HttpApi {
+namespace Http {
+
 /**
  * @brief Returns recent entries from each configured log source.
  * @param sources Log sources in display order, built at startup.
@@ -15,6 +16,7 @@ namespace HttpApi {
  * @return No value; writes the bounded, redacted log-source collection as
  * JSON.
  */
-void getLogs(const std::vector<std::unique_ptr<Logging::LogSource>> &sources,
+void getLogs(const std::vector<std::unique_ptr<Logs::LogSource>> &sources,
 			 const httplib::Request &request, httplib::Response &response);
-} // namespace HttpApi
+
+} // namespace Http

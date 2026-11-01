@@ -27,8 +27,9 @@ const std::string replacementRules = R"([
 ])";
 
 void replacesOnlyMarkedRules() {
-	const ArchangelRulesReplacement replacement =
-		buildArchangelRulesReplacement(activeRuleset, replacementRules);
+	const Firewall::ArchangelRulesReplacement replacement =
+		Firewall::buildArchangelRulesReplacement(activeRuleset,
+												 replacementRules);
 	const Json transaction = Json::parse(replacement.transaction);
 
 	TestSupport::require(replacement.removed == 1,
@@ -49,9 +50,10 @@ void replacesOnlyMarkedRules() {
 }
 
 void emptyReplacementDoesNotCreateATransactionWhenNothingIsManaged() {
-	const ArchangelRulesReplacement replacement = buildArchangelRulesReplacement(
-		R"({"nftables":[{"rule":{"family":"inet","table":"filter","chain":"input","handle":1,"expr":[{"accept":null}]}}]})",
-		"[]");
+	const Firewall::ArchangelRulesReplacement replacement =
+		Firewall::buildArchangelRulesReplacement(
+			R"({"nftables":[{"rule":{"family":"inet","table":"filter","chain":"input","handle":1,"expr":[{"accept":null}]}}]})",
+			"[]");
 
 	TestSupport::require(replacement.transaction.empty(),
 						 "no managed rules should produce no nft transaction");
@@ -62,14 +64,14 @@ void emptyReplacementDoesNotCreateATransactionWhenNothingIsManaged() {
 void rejectsUnmarkedReplacementRulesAndUnaddressableManagedRules() {
 	TestSupport::requireThrows<std::runtime_error>(
 		[&] {
-			buildArchangelRulesReplacement(
+			Firewall::buildArchangelRulesReplacement(
 				activeRuleset,
 				R"([{"rule":{"family":"inet","table":"filter","chain":"input","expr":[{"accept":null}]}}])");
 		},
 		"unmarked incoming rules must not be managed replacements");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			buildArchangelRulesReplacement(
+			Firewall::buildArchangelRulesReplacement(
 				R"({"nftables":[{"rule":{"family":"inet","table":"filter","chain":"input","comment":"archangel-managed","expr":[{"accept":null}]}}]})",
 				"[]");
 		},

@@ -121,8 +121,8 @@ inline httplib::Request requestWithSchema(const std::string &method,
 	httplib::Request request;
 	request.method = method;
 	request.path   = path;
-	request.set_header(HttpApi::SCHEMA_VERSION_HEADER,
-					   std::to_string(HttpApi::SCHEMA_VERSION));
+	request.set_header(Http::SCHEMA_VERSION_HEADER,
+					   std::to_string(Http::SCHEMA_VERSION));
 	return request;
 }
 } // namespace TestSupport

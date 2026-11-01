@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace Logging {
+namespace Logs {
 
 /**
  * @brief Reads recent Archangel events from the backend's JSONL log file.
@@ -26,4 +26,4 @@ class ApplicationLogSource final : public LogSource {
 	std::string path_;
 };
 
-} // namespace Logging
+} // namespace Logs

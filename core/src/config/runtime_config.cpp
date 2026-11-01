@@ -14,6 +14,8 @@
 #include <system_error>
 #include <unistd.h>
 
+namespace Config {
+
 namespace {
 using Json = nlohmann::json;
 void rejectUnknownKeys(const Json						  &object,
@@ -56,7 +58,7 @@ std::string requiredString(const Json &object, const char *key,
 	}
 	const std::string value = field->get<std::string>();
 	if (value.empty() || value.find('\0') != std::string::npos ||
-		value.size() > AppConfigLimits::MAX_RUNTIME_CONFIG_STRING_LENGTH) {
+		value.size() > Limits::MAX_RUNTIME_CONFIG_STRING_LENGTH) {
 		throw std::runtime_error(std::string(description) + "." + key +
 								 " is invalid");
 	}
@@ -126,7 +128,7 @@ void validateConfig(const AppConfig &config) {
 		config.server.bind_address.find_first_of(" \t\r\n") !=
 			std::string::npos ||
 		config.server.bind_address.find('\0') != std::string::npos ||
-		config.server.port < AppConfigLimits::MIN_SERVER_PORT) {
+		config.server.port < Limits::MIN_SERVER_PORT) {
 		throw std::runtime_error(
 			"Runtime config server.bind_address is invalid");
 	}
@@ -142,26 +144,18 @@ void validateConfig(const AppConfig &config) {
 		throw std::runtime_error(
 			"Runtime config auth.password_blocklist_path is invalid");
 	}
-	if (config.auth.password_min_length <
-			AppConfigLimits::MIN_PASSWORD_LENGTH ||
-		config.auth.password_max_length >
-			AppConfigLimits::MAX_PASSWORD_LENGTH ||
+	if (config.auth.password_min_length < Limits::MIN_PASSWORD_LENGTH ||
+		config.auth.password_max_length > Limits::MAX_PASSWORD_LENGTH ||
 		config.auth.password_min_length > config.auth.password_max_length) {
 		throw std::runtime_error(
 			"Runtime config password minimum must not exceed its maximum");
 	}
-	if (config.auth.argon2id_memory_kib <
-			AppConfigLimits::MIN_ARGON2ID_MEMORY_KIB ||
-		config.auth.argon2id_memory_kib >
-			AppConfigLimits::MAX_ARGON2ID_MEMORY_KIB ||
-		config.auth.argon2id_iterations <
-			AppConfigLimits::MIN_ARGON2ID_ITERATIONS ||
-		config.auth.argon2id_iterations >
-			AppConfigLimits::MAX_ARGON2ID_ITERATIONS ||
-		config.auth.argon2id_parallelism <
-			AppConfigLimits::MIN_ARGON2ID_PARALLELISM ||
-		config.auth.argon2id_parallelism >
-			AppConfigLimits::MAX_ARGON2ID_PARALLELISM ||
+	if (config.auth.argon2id_memory_kib < Limits::MIN_ARGON2ID_MEMORY_KIB ||
+		config.auth.argon2id_memory_kib > Limits::MAX_ARGON2ID_MEMORY_KIB ||
+		config.auth.argon2id_iterations < Limits::MIN_ARGON2ID_ITERATIONS ||
+		config.auth.argon2id_iterations > Limits::MAX_ARGON2ID_ITERATIONS ||
+		config.auth.argon2id_parallelism < Limits::MIN_ARGON2ID_PARALLELISM ||
+		config.auth.argon2id_parallelism > Limits::MAX_ARGON2ID_PARALLELISM ||
 		config.auth.argon2id_memory_kib <
 			config.auth.argon2id_parallelism * 8) {
 		throw std::runtime_error("Runtime config Argon2id parameters are "
@@ -172,7 +166,7 @@ void validateConfig(const AppConfig &config) {
 		config.sessions.idle_timeout_seconds >=
 			config.sessions.absolute_timeout_seconds ||
 		config.sessions.absolute_timeout_seconds >
-			AppConfigLimits::MAX_SESSION_LIFETIME_SECONDS) {
+			Limits::MAX_SESSION_LIFETIME_SECONDS) {
 		throw std::runtime_error(
 			"Runtime config session lifetimes are invalid");
 	}
@@ -200,22 +194,18 @@ void validateConfig(const AppConfig &config) {
 		throw std::runtime_error("Runtime config logging.level must be DEBUG, "
 								 "INFO, WARNING, or ERROR");
 	}
-	if (config.rate_limits.failed_auth_attempts <
-			AppConfigLimits::MIN_RATE_LIMIT ||
-		config.rate_limits.failed_auth_attempts >
-			AppConfigLimits::MAX_RATE_LIMIT ||
+	if (config.rate_limits.failed_auth_attempts < Limits::MIN_RATE_LIMIT ||
+		config.rate_limits.failed_auth_attempts > Limits::MAX_RATE_LIMIT ||
 		config.rate_limits.failed_auth_window_seconds <
-			AppConfigLimits::MIN_RATE_LIMIT ||
+			Limits::MIN_RATE_LIMIT ||
 		config.rate_limits.failed_auth_window_seconds >
-			AppConfigLimits::MAX_SESSION_LIFETIME_SECONDS ||
-		config.rate_limits.api_requests_per_minute <
-			AppConfigLimits::MIN_RATE_LIMIT ||
-		config.rate_limits.api_requests_per_minute >
-			AppConfigLimits::MAX_RATE_LIMIT ||
+			Limits::MAX_SESSION_LIFETIME_SECONDS ||
+		config.rate_limits.api_requests_per_minute < Limits::MIN_RATE_LIMIT ||
+		config.rate_limits.api_requests_per_minute > Limits::MAX_RATE_LIMIT ||
 		config.rate_limits.firewall_mutations_per_minute <
-			AppConfigLimits::MIN_RATE_LIMIT ||
+			Limits::MIN_RATE_LIMIT ||
 		config.rate_limits.firewall_mutations_per_minute >
-			AppConfigLimits::MAX_RATE_LIMIT) {
+			Limits::MAX_RATE_LIMIT) {
 		throw std::runtime_error(
 			"Runtime config rate limits are outside the supported range");
 	}
@@ -248,10 +238,9 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 						  "Runtime config server");
 		config.server.bind_address = requiredString(
 			*server, "bind_address", config.server.bind_address, "server");
-		config.server.port = static_cast<std::uint16_t>(
-			boundedInteger(*server, "port", config.server.port,
-						   AppConfigLimits::MIN_SERVER_PORT,
-						   AppConfigLimits::MAX_SERVER_PORT, "server"));
+		config.server.port = static_cast<std::uint16_t>(boundedInteger(
+			*server, "port", config.server.port, Limits::MIN_SERVER_PORT,
+			Limits::MAX_SERVER_PORT, "server"));
 	}
 	if (const Json *auth = optionalObject(document, "auth")) {
 		rejectUnknownKeys(*auth,
@@ -266,13 +255,13 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 		config.auth.password_min_length =
 			static_cast<std::uint16_t>(boundedInteger(
 				*auth, "password_min_length", config.auth.password_min_length,
-				AppConfigLimits::MIN_PASSWORD_LENGTH,
-				AppConfigLimits::MAX_PASSWORD_LENGTH, "auth"));
+				Limits::MIN_PASSWORD_LENGTH, Limits::MAX_PASSWORD_LENGTH,
+				"auth"));
 		config.auth.password_max_length =
 			static_cast<std::uint16_t>(boundedInteger(
 				*auth, "password_max_length", config.auth.password_max_length,
-				config.auth.password_min_length,
-				AppConfigLimits::MAX_PASSWORD_LENGTH, "auth"));
+				config.auth.password_min_length, Limits::MAX_PASSWORD_LENGTH,
+				"auth"));
 		if (auth->contains("password_blocklist_path")) {
 			config.auth.password_blocklist_path =
 				requiredString(*auth, "password_blocklist_path", {}, "auth");
@@ -283,30 +272,30 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 							  "Runtime config auth.argon2id");
 			config.auth.argon2id_memory_kib = boundedInteger(
 				*argon, "memory_kib", config.auth.argon2id_memory_kib,
-				AppConfigLimits::MIN_ARGON2ID_MEMORY_KIB,
-				AppConfigLimits::MAX_ARGON2ID_MEMORY_KIB, "auth.argon2id");
+				Limits::MIN_ARGON2ID_MEMORY_KIB,
+				Limits::MAX_ARGON2ID_MEMORY_KIB, "auth.argon2id");
 			config.auth.argon2id_iterations = boundedInteger(
 				*argon, "iterations", config.auth.argon2id_iterations,
-				AppConfigLimits::MIN_ARGON2ID_ITERATIONS,
-				AppConfigLimits::MAX_ARGON2ID_ITERATIONS, "auth.argon2id");
+				Limits::MIN_ARGON2ID_ITERATIONS,
+				Limits::MAX_ARGON2ID_ITERATIONS, "auth.argon2id");
 			config.auth.argon2id_parallelism = boundedInteger(
 				*argon, "parallelism", config.auth.argon2id_parallelism,
-				AppConfigLimits::MIN_ARGON2ID_PARALLELISM,
-				AppConfigLimits::MAX_ARGON2ID_PARALLELISM, "auth.argon2id");
+				Limits::MIN_ARGON2ID_PARALLELISM,
+				Limits::MAX_ARGON2ID_PARALLELISM, "auth.argon2id");
 		}
 	}
 	if (const Json *sessions = optionalObject(document, "sessions")) {
 		rejectUnknownKeys(*sessions,
 						  {"idle_timeout_seconds", "absolute_timeout_seconds"},
 						  "Runtime config sessions");
-		config.sessions.idle_timeout_seconds = boundedInteger(
-			*sessions, "idle_timeout_seconds",
-			config.sessions.idle_timeout_seconds, 1,
-			AppConfigLimits::MAX_SESSION_LIFETIME_SECONDS, "sessions");
-		config.sessions.absolute_timeout_seconds = boundedInteger(
-			*sessions, "absolute_timeout_seconds",
-			config.sessions.absolute_timeout_seconds, 1,
-			AppConfigLimits::MAX_SESSION_LIFETIME_SECONDS, "sessions");
+		config.sessions.idle_timeout_seconds =
+			boundedInteger(*sessions, "idle_timeout_seconds",
+						   config.sessions.idle_timeout_seconds, 1,
+						   Limits::MAX_SESSION_LIFETIME_SECONDS, "sessions");
+		config.sessions.absolute_timeout_seconds =
+			boundedInteger(*sessions, "absolute_timeout_seconds",
+						   config.sessions.absolute_timeout_seconds, 1,
+						   Limits::MAX_SESSION_LIFETIME_SECONDS, "sessions");
 	}
 	if (const Json *tls = optionalObject(document, "tls")) {
 		rejectUnknownKeys(*tls,
@@ -339,26 +328,23 @@ AppConfig parseRuntimeConfig(const std::string &content) {
 						   "api_requests_per_minute",
 						   "firewall_mutations_per_minute"},
 						  "Runtime config rate_limits");
-		config.rate_limits.failed_auth_attempts =
-			boundedInteger(*limits, "failed_auth_attempts",
-						   config.rate_limits.failed_auth_attempts,
-						   AppConfigLimits::MIN_RATE_LIMIT,
-						   AppConfigLimits::MAX_RATE_LIMIT, "rate_limits");
-		config.rate_limits.failed_auth_window_seconds = boundedInteger(
-			*limits, "failed_auth_window_seconds",
-			config.rate_limits.failed_auth_window_seconds,
-			AppConfigLimits::MIN_RATE_LIMIT,
-			AppConfigLimits::MAX_SESSION_LIFETIME_SECONDS, "rate_limits");
-		config.rate_limits.api_requests_per_minute =
-			boundedInteger(*limits, "api_requests_per_minute",
-						   config.rate_limits.api_requests_per_minute,
-						   AppConfigLimits::MIN_RATE_LIMIT,
-						   AppConfigLimits::MAX_RATE_LIMIT, "rate_limits");
-		config.rate_limits.firewall_mutations_per_minute =
-			boundedInteger(*limits, "firewall_mutations_per_minute",
-						   config.rate_limits.firewall_mutations_per_minute,
-						   AppConfigLimits::MIN_RATE_LIMIT,
-						   AppConfigLimits::MAX_RATE_LIMIT, "rate_limits");
+		config.rate_limits.failed_auth_attempts = boundedInteger(
+			*limits, "failed_auth_attempts",
+			config.rate_limits.failed_auth_attempts, Limits::MIN_RATE_LIMIT,
+			Limits::MAX_RATE_LIMIT, "rate_limits");
+		config.rate_limits.failed_auth_window_seconds =
+			boundedInteger(*limits, "failed_auth_window_seconds",
+						   config.rate_limits.failed_auth_window_seconds,
+						   Limits::MIN_RATE_LIMIT,
+						   Limits::MAX_SESSION_LIFETIME_SECONDS, "rate_limits");
+		config.rate_limits.api_requests_per_minute = boundedInteger(
+			*limits, "api_requests_per_minute",
+			config.rate_limits.api_requests_per_minute, Limits::MIN_RATE_LIMIT,
+			Limits::MAX_RATE_LIMIT, "rate_limits");
+		config.rate_limits.firewall_mutations_per_minute = boundedInteger(
+			*limits, "firewall_mutations_per_minute",
+			config.rate_limits.firewall_mutations_per_minute,
+			Limits::MIN_RATE_LIMIT, Limits::MAX_RATE_LIMIT, "rate_limits");
 	}
 	validateAppConfig(config);
 	return config;
@@ -428,7 +414,7 @@ void writeRuntimeConfig(const std::string &path, const AppConfig &config) {
 		std::filesystem::perms::others_read |
 		std::filesystem::perms::others_exec;
 #ifdef ARCHANGEL_DEV_BUILD
-	if (path == AppConfigDefaults::configPath()) {
+	if (path == Defaults::configPath()) {
 		directoryPermissions = std::filesystem::perms::owner_all;
 	}
 #endif
@@ -507,7 +493,7 @@ AppConfig loadRuntimeConfig(const std::string &path, bool allowMissing) {
 								 "user and not group/world writable");
 	}
 	if (info.st_size <= 0 || static_cast<std::uint64_t>(info.st_size) >
-								 AppConfigLimits::MAX_RUNTIME_CONFIG_BYTES) {
+								 Limits::MAX_RUNTIME_CONFIG_BYTES) {
 		close(file);
 		throw std::runtime_error(
 			"Runtime config must be between 1 byte and 1 MiB");
@@ -532,3 +518,5 @@ AppConfig loadRuntimeConfig(const std::string &path, bool allowMissing) {
 	}
 	return parseRuntimeConfig(content);
 }
+
+} // namespace Config

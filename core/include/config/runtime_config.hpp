@@ -4,6 +4,8 @@
 
 #include <string>
 
+namespace Config {
+
 /**
  * @brief Parses a strict version 1 backend runtime configuration.
  * @param content Complete runtime configuration JSON text.
@@ -42,3 +44,5 @@ void writeRuntimeConfig(const std::string &path,
  * required, or invalid.
  */
 AppConfig loadRuntimeConfig(const std::string &path, bool allowMissing);
+
+} // namespace Config

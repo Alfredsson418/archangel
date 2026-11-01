@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <string>
 
+namespace Firewall {
+
 struct ArchangelRulesReplacement {
 	std::string transaction;
 	std::size_t removed;
@@ -20,3 +22,5 @@ struct ArchangelRulesReplacement {
 ArchangelRulesReplacement
 buildArchangelRulesReplacement(const std::string &activeRuleset,
 							   const std::string &managedRules);
+
+} // namespace Firewall

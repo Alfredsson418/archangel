@@ -6,7 +6,8 @@
 
 namespace {
 void parsesNftablesStatistics() {
-	const FirewallStatistics statistics = statisticsFromNftRuleset(R"({
+	const Firewall::Statistics statistics =
+		Firewall::statisticsFromNftRuleset(R"({
 		"nftables": [
 			{"table": {"family": "inet", "name": "filter"}},
 			{"chain": {"family": "inet", "table": "filter", "name": "input"}},
@@ -41,10 +42,10 @@ void parsesNftablesStatistics() {
 
 void rejectsInvalidRulesetShapes() {
 	TestSupport::requireThrows<std::runtime_error>(
-		[] { statisticsFromNftRuleset(R"({"rules": []})"); },
+		[] { Firewall::statisticsFromNftRuleset(R"({"rules": []})"); },
 		"ruleset missing nftables array should fail");
 	TestSupport::requireThrows<std::exception>(
-		[] { statisticsFromNftRuleset("{invalid"); },
+		[] { Firewall::statisticsFromNftRuleset("{invalid"); },
 		"malformed JSON should fail");
 }
 } // namespace

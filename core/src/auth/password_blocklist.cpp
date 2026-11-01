@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+namespace Auth {
+
 namespace {
 char asciiLower(char character) {
 	return character >= 'A' && character <= 'Z'
@@ -16,8 +18,6 @@ char asciiLower(char character) {
 			   : character;
 }
 } // namespace
-
-namespace Auth {
 
 PasswordBlocklist PasswordBlocklist::load(const std::string &path) {
 	const int file = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
@@ -34,11 +34,11 @@ PasswordBlocklist PasswordBlocklist::load(const std::string &path) {
 			"service user and not group/world writable");
 	}
 	if (info.st_size <= 0 ||
-		info.st_size > AppConfigLimits::MAX_PASSWORD_BLOCKLIST_BYTES) {
+		info.st_size > Config::Limits::MAX_PASSWORD_BLOCKLIST_BYTES) {
 		close(file);
 		throw std::runtime_error(
 			"Password blocklist must be between 1 byte and " +
-			std::to_string(AppConfigLimits::MAX_PASSWORD_BLOCKLIST_BYTES /
+			std::to_string(Config::Limits::MAX_PASSWORD_BLOCKLIST_BYTES /
 						   (1024 * 1024)) +
 			" MiB");
 	}
@@ -83,7 +83,7 @@ PasswordBlocklist PasswordBlocklist::fromContent(std::string content) {
 			line.remove_suffix(1);
 		}
 		if (!line.empty() &&
-			line.size() <= AppConfigLimits::MAX_PASSWORD_BYTES) {
+			line.size() <= Config::Limits::MAX_PASSWORD_BYTES) {
 			blocklist.entries_.push_back(line);
 		}
 		start = end + 1;
@@ -96,7 +96,7 @@ PasswordBlocklist PasswordBlocklist::fromContent(std::string content) {
 }
 
 bool PasswordBlocklist::contains(std::string_view password) const {
-	if (password.size() > AppConfigLimits::MAX_PASSWORD_BYTES) {
+	if (password.size() > Config::Limits::MAX_PASSWORD_BYTES) {
 		return false;
 	}
 	std::string lowered(password);

@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+namespace Http {
+
 namespace {
 
 /**
@@ -53,9 +55,7 @@ std::string openSslError(const char *fallback) {
 
 } // namespace
 
-namespace HttpApi {
-
-void validateTlsFiles(const AppConfig::Tls &tls) {
+void validateTlsFiles(const Config::AppConfig::Tls &tls) {
 	const struct stat certificate =
 		inspectFile(tls.certificate_file, "certificate file");
 	if ((certificate.st_mode & 0022) != 0) {
@@ -71,7 +71,7 @@ void validateTlsFiles(const AppConfig::Tls &tls) {
 	}
 }
 
-bool configureTlsContext(SSL_CTX *context, const AppConfig::Tls &tls,
+bool configureTlsContext(SSL_CTX *context, const Config::AppConfig::Tls &tls,
 						 std::string &error) {
 	ERR_clear_error();
 	if (SSL_CTX_set_min_proto_version(context, TLS1_2_VERSION) != 1) {
@@ -99,4 +99,4 @@ bool configureTlsContext(SSL_CTX *context, const AppConfig::Tls &tls,
 	return true;
 }
 
-} // namespace HttpApi
+} // namespace Http

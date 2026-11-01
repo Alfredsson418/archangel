@@ -3,7 +3,8 @@
 #include "cpp-httplib/cpp-httplib.hpp"
 #include "firewall/firewall.hpp"
 
-namespace HttpApi {
+namespace Http {
+
 /**
  * @brief Writes the active ruleset as a JSON HTTP response.
  * @param firewall Backend from which to retrieve rules.
@@ -11,7 +12,7 @@ namespace HttpApi {
  * @param response HTTP response to populate.
  * @return No value; writes success or error details to response.
  */
-void getRules(Firewall &firewall, const httplib::Request &request,
+void getRules(Firewall::Backend &firewall, const httplib::Request &request,
 			  httplib::Response &response);
 
 /**
@@ -21,7 +22,7 @@ void getRules(Firewall &firewall, const httplib::Request &request,
  * @param response HTTP response to populate.
  * @return No value; writes the creation result or error to response.
  */
-void createRule(Firewall &firewall, const httplib::Request &request,
+void createRule(Firewall::Backend &firewall, const httplib::Request &request,
 				httplib::Response &response);
 
 /**
@@ -31,6 +32,7 @@ void createRule(Firewall &firewall, const httplib::Request &request,
  * @param response HTTP response to populate.
  * @return No value; writes the deletion result or error to response.
  */
-void deleteRule(Firewall &firewall, const httplib::Request &request,
+void deleteRule(Firewall::Backend &firewall, const httplib::Request &request,
 				httplib::Response &response);
-} // namespace HttpApi
+
+} // namespace Http

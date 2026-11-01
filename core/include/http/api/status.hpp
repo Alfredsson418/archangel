@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <string>
 
-namespace HttpApi {
+namespace Http {
+
 /**
  * @brief Writes backend version, API schema, and process uptime as JSON.
  * @param request Incoming HTTP request.
@@ -15,4 +16,5 @@ namespace HttpApi {
  */
 void getStatus(const httplib::Request &request, httplib::Response &response,
 			   const std::string &backendVersion, std::uint64_t uptimeSeconds);
-} // namespace HttpApi
+
+} // namespace Http

@@ -4,7 +4,7 @@
 #include "cpp-httplib/cpp-httplib.hpp"
 #include "http/authentication.hpp"
 
-namespace HttpApi {
+namespace Http {
 
 /**
  * @brief Authenticates credentials and returns a new opaque Bearer session.
@@ -37,4 +37,4 @@ void completeAccountSetup(Auth::AuthProvider	 &auth,
 						  const httplib::Request &request,
 						  httplib::Response		 &response);
 
-} // namespace HttpApi
+} // namespace Http

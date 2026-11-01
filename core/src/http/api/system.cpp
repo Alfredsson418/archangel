@@ -7,8 +7,10 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
+namespace Http {
+
 namespace {
-using HttpApi::Detail::Json;
+using Detail::Json;
 
 /**
  * @brief Computes usage percentage without dividing by zero.
@@ -105,8 +107,6 @@ Json collectSystemStatistics() {
 }
 } // namespace
 
-namespace HttpApi {
-
 void getSystemStatistics(const httplib::Request &,
 						 httplib::Response &response) {
 	try {
@@ -119,4 +119,4 @@ void getSystemStatistics(const httplib::Request &,
 	}
 }
 
-} // namespace HttpApi
+} // namespace Http

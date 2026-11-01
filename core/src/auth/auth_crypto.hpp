@@ -5,7 +5,9 @@
 #include <string>
 #include <string_view>
 
-namespace Auth::Detail {
+namespace Auth {
+
+namespace Detail {
 
 /**
  * @brief Normalizes an account name or returns an empty value if invalid.
@@ -75,4 +77,6 @@ std::string hashSessionToken(std::string_view token);
  */
 std::string makeUuid();
 
-} // namespace Auth::Detail
+} // namespace Detail
+
+} // namespace Auth

@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace HttpApi {
+namespace Http {
 
 /**
  * @brief Checks the configured TLS files before the server starts.
@@ -18,7 +18,7 @@ namespace HttpApi {
  * @return No value.
  * @throws std::runtime_error Naming the first problem found.
  */
-void validateTlsFiles(const AppConfig::Tls &tls);
+void validateTlsFiles(const Config::AppConfig::Tls &tls);
 
 /**
  * @brief Configures an OpenSSL server context for the API listener.
@@ -30,7 +30,7 @@ void validateTlsFiles(const AppConfig::Tls &tls);
  * @param error Receives a description when configuration fails.
  * @return True when the context is ready to serve; false otherwise.
  */
-bool configureTlsContext(SSL_CTX *context, const AppConfig::Tls &tls,
+bool configureTlsContext(SSL_CTX *context, const Config::AppConfig::Tls &tls,
 						 std::string &error);
 
-} // namespace HttpApi
+} // namespace Http

@@ -14,16 +14,16 @@ namespace Auth {
 // Local-account password policy and hashing settings; providers that delegate
 // credentials elsewhere, such as a future OIDC provider, do not use them.
 struct PasswordPolicy {
-	std::uint16_t minimumCharacters = AppConfigLimits::MIN_PASSWORD_LENGTH;
-	std::uint16_t maximumCharacters = AppConfigLimits::MAX_PASSWORD_LENGTH;
+	std::uint16_t minimumCharacters = Config::Limits::MIN_PASSWORD_LENGTH;
+	std::uint16_t maximumCharacters = Config::Limits::MAX_PASSWORD_LENGTH;
 	// Optional list of passwords that may not be chosen; null disables it.
 	std::shared_ptr<const PasswordBlocklist> blocklist;
 };
 
 struct Argon2idParameters {
-	std::uint32_t memoryKiB	  = AppConfigLimits::MIN_ARGON2ID_MEMORY_KIB;
-	std::uint32_t iterations  = AppConfigLimits::MIN_ARGON2ID_ITERATIONS;
-	std::uint32_t parallelism = AppConfigLimits::MIN_ARGON2ID_PARALLELISM;
+	std::uint32_t memoryKiB	  = Config::Limits::MIN_ARGON2ID_MEMORY_KIB;
+	std::uint32_t iterations  = Config::Limits::MIN_ARGON2ID_ITERATIONS;
+	std::uint32_t parallelism = Config::Limits::MIN_ARGON2ID_PARALLELISM;
 };
 
 /**
@@ -42,9 +42,9 @@ class SqliteAuthProvider final : public AuthProvider {
 	 */
 	explicit SqliteAuthProvider(std::string			 databasePath,
 								std::chrono::seconds idleTimeout =
-									AppConfigDefaults::SESSION_IDLE_TIMEOUT,
+									Config::Defaults::SESSION_IDLE_TIMEOUT,
 								std::chrono::seconds absoluteTimeout =
-									AppConfigDefaults::SESSION_ABSOLUTE_TIMEOUT,
+									Config::Defaults::SESSION_ABSOLUTE_TIMEOUT,
 								PasswordPolicy	   passwordPolicy	  = {},
 								Argon2idParameters argon2idParameters = {});
 

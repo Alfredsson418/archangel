@@ -2,7 +2,7 @@
 #include "http/api/schema.hpp"
 #include "json/json.hpp"
 
-namespace HttpApi {
+namespace Http {
 
 void getStatus(const httplib::Request &, httplib::Response &response,
 			   const std::string &backendVersion, std::uint64_t uptimeSeconds) {
@@ -18,4 +18,4 @@ void getStatus(const httplib::Request &, httplib::Response &response,
 		"application/json");
 }
 
-} // namespace HttpApi
+} // namespace Http

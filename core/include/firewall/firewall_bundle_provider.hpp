@@ -2,7 +2,9 @@
 
 #include <string>
 
-enum class FirewallBundleImportMode { Merge, ReplaceArchangel, ReplaceAll };
+namespace Firewall {
+
+enum class BundleImportMode { Merge, ReplaceArchangel, ReplaceAll };
 
 /**
  * @brief Optional capability for importing and exporting native firewall
@@ -11,16 +13,16 @@ enum class FirewallBundleImportMode { Merge, ReplaceArchangel, ReplaceAll };
  * A Firewall implementation that cannot represent the bundle format need not
  * implement this interface.
  */
-class FirewallBundleProvider {
+class BundleProvider {
   public:
-	virtual ~FirewallBundleProvider() = default;
+	virtual ~BundleProvider() = default;
 
 	/**
 	 * @brief Exports the backend's complete firewall configuration bundle.
 	 * @return Versioned firewall bundle JSON.
 	 * @throws std::exception If the active configuration cannot be exported.
 	 */
-	virtual std::string exportFirewallBundle() = 0;
+	virtual std::string exportBundle() = 0;
 
 	/**
 	 * @brief Validates and applies a firewall configuration bundle.
@@ -29,6 +31,8 @@ class FirewallBundleProvider {
 	 * @return No value.
 	 * @throws std::exception If the bundle is invalid or cannot be applied.
 	 */
-	virtual void importFirewallBundle(const std::string		  &bundle,
-									  FirewallBundleImportMode mode) = 0;
+	virtual void importBundle(const std::string &bundle,
+							  BundleImportMode	 mode) = 0;
 };
+
+} // namespace Firewall

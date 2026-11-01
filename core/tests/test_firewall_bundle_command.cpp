@@ -13,13 +13,13 @@
 #include <unistd.h>
 
 namespace {
-class TestFirewall final : public Firewall {
+class TestFirewall final : public Firewall::Backend {
   public:
-	std::string		   listRules() override { return "{}"; }
-	FirewallStatistics getStatistics() override { return {}; }
-	void			   addRule(const RuleSpec &) override {}
-	void			   deleteRule(const std::string &, const std::string &,
-								  const std::string &, std::uint64_t) override {}
+	std::string			 listRules() override { return "{}"; }
+	Firewall::Statistics getStatistics() override { return {}; }
+	void				 addRule(const Firewall::RuleSpec &) override {}
+	void				 deleteRule(const std::string &, const std::string &,
+									const std::string &, std::uint64_t) override {}
 };
 
 class TemporaryDirectory {
@@ -52,7 +52,7 @@ class TemporaryDirectory {
 void requiresAnImportExportCapableBackend() {
 	TestFirewall firewall;
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { FirewallBundleCommand::requireProvider(firewall); },
+		[&] { Cli::requireBundleProvider(firewall); },
 		"unsupported firewall backends should fail explicitly");
 }
 
@@ -61,9 +61,9 @@ void writesAndReadsVersionedBundles() {
 	const auto		   path	   = directory.file("bundle.json");
 	const std::string  ruleset = R"({"nftables":[]})";
 
-	FirewallBundleCommand::writeBundle(path.string(), ruleset);
-	const std::string bundle = FirewallBundleCommand::readBundle(path.string());
-	const FirewallBundle parsed = parseFirewallBundle(bundle);
+	Cli::writeBundle(path.string(), ruleset);
+	const std::string	   bundle = Cli::readBundle(path.string());
+	const Firewall::Bundle parsed = Firewall::parseBundle(bundle);
 	TestSupport::require(parsed.ruleset == ruleset,
 						 "written bundle should preserve its native ruleset");
 }
@@ -72,13 +72,13 @@ void rejectsMissingAndEmptyBundleFiles() {
 	TemporaryDirectory directory;
 	const auto		   missing = directory.file("missing.json");
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { FirewallBundleCommand::readBundle(missing.string()); },
+		[&] { Cli::readBundle(missing.string()); },
 		"missing bundles should fail explicitly");
 
 	const auto empty = directory.file("empty.json");
 	std::ofstream(empty).close();
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { FirewallBundleCommand::readBundle(empty.string()); },
+		[&] { Cli::readBundle(empty.string()); },
 		"empty bundles should be rejected");
 }
 } // namespace

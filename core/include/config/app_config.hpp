@@ -7,7 +7,9 @@
 #include <stdexcept>
 #include <string>
 
-namespace AppConfigDefaults {
+namespace Config {
+
+namespace Defaults {
 #ifdef ARCHANGEL_DEV_BUILD
 inline constexpr char CONFIG_PATH[]		   = "config.json";
 inline constexpr char AUTH_DATABASE_PATH[] = "archangel.db";
@@ -45,11 +47,11 @@ inline constexpr std::chrono::seconds SESSION_IDLE_TIMEOUT =
 	std::chrono::minutes(15);
 inline constexpr std::chrono::seconds SESSION_ABSOLUTE_TIMEOUT =
 	std::chrono::hours(8);
-} // namespace AppConfigDefaults
+} // namespace Defaults
 
 // Single definitions of the backend's limits. Modules read these rather than
 // keeping local copies.
-namespace AppConfigLimits {
+namespace Limits {
 inline constexpr std::uint16_t MIN_SERVER_PORT = 1;
 inline constexpr std::uint16_t MAX_SERVER_PORT = 65535;
 
@@ -107,7 +109,7 @@ inline constexpr std::int64_t MAX_LOG_READ_BYTES = 512 * 1024;
 inline constexpr std::size_t  MAX_LOG_LINE_BYTES = 4096;
 
 inline constexpr std::size_t MAX_FIREWALL_IDENTIFIER_LENGTH = 64;
-} // namespace AppConfigLimits
+} // namespace Limits
 
 /**
  * @brief Holds the application's effective settings and their built-in
@@ -120,27 +122,22 @@ struct AppConfig {
 	} server;
 
 	struct Auth {
-		std::string	  provider		= "local";
-		std::string	  database_path = AppConfigDefaults::authDatabasePath();
-		std::uint16_t password_min_length =
-			AppConfigLimits::MIN_PASSWORD_LENGTH;
-		std::uint16_t password_max_length =
-			AppConfigLimits::MAX_PASSWORD_LENGTH;
-		std::uint32_t argon2id_memory_kib =
-			AppConfigLimits::MIN_ARGON2ID_MEMORY_KIB;
-		std::uint32_t argon2id_iterations =
-			AppConfigLimits::MIN_ARGON2ID_ITERATIONS;
-		std::uint32_t argon2id_parallelism =
-			AppConfigLimits::MIN_ARGON2ID_PARALLELISM;
+		std::string	  provider			   = "local";
+		std::string	  database_path		   = Defaults::authDatabasePath();
+		std::uint16_t password_min_length  = Limits::MIN_PASSWORD_LENGTH;
+		std::uint16_t password_max_length  = Limits::MAX_PASSWORD_LENGTH;
+		std::uint32_t argon2id_memory_kib  = Limits::MIN_ARGON2ID_MEMORY_KIB;
+		std::uint32_t argon2id_iterations  = Limits::MIN_ARGON2ID_ITERATIONS;
+		std::uint32_t argon2id_parallelism = Limits::MIN_ARGON2ID_PARALLELISM;
 		// Empty disables the blocklist check.
 		std::string password_blocklist_path;
 	} auth;
 
 	struct Sessions {
-		std::uint32_t idle_timeout_seconds = static_cast<std::uint32_t>(
-			AppConfigDefaults::SESSION_IDLE_TIMEOUT.count());
+		std::uint32_t idle_timeout_seconds =
+			static_cast<std::uint32_t>(Defaults::SESSION_IDLE_TIMEOUT.count());
 		std::uint32_t absolute_timeout_seconds = static_cast<std::uint32_t>(
-			AppConfigDefaults::SESSION_ABSOLUTE_TIMEOUT.count());
+			Defaults::SESSION_ABSOLUTE_TIMEOUT.count());
 	} sessions;
 
 	struct Tls {
@@ -151,7 +148,7 @@ struct AppConfig {
 
 	struct Logging {
 		std::string sink  = "jsonl_file";
-		std::string path  = AppConfigDefaults::logPath();
+		std::string path  = Defaults::logPath();
 		std::string level = "INFO";
 	} logging;
 
@@ -170,3 +167,5 @@ struct AppConfig {
  * @throws std::runtime_error If any setting is invalid.
  */
 void validateAppConfig(const AppConfig &config);
+
+} // namespace Config

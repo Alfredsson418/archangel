@@ -8,6 +8,8 @@
 #include <openssl/rand.h>
 #include <stdexcept>
 
+namespace Http {
+
 namespace {
 
 /**
@@ -32,8 +34,7 @@ std::string newRequestId() {
  * @param audit Request context.
  * @return Fields for request_id, operation, source_ip, and actor_id when known.
  */
-std::map<std::string, std::string>
-requestFields(const HttpApi::RequestAudit &audit) {
+std::map<std::string, std::string> requestFields(const RequestAudit &audit) {
 	std::map<std::string, std::string> fields{
 		{"request_id", audit.requestId},
 		{ "operation", audit.operation},
@@ -46,8 +47,6 @@ requestFields(const HttpApi::RequestAudit &audit) {
 }
 
 } // namespace
-
-namespace HttpApi {
 
 RequestAudit beginRequestAudit(const httplib::Request &request,
 							   const RoutePolicies	  &routes,
@@ -67,11 +66,11 @@ RequestAudit beginRequestAudit(const httplib::Request &request,
 httplib::Server::HandlerResponse
 recordAuthorizedRequest(const RequestAudit &audit,
 						httplib::Response  &response) {
-	if (Logger::audit({{},
-					   "INFO",
-					   "API",
-					   "api_request_authorized",
-					   requestFields(audit)})) {
+	if (Logs::Logger::audit({{},
+							 "INFO",
+							 "API",
+							 "api_request_authorized",
+							 requestFields(audit)})) {
 		return httplib::Server::HandlerResponse::Unhandled;
 	}
 	response.status = 503;
@@ -98,13 +97,13 @@ void recordCompletedRequest(const RequestAudit		&audit,
 	char formatted[32];
 	std::snprintf(formatted, sizeof(formatted), "%.1f", duration);
 	fields["duration_ms"] = formatted;
-	Logger::audit({{},
-				   response.status >= 500	? "ERROR"
-				   : response.status >= 400 ? "WARNING"
-											: "INFO",
-				   "API",
-				   "api_request_completed",
-				   std::move(fields)});
+	Logs::Logger::audit({{},
+						 response.status >= 500	  ? "ERROR"
+						 : response.status >= 400 ? "WARNING"
+												  : "INFO",
+						 "API",
+						 "api_request_completed",
+						 std::move(fields)});
 }
 
-} // namespace HttpApi
+} // namespace Http

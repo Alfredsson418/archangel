@@ -3,7 +3,8 @@
 #include "cpp-httplib/cpp-httplib.hpp"
 #include "firewall/firewall.hpp"
 
-namespace HttpApi {
+namespace Http {
+
 /**
  * @brief Writes backend firewall statistics as a JSON HTTP response.
  * @param firewall Backend providing active ruleset statistics.
@@ -11,6 +12,7 @@ namespace HttpApi {
  * @param response HTTP response to populate.
  * @return No value; writes statistics or an error to response.
  */
-void getStatistics(Firewall &firewall, const httplib::Request &request,
+void getStatistics(Firewall::Backend &firewall, const httplib::Request &request,
 				   httplib::Response &response);
-} // namespace HttpApi
+
+} // namespace Http

@@ -7,7 +7,9 @@
 #include <exception>
 #include <string>
 
-namespace HttpApi::Detail {
+namespace Http {
+
+namespace Detail {
 using Json = nlohmann::json;
 
 /**
@@ -17,8 +19,8 @@ using Json = nlohmann::json;
  * @return No value; writes the error response and logs its category.
  */
 inline void sendError(httplib::Response &response, const ApiError &error) {
-	Logger::API::log("request_rejected code=" + error.code(),
-					 Logger::Level::WARNING);
+	Logs::Logger::API::log("request_rejected code=" + error.code(),
+						   Logs::Logger::Level::WARNING);
 	response.status = error.status();
 	response.set_content(
 		Json{
@@ -42,9 +44,9 @@ inline void sendOperationError(httplib::Response &response,
 							   const char *operation, const std::exception &,
 							   const char *code	   = "operation_error",
 							   const char *message = "Operation failed") {
-	Logger::API::log(std::string("operation_failed operation=") + operation +
-						 " error_code=" + code,
-					 Logger::Level::ERROR);
+	Logs::Logger::API::log(std::string("operation_failed operation=") +
+							   operation + " error_code=" + code,
+						   Logs::Logger::Level::ERROR);
 	response.status = 500;
 	response.set_content(
 		Json{
@@ -54,4 +56,6 @@ inline void sendOperationError(httplib::Response &response,
 			.dump(),
 		"application/json");
 }
-} // namespace HttpApi::Detail
+} // namespace Detail
+
+} // namespace Http

@@ -1,5 +1,7 @@
 #pragma once
 
+namespace App {
+
 /**
  * @brief Parses command-line arguments and runs the selected backend command.
  * @param argc Number of command-line arguments.
@@ -7,3 +9,5 @@
  * @return Process exit status.
  */
 int runApplication(int argc, char *argv[]);
+
+} // namespace App

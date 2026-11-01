@@ -4,6 +4,8 @@
 #include <string>
 #include <utility>
 
+namespace Http {
+
 class ApiError : public std::runtime_error {
   public:
 	/**
@@ -41,3 +43,5 @@ class ValidationError : public ApiError {
 	explicit ValidationError(std::string message)
 		: ApiError(400, "invalid_request", std::move(message)) {}
 };
+
+} // namespace Http

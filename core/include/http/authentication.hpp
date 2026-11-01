@@ -15,7 +15,7 @@
 #include <string_view>
 #include <utility>
 
-namespace HttpApi {
+namespace Http {
 
 /**
  * @brief Enforces bounded fixed-window request limits by caller key.
@@ -33,7 +33,7 @@ class RateLimiter {
 	 */
 	RateLimiter(std::uint32_t maximumRequests, std::chrono::seconds window,
 				std::size_t maximumTrackedKeys =
-					AppConfigLimits::MAX_TRACKED_RATE_LIMIT_KEYS);
+					Config::Limits::MAX_TRACKED_RATE_LIMIT_KEYS);
 
 	/**
 	 * @brief Reserves a request slot for a source or authenticated identity.
@@ -147,4 +147,4 @@ httplib::Server::HandlerResponse authorizeApiRequest(
  */
 std::optional<std::string> bearerToken(const httplib::Request &request);
 
-} // namespace HttpApi
+} // namespace Http

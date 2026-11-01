@@ -5,7 +5,7 @@
 
 #include <string>
 
-namespace FirewallBundleCommand {
+namespace Cli {
 
 /**
  * @brief Requires a firewall backend to support bundle import and export.
@@ -13,7 +13,7 @@ namespace FirewallBundleCommand {
  * @return The backend's firewall configuration provider.
  * @throws std::runtime_error If the backend lacks this optional capability.
  */
-FirewallBundleProvider &requireProvider(Firewall &firewall);
+Firewall::BundleProvider &requireBundleProvider(Firewall::Backend &firewall);
 
 /**
  * @brief Reads a bounded firewall configuration bundle from disk.
@@ -33,4 +33,4 @@ std::string readBundle(const std::string &path);
  */
 void writeBundle(const std::string &path, const std::string &ruleset);
 
-} // namespace FirewallBundleCommand
+} // namespace Cli

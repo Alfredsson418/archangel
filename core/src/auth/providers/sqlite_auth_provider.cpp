@@ -12,18 +12,19 @@
 #include <string>
 
 namespace Auth {
+
 namespace {
-using Auth::Detail::hashPassword;
-using Auth::Detail::hashSessionToken;
-using Auth::Detail::makeUuid;
-using Auth::Detail::normalizeUsername;
-using Auth::Detail::validatePassword;
-using Auth::Detail::verifyPassword;
-using AuthStorage::Statement;
-using AuthStorage::Transaction;
-using SqliteProviderDetail::INVALID_USERNAME_MESSAGE;
-using SqliteProviderDetail::roleValue;
-using SqliteProviderDetail::unixTimeNow;
+using Detail::hashPassword;
+using Detail::hashSessionToken;
+using Detail::INVALID_USERNAME_MESSAGE;
+using Detail::makeUuid;
+using Detail::normalizeUsername;
+using Detail::roleValue;
+using Detail::Statement;
+using Detail::Transaction;
+using Detail::unixTimeNow;
+using Detail::validatePassword;
+using Detail::verifyPassword;
 } // namespace
 
 SqliteAuthProvider::SqliteAuthProvider(std::string			databasePath,
@@ -47,11 +48,10 @@ std::optional<Session> SqliteAuthProvider::login(std::string_view username,
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
 	const bool					passwordTooLong =
-		password.size() > AppConfigLimits::MAX_PASSWORD_BYTES;
+		password.size() > Config::Limits::MAX_PASSWORD_BYTES;
 	const std::string_view boundedPassword =
-		passwordTooLong
-			? password.substr(0, AppConfigLimits::MAX_PASSWORD_BYTES)
-			: password;
+		passwordTooLong ? password.substr(0, Config::Limits::MAX_PASSWORD_BYTES)
+						: password;
 	const std::string normalized = normalizeUsername(username);
 	if (normalized.empty()) {
 		verifyPassword(impl_->dummyPasswordHash, boundedPassword);
@@ -91,7 +91,7 @@ std::optional<Session> SqliteAuthProvider::login(std::string_view username,
 	const Identity identity = impl_->identityFrom(userQuery.get());
 	// Upgrade hashes made before the configured Argon2id cost was raised.
 	const std::optional<std::string> upgradedHash =
-		Auth::Detail::needsRehash(passwordHash, impl_->argon2idParameters)
+		Detail::needsRehash(passwordHash, impl_->argon2idParameters)
 			? std::optional<std::string>(
 				  hashPassword(boundedPassword, impl_->argon2idParameters))
 			: std::nullopt;
@@ -100,8 +100,8 @@ std::optional<Session> SqliteAuthProvider::login(std::string_view username,
 						 std::chrono::system_clock::now().time_since_epoch())
 						 .count();
 	const auto		  expiry	= now + impl_->absoluteTimeout.count();
-	const std::string token		= Auth::Detail::createSessionToken();
-	const std::string tokenHash = Auth::Detail::hashSessionToken(token);
+	const std::string token		= Detail::createSessionToken();
+	const std::string tokenHash = Detail::hashSessionToken(token);
 	Transaction		  transaction(impl_->database);
 	{
 		Statement removeExpired(
@@ -141,13 +141,13 @@ SqliteAuthProvider::authenticateSession(std::string_view token) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||
+	if (token.size() != Config::Limits::TOKEN_HEX_LENGTH ||
 		!std::all_of(token.begin(), token.end(), [](unsigned char character) {
 			return std::isxdigit(character) != 0;
 		})) {
 		return std::nullopt;
 	}
-	const std::string tokenHash = Auth::Detail::hashSessionToken(token);
+	const std::string tokenHash = Detail::hashSessionToken(token);
 	const auto		  now = std::chrono::duration_cast<std::chrono::seconds>(
 							std::chrono::system_clock::now().time_since_epoch())
 						 .count();
@@ -194,7 +194,7 @@ void SqliteAuthProvider::revokeSession(std::string_view token) {
 		throw std::runtime_error("Authentication provider is not initialized");
 	}
 	std::lock_guard<std::mutex> lock(impl_->databaseMutex);
-	if (token.size() != AppConfigLimits::TOKEN_HEX_LENGTH ||
+	if (token.size() != Config::Limits::TOKEN_HEX_LENGTH ||
 		!std::all_of(token.begin(), token.end(), [](unsigned char character) {
 			return std::isxdigit(character) != 0;
 		})) {
@@ -202,7 +202,7 @@ void SqliteAuthProvider::revokeSession(std::string_view token) {
 	}
 	Statement remove(impl_->database,
 					 "DELETE FROM api_sessions WHERE token_hash = ?1");
-	remove.bindText(1, Auth::Detail::hashSessionToken(token));
+	remove.bindText(1, Detail::hashSessionToken(token));
 	remove.execute();
 }
 

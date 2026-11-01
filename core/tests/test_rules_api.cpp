@@ -7,7 +7,7 @@
 #include <string>
 
 namespace {
-class MockFirewall final : public Firewall {
+class MockFirewall final : public Firewall::Backend {
   public:
 	std::string listRules() override {
 		if (fail_list) {
@@ -16,11 +16,11 @@ class MockFirewall final : public Firewall {
 		return R"({"nftables":[]})";
 	}
 
-	FirewallStatistics getStatistics() override { return {}; }
+	Firewall::Statistics getStatistics() override { return {}; }
 
-	void addRule(const RuleSpec &rule) override {
+	void addRule(const Firewall::RuleSpec &rule) override {
 		if (reject_rules) {
-			throw InvalidRuleError("protocol must be tcp or udp");
+			throw Firewall::InvalidRuleError("protocol must be tcp or udp");
 		}
 		++add_calls;
 		added_rule = rule;
@@ -29,7 +29,7 @@ class MockFirewall final : public Firewall {
 	void deleteRule(const std::string &family, const std::string &table,
 					const std::string &chain, std::uint64_t handle) override {
 		if (reject_rules) {
-			throw InvalidRuleError("table is invalid");
+			throw Firewall::InvalidRuleError("table is invalid");
 		}
 		++delete_calls;
 		deleted_family = family;
@@ -38,15 +38,15 @@ class MockFirewall final : public Firewall {
 		deleted_handle = handle;
 	}
 
-	int			  add_calls	   = 0;
-	int			  delete_calls = 0;
-	bool		  fail_list	   = false;
-	bool		  reject_rules = false;
-	RuleSpec	  added_rule;
-	std::string	  deleted_family;
-	std::string	  deleted_table;
-	std::string	  deleted_chain;
-	std::uint64_t deleted_handle = 0;
+	int				   add_calls	= 0;
+	int				   delete_calls = 0;
+	bool			   fail_list	= false;
+	bool			   reject_rules = false;
+	Firewall::RuleSpec added_rule;
+	std::string		   deleted_family;
+	std::string		   deleted_table;
+	std::string		   deleted_chain;
+	std::uint64_t	   deleted_handle = 0;
 };
 
 httplib::Request requestWithBody(const std::string &body) {
@@ -61,7 +61,7 @@ void createsStructuredRule() {
 		R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","destination_port":443,"action":"accept","source_address":"192.0.2.1"})");
 	httplib::Response response;
 
-	HttpApi::createRule(firewall, request, response);
+	Http::createRule(firewall, request, response);
 
 	TestSupport::require(response.status == 201,
 						 "valid rule should return 201");
@@ -85,7 +85,7 @@ void acceptsMaximumDestinationPortAndNullOptionalAddresses() {
 		R"({"family":"ip","table":"filter","chain":"input","protocol":"udp","destination_port":65535,"action":"drop","source_address":null,"destination_address":null})");
 	httplib::Response response;
 
-	HttpApi::createRule(firewall, request, response);
+	Http::createRule(firewall, request, response);
 
 	TestSupport::require(response.status == 201,
 						 "valid maximum port should return 201");
@@ -110,7 +110,7 @@ void rejectsInvalidRuleRequestsBeforeBackendMutation() {
 		 "[]", "{invalid"}) {
 		MockFirewall	  firewall;
 		httplib::Response response;
-		HttpApi::createRule(firewall, requestWithBody(body), response);
+		Http::createRule(firewall, requestWithBody(body), response);
 
 		TestSupport::require(response.status == 400,
 							 "invalid rule request should return 400");
@@ -127,7 +127,7 @@ void deletesRuleByPositiveHandle() {
 	MockFirewall	  firewall;
 	httplib::Response response;
 	response.status = 200;
-	HttpApi::deleteRule(
+	Http::deleteRule(
 		firewall,
 		requestWithBody(
 			R"({"family":"inet","table":"filter","chain":"input","handle":42})"),
@@ -154,7 +154,7 @@ void rejectsInvalidDeleteHandlesBeforeBackendMutation() {
 		 R"({"family":"inet","table":"filter","chain":"input","handle":1.5})"}) {
 		MockFirewall	  firewall;
 		httplib::Response response;
-		HttpApi::deleteRule(firewall, requestWithBody(body), response);
+		Http::deleteRule(firewall, requestWithBody(body), response);
 
 		TestSupport::require(response.status == 400,
 							 "invalid delete handle should return 400");
@@ -171,7 +171,7 @@ void rejectsDeleteRequestsMissingRequiredFields() {
 		  R"({"family":"inet","table":"filter","chain":"input"})"}) {
 		MockFirewall	  firewall;
 		httplib::Response response;
-		HttpApi::deleteRule(firewall, requestWithBody(body), response);
+		Http::deleteRule(firewall, requestWithBody(body), response);
 
 		TestSupport::require(response.status == 400,
 							 "missing delete fields should return 400");
@@ -185,7 +185,7 @@ void hidesBackendFailureDetails() {
 	firewall.fail_list = true;
 	httplib::Response response;
 
-	HttpApi::getRules(firewall, httplib::Request{}, response);
+	Http::getRules(firewall, httplib::Request{}, response);
 
 	TestSupport::require(response.status == 500,
 						 "backend failure should return 500");
@@ -200,7 +200,7 @@ void reportsBackendRuleRejectionsAsClientErrors() {
 	MockFirewall firewall;
 	firewall.reject_rules = true;
 	httplib::Response created;
-	HttpApi::createRule(
+	Http::createRule(
 		firewall,
 		requestWithBody(
 			R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","action":"accept"})"),
@@ -213,7 +213,7 @@ void reportsBackendRuleRejectionsAsClientErrors() {
 				std::string::npos,
 		"backend rule rejections should return 400 with the backend reason");
 	httplib::Response deleted;
-	HttpApi::deleteRule(
+	Http::deleteRule(
 		firewall,
 		requestWithBody(
 			R"({"family":"inet","table":"filter","chain":"input","handle":4})"),
