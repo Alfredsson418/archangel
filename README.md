@@ -21,7 +21,7 @@ The Firewall Configuration page can filter and sort active rules, and can export
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) to report a suspected security flaw and [docs/security-concerns.md](docs/security-concerns.md) for the current security posture, deployment constraints, and planned controls. The C++ API authenticates protected requests, enforces firewall/account roles, and applies login, API, and firewall-mutation limits. The Flask dashboard authenticates through the backend and stores browser sessions server-side. The API does not provide TLS; keep both services on localhost or a trusted, isolated management network.
+See [SECURITY.md](SECURITY.md) to report a suspected security flaw and [docs/security-concerns.md](docs/security-concerns.md) for the current security posture, deployment constraints, and planned controls. The C++ API authenticates protected requests, enforces firewall/account roles, and applies login, API, and firewall-mutation limits. The Flask dashboard authenticates through the backend and stores browser sessions server-side. The API supports optional native TLS and both services write owner-only JSONL audit logs; keep both services on localhost or a trusted, isolated management network, and enable TLS when API traffic leaves the host.
 
 The backend has local-account storage, API authentication, firewall role
 enforcement, and an administrator bootstrap command. Bootstrap the initial
@@ -122,10 +122,15 @@ Compose file's localhost defaults and host-network setup are for the
 same-computer quickstart, not a remote deployment recipe. The dashboard uses
 backend authentication and stores its session data under the private `/data`
 volume. The container health check probes the unauthenticated `/healthz` route on the configured `WEB_HOST` and `WEB_PORT`; it does not contact the API or create sessions. Set `ARCHANGEL_COOKIE_SECURE=true` when dashboard HTTPS is provided by
-an operator-managed reverse proxy. The C++ API still uses plain HTTP, so do
-not expose either service to the public internet.
+an operator-managed reverse proxy. For a separate management computer, enable
+TLS on the C++ API (see the [runtime config guide](docs/runtime-config.md#tls)),
+use an `https://` `ARCHANGEL_API_URL`, and, if the certificate comes from a
+private CA, mount its PEM bundle read-only and set `ARCHANGEL_API_CA_BUNDLE`
+to its path inside the container. The dashboard verifies the certificate and
+has no option to skip verification. Do not expose either service to the public
+internet.
 
-The web app writes request, backend, and configuration events to stdout. View them with `docker compose logs -f web`; set `WEB_LOG_LEVEL=DEBUG` before starting Compose for more detail. Request logs omit query strings and form values.
+The web app writes request, backend, and configuration events to stdout. View them with `docker compose logs -f web`; set `WEB_LOG_LEVEL=DEBUG` before starting Compose for more detail. It also writes the same events as JSONL audit records to `/data/archangel-frontend.jsonl` (set `ARCHANGEL_WEB_LOG_PATH` to change it); rotate that file by renaming it, and the dashboard reopens it automatically. If the file cannot be written, state-changing requests such as sign-in and imports are refused with HTTP `503`. Logs omit query strings and form values.
 
 ## Project goal
 

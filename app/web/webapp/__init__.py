@@ -31,6 +31,11 @@ def create_app():
             "dashboard_session_key_ephemeral sessions_will_reset_on_restart"
         )
     api_settings = load_api_settings()
+    if api_settings.unencrypted_remote:
+        app.logger.warning(
+            "api_transport_unencrypted reason=non_loopback_http "
+            "detail=backend_credentials_cross_the_network_in_plaintext"
+        )
     try:
         ssl_context = create_ssl_context(api_settings.ca_bundle)
     except (OSError, ValueError) as error:

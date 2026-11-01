@@ -1,4 +1,5 @@
 """Deployment-fixed settings for reaching the C++ API."""
+import ipaddress
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,24 @@ class ApiSettings:
     from_environment: bool
     # Optional private CA bundle trusted in addition to the system store.
     ca_bundle: Path | None
+
+    @property
+    def unencrypted_remote(self):
+        """Whether credentials would cross the network without TLS.
+
+        Returns:
+            True for an http:// URL whose host is not a loopback address.
+        """
+        parsed = urlsplit(self.base_url)
+        if parsed.scheme != "http":
+            return False
+        host = parsed.hostname or ""
+        if host == "localhost":
+            return False
+        try:
+            return not ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            return True
 
 
 def valid_api_url(value):

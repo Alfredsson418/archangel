@@ -30,12 +30,12 @@ The test modules are organized by responsibility:
 
 | Module | Coverage |
 | --- | --- |
-| `app/web/tests/test_api_client.py` | Backend connectivity and errors, schema-version handling, and request headers. |
+| `app/web/tests/test_api_client.py` | `ApiClient` contract tests with a fake transport (schema and bearer headers, schema mismatches, error statuses, invalid JSON, unreachable backend), `UrllibTransport` TLS-context use, request IDs, and failure mapping, and TLS 1.2-minimum certificate verification. |
 | `app/web/tests/test_dashboard_authentication.py` | Protected pages, login/session rotation, server-side token storage, logout revocation, CSRF, same-origin checks, and safe redirects, and skipping writes for unchanged sessions. |
 | `app/web/tests/test_dashboard_pages.py` | Server-rendered overview and system pages, log-source rendering and escaping, static assets, backend-unavailable messaging, stopping after the backend is unreachable, redirecting to login when the backend rejects the session, and the unauthenticated `/healthz` probe. |
-| `app/web/tests/test_logging.py` | Dashboard and backend request logging, including omission of query-string values. |
+| `app/web/tests/test_logging.py` | Stdout and backend request logging without query-string values, owner-only JSONL records with request IDs, reopen after rotation, rejection of shared log files, message structuring, and fail-closed `503` for state changes when the audit log is unavailable. |
 | `app/web/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export (including the rule shapes nftables actually lists), and preview/confirmed import behavior. |
-| `app/web/tests/test_settings.py` | Read-only API URL display, API URL validation, and absence of API passthrough routes. |
+| `app/web/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
 Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 28 tests. The exact count and incidental application log lines may change as coverage grows.
 
@@ -57,6 +57,7 @@ The test executable is built at `build/core/tests/backend_tests`. The target com
 | `core/tests/test_auth_api.cpp` | Login and logout handlers: Bearer session issuance, rejected credentials and unexpected fields, session revocation, and per-source failed-login throttling with `Retry-After`. |
 | `core/tests/test_accounts_api.cpp` | Account lifecycle handlers: creation with a one-time setup token, unknown-field rejection, listing, role updates, disablement, setup-token reissue, and setup-token redemption. |
 | `core/tests/test_logging.cpp` | JSONL sink envelope, owner-only file and directory creation, rejection of symlinked or shared paths, reopen after rotation, structuring of `event key=value` messages and level filtering, request IDs and audit records, fail-closed `503` when an audit record cannot be written, unregistered-path labeling, shared log-source bounds and redaction, JSONL log rendering, and nftables source states. |
+| `core/tests/test_tls.cpp` | TLS file validation (missing, symlinked, group-readable key, writable certificate), context setup with a matching test-only certificate and key, the TLS 1.2 minimum, and rejection of mismatched or invalid files. |
 | `core/tests/auth_test_support.hpp` | Shared mock `AuthProvider` and schema-header request helper for the three authentication test modules. |
 | `core/tests/test_firewall_config.cpp` | Firewall bundle v1 parsing and serialization, ownership-section classification, listener-setting exclusion, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
 | `core/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |

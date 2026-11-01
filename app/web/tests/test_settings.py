@@ -44,6 +44,19 @@ class SettingsPageTests(DashboardTestCase):
         self.assertTrue(settings.from_environment)
         self.assertEqual(settings.ca_bundle, bundle)
 
+    def test_flags_plain_http_to_remote_hosts(self):
+        for url, expected in (
+            ("http://127.0.0.1:8080", False),
+            ("http://localhost:8080", False),
+            ("http://[::1]:8080", False),
+            ("https://10.0.0.5:8443", False),
+            ("http://10.0.0.5:8080", True),
+            ("http://api.example:8080", True),
+        ):
+            with self.subTest(url=url):
+                settings = load_api_settings({"ARCHANGEL_API_URL": url})
+                self.assertEqual(settings.unencrypted_remote, expected)
+
     def test_api_settings_reject_invalid_values(self):
         with self.assertRaises(RuntimeError):
             load_api_settings({"ARCHANGEL_API_URL": "ftp://api.example"})
