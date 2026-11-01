@@ -45,9 +45,16 @@ DEBUG_LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/debug/$(LIB)/%.o, $(LIB_S
 RELEASE_OBJFILES = $(patsubst $(SRC)/%.cpp, $(BUILD)/release/$(SRC)/%.o, $(SRCFILES))
 RELEASE_LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/release/$(LIB)/%.o, $(LIB_SRCFILES))
 TEST_SRCFILES = $(shell find $(CORE)/tests -name '*.cpp')
+# The test binary links every backend source except the entry point and
+# composition root, the HTTP server (which needs the generated version header),
+# and the nftables provider (which needs libnftables and a live ruleset).
+TEST_EXCLUDED_SRCFILES = $(SRC)/main.cpp $(SRC)/app/application.cpp \
+	$(SRC)/http/server.cpp $(SRC)/firewall/providers/nft.cpp \
+	$(SRC)/firewall/providers/nft_config.cpp
+TEST_APP_SRCFILES = $(filter-out $(TEST_EXCLUDED_SRCFILES),$(SRCFILES))
 TEST_BINARY = $(BUILD)/$(CORE)/tests/backend_tests
 
-.PHONY: debug release test clean clean-dev-state run bootstrap-admin config FORCE
+.PHONY: debug build_release test clean clean-dev-state run bootstrap-admin config FORCE
 
 FORCE:
 
@@ -73,7 +80,7 @@ build_release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
 	@$(CC) $(RELEASE_CFLAGS) $(RELEASE_LDFLAGS) $^ -o $(TARGET) $(LDFLAGS)
 	@echo "Done!"
 
-$(TEST_BINARY): $(TEST_SRCFILES) $(SRC)/auth/auth_crypto.cpp $(SRC)/auth/providers/sqlite_auth_provider.cpp $(SRC)/auth/sqlite_auth_storage.cpp $(SRC)/auth/secret_input.cpp $(SRC)/logger.cpp $(SRC)/logs/log_sources.cpp $(SRC)/cli/firewall_config.cpp $(SRC)/network/address.cpp $(SRC)/firewall/config.cpp $(SRC)/config/runtime_config.cpp $(SRC)/http/authentication.cpp $(SRC)/http/api/auth.cpp $(SRC)/http/api/accounts.cpp $(SRC)/http/api/logs.cpp $(SRC)/firewall/providers/nft_import.cpp $(SRC)/firewall/providers/nft_statistics.cpp $(SRC)/http/api/rules.cpp $(SRC)/http/api/stats.cpp
+$(TEST_BINARY): $(TEST_SRCFILES) $(TEST_APP_SRCFILES)
 	@mkdir -p $(@D)
 	@echo "Building backend tests"
 	@$(CC) $(TEST_CFLAGS) -I$(CORE)/include -I$(LIB) $^ -o $@ -lsqlite3 -largon2 -lcrypto -lrt -ldl -pthread
