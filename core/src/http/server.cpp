@@ -6,13 +6,11 @@
 #include "http/api/health.hpp"
 #include "http/api/logs.hpp"
 #include "http/api/rules.hpp"
-#include "http/api/schema.hpp"
 #include "http/api/stats.hpp"
 #include "http/api/status.hpp"
 #include "http/api/system.hpp"
 #include "http/authentication.hpp"
 #include "logger.hpp"
-#include "json/json.hpp"
 #include <chrono>
 #include <stdexcept>
 #include <string>
@@ -20,34 +18,6 @@
 #include <utility>
 
 namespace {
-/**
- * @brief Requires a supported schema version before invoking an API handler.
- * @param handler Endpoint handler to run after schema validation succeeds.
- * @return A handler that rejects missing or unsupported schema versions.
- */
-httplib::Server::Handler withSchemaVersion(httplib::Server::Handler handler) {
-	return [handler = std::move(handler)](const httplib::Request &request,
-										  httplib::Response		 &response) {
-		const std::string supportedVersion =
-			std::to_string(HttpApi::SCHEMA_VERSION);
-		response.set_header(HttpApi::SCHEMA_VERSION_HEADER, supportedVersion);
-		if (request.get_header_value(HttpApi::SCHEMA_VERSION_HEADER) !=
-			supportedVersion) {
-			response.status = 400;
-			response.set_content(
-				nlohmann::json{
-					{		 "error", "Missing or unsupported API schema version"},
-					{			 "code",				 "unsupported_schema_version"},
-					{"schema_version",					   HttpApi::SCHEMA_VERSION},
-			}
-					.dump(),
-				"application/json");
-			return;
-		}
-		handler(request, response);
-	};
-}
-
 // Wrap each route at registration so request metrics are consistent and use
 // fixed route paths instead of client-provided targets that may contain query
 // data.
@@ -112,10 +82,9 @@ httplib::Server::Handler withRequestLogging(const char				*method,
 void addRoute(httplib::Server &server, HttpApi::RoutePolicies &policies,
 			  const char *method, const char *path, HttpApi::RoutePolicy policy,
 			  httplib::Server::Handler handler) {
+	// Schema negotiation for every route except liveness happens in
+	// authorizeApiRequest before routing, so handlers need no wrapper for it.
 	policies.add(method, path, policy);
-	if (policy.access != HttpApi::RouteAccess::Liveness) {
-		handler = withSchemaVersion(std::move(handler));
-	}
 	handler = withRequestLogging(method, path, std::move(handler));
 	const std::string_view verb(method);
 	if (verb == "GET") {
