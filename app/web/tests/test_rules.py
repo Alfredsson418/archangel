@@ -3,7 +3,7 @@ import json
 from unittest.mock import patch
 
 from webapp.api_client import API_SCHEMA_VERSION_HEADER
-from webapp.views import _firewall_status
+from webapp.firewall_rules import firewall_status
 
 from .helpers import DashboardTestCase, UpstreamResponse
 
@@ -11,7 +11,7 @@ from .helpers import DashboardTestCase, UpstreamResponse
 class RulePageTests(DashboardTestCase):
     def test_firewall_status_requires_a_base_chain_hook(self):
         self.assertEqual(
-            _firewall_status(
+            firewall_status(
                 {
                     "nftables": [
                         {"chain": {"name": "input"}},
@@ -21,8 +21,8 @@ class RulePageTests(DashboardTestCase):
             ),
             ("Active", 1),
         )
-        self.assertEqual(_firewall_status({"nftables": []}), ("No active base chains", 0))
-        self.assertEqual(_firewall_status(None), ("Unavailable", None))
+        self.assertEqual(firewall_status({"nftables": []}), ("No active base chains", 0))
+        self.assertEqual(firewall_status(None), ("Unavailable", None))
 
     @patch("webapp.api_client.urlopen")
     def test_rules_page_renders_backend_rules(self, urlopen):

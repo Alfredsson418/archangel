@@ -65,7 +65,13 @@ Select implementations at startup or configuration boundaries. Avoid plugin load
 | Area | Responsibility |
 | --- | --- |
 | `app/web/server.py` | WSGI entry point. |
-| `app/web/webapp/` | Flask app factory, page views, API client, settings persistence, and logging configuration. |
+| `app/web/webapp/__init__.py` | Flask app factory: configuration, session store, CSRF and login guards. |
+| `app/web/webapp/views.py` | Page routes and their request handling. |
+| `app/web/webapp/backend.py` | Loading C++ API resources for pages with the session credential, including expired-session handling. |
+| `app/web/webapp/api_client.py` | HTTP transport to the C++ API and schema-version checks. |
+| `app/web/webapp/firewall_rules.py` | Ruleset inspection and portable rule-bundle conversion and validation; no Flask dependency. |
+| `app/web/webapp/formatting.py` | Display formatting for host and backend metrics. |
+| `app/web/webapp/server_sessions.py`, `settings.py`, `logging_config.py` | Server-side session store, API URL validation, and request logging. |
 | `app/web/templates/` | Server-rendered Jinja templates. Page templates extend `base.html`. |
 | `app/web/static/` | Shared frontend assets such as stylesheets. |
 | `app/web/tests/` | Dashboard tests grouped by responsibility. |
