@@ -105,7 +105,7 @@ The thesis also discusses KSF-related concepts, but the project should not claim
 
 ## Phase 1: Testing and Contribution Readiness
 
-**Status: Implemented; first hosted CI run pending**
+**Status: Implemented**
 
 1. **Add automated C++ tests.**
    - **Status: Implemented.** Unit tests cover nftables statistics parsing, firewall bundle v1 parsing and serialization, managed-rule replacement transaction planning, and structured API handlers, using controlled fixtures and a mock firewall.
@@ -114,7 +114,7 @@ The thesis also discusses KSF-related concepts, but the project should not claim
    - Keep tests isolated from privileged host state; destructive operations must never run in ordinary test suites.
    - **Exit criteria:** `make test` runs the backend suite and returns a failing status for a failing test; the debug build and dashboard tests continue to pass.
 2. **Add a repeatable project verification workflow.**
-   - **Status: Implemented.** `docs/test.md` documents prerequisites, commands, coverage, and expected output; GitHub Actions runs dashboard tests, backend unit tests, and the C++ debug build. The first hosted workflow run remains pending.
+   - **Status: Implemented.** `docs/test.md` documents prerequisites, commands, coverage, and expected output; GitHub Actions runs on every push and pull request: dashboard tests, backend unit tests, the C++ debug build, and a clang-format check.
    - Document the build and test commands, required system dependencies, and any tests that require special environments.
    - Extend CI when additional supported build or test environments are selected.
    - **Exit criteria:** a clean checkout can follow the documented local verification steps, and CI reports build and test outcomes.
@@ -129,7 +129,7 @@ The thesis also discusses KSF-related concepts, but the project should not claim
 
 ## Phase 2: Backend-Owned Security Controls
 
-**Status: Implemented. Backend authentication and roles, account lifecycle APIs, dashboard login and sessions, rate limits, native TLS, JSONL audit logging, and the Phase 2 service contracts are in place; the security review is recorded in [security concerns](security-concerns.md#phase-2-security-review). Follow-up items such as a recovery command, MFA, and compromised-password checks remain open.**
+**Status: Implemented. Backend authentication and roles, account lifecycle APIs, dashboard login and sessions, rate limits, native TLS, JSONL audit logging, and the Phase 2 service contracts are in place; the security review is recorded in [security concerns](security-concerns.md#phase-2-security-review). Open follow-ups before Phase 3: the `user recover` command, rehashing passwords after login when the configured Argon2id cost increases, rejecting common or compromised passwords, and dashboard audit records that carry the actor and outcome and fail closed for every non-health request. MFA and tamper-evident log storage remain deferred.**
 
 Security controls must be enforced at the backend/API trust boundary. The backend is authoritative for identity, authentication, and authorization. Do not create a separate Flask dashboard or browser user-authentication database. `GET /status/health` remains unauthenticated and returns only a status code for liveness. Authentication operations may accept credentials to establish a backend session and must be narrowly scoped and rate-limited; they must not disclose protected data. `GET /status/info` and every protected API route require backend authentication. Retain the deployment restrictions in [SECURITY.md](../SECURITY.md): TLS is optional and off by default, and controls such as MFA and tamper-evident audit storage are not implemented.
 
@@ -183,9 +183,9 @@ Security controls must be enforced at the backend/API trust boundary. The backen
 
 ## Phase 3: Safe Firewall Management in the Dashboard
 
-**Status: Planned**
+**Status: Planned; starts after the Phase 2 follow-ups are complete**
 
-The API already supports structured rule creation and deletion; the current dashboard is primarily read-oriented.
+The API already supports structured rule creation and deletion. The dashboard can already apply rules through the confirmed, additive bundle import on the Firewall Configuration page; it has no workflow for creating or deleting an individual rule.
 
 1. Add focused dashboard workflows to create and delete rules using the existing JSON API contract. Do not accept or construct raw nftables commands in browser input.
 2. Show the exact target and effect of a proposed change and require a deliberate confirmation before applying mutations.
