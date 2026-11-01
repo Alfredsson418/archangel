@@ -1,6 +1,6 @@
 #pragma once
 
-#include "auth/providers/auth_provider.hpp"
+#include "auth/providers/sqlite_auth_provider.hpp"
 
 #include <string>
 #include <string_view>

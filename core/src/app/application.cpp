@@ -1,5 +1,5 @@
 #include "app/application.hpp"
-#include "auth/providers/auth_provider.hpp"
+#include "auth/providers/sqlite_auth_provider.hpp"
 #include "auth/secret_input.hpp"
 #include "cli/firewall_config.hpp"
 #include "config/runtime_config.hpp"
