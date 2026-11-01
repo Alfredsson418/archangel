@@ -1,0 +1,3 @@
+# Formatting-only commits; use with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# Apply clang-format to all backend sources
+b628ac9273dce9120807eb17fd0152c43e337b89

@@ -1,12 +1,33 @@
 name: CI
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  cpp-format:
+    name: C++ formatting
+    # Pinned so the distribution clang-format (18) matches the version the
+    # sources were formatted with.
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-format
+
+      - name: Check formatting
+        run: |
+          find core/src core/include core/tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
+            | xargs -0 clang-format --dry-run --Werror
+
   dashboard-tests:
     name: Dashboard tests
     runs-on: ubuntu-latest

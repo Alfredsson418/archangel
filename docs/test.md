@@ -85,7 +85,17 @@ This produces `bin/archangel` and requires a C++20 compiler plus development pac
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatch. It:
 
-1. Installs the dashboard dependencies and runs the dashboard unittest suite.
-2. Installs the C++ build dependencies, runs `make test`, then builds the backend with `make debug`.
+1. Checks that every C++ source under `core/src`, `core/include`, and `core/tests` matches `.clang-format`, using clang-format 18 on Ubuntu 24.04. The vendored `core/lib` is not checked.
+2. Installs the dashboard dependencies and runs the dashboard unittest suite.
+3. Installs the C++ build dependencies, runs `make test`, then builds the backend with `make debug`.
 
-The dashboard tests and backend tests/build run as separate jobs. A failure in any command fails its job and the workflow.
+Run the same formatting check locally before pushing; a different clang-format major version may format some constructs differently:
+
+```sh
+find core/src core/include core/tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
+  | xargs -0 clang-format --dry-run --Werror
+```
+
+To fix reported files, run `clang-format -i` on them. Formatting-only commits are listed in `.git-blame-ignore-revs`; enable it with `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
+The formatting check, dashboard tests, and backend tests/build run as separate jobs. A failure in any command fails its job and the workflow.
