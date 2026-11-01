@@ -19,12 +19,18 @@ class MockFirewall final : public Firewall {
 	FirewallStatistics getStatistics() override { return {}; }
 
 	void addRule(const RuleSpec &rule) override {
+		if (reject_rules) {
+			throw InvalidRuleError("protocol must be tcp or udp");
+		}
 		++add_calls;
 		added_rule = rule;
 	}
 
 	void deleteRule(const std::string &family, const std::string &table,
 					const std::string &chain, std::uint64_t handle) override {
+		if (reject_rules) {
+			throw InvalidRuleError("table is invalid");
+		}
 		++delete_calls;
 		deleted_family = family;
 		deleted_table  = table;
@@ -35,6 +41,7 @@ class MockFirewall final : public Firewall {
 	int			  add_calls	   = 0;
 	int			  delete_calls = 0;
 	bool		  fail_list	   = false;
+	bool		  reject_rules = false;
 	RuleSpec	  added_rule;
 	std::string	  deleted_family;
 	std::string	  deleted_table;
@@ -189,9 +196,35 @@ void hidesBackendFailureDetails() {
 							 std::string::npos,
 						 "backend exception detail must not be exposed");
 }
+void reportsBackendRuleRejectionsAsClientErrors() {
+	MockFirewall firewall;
+	firewall.reject_rules = true;
+	httplib::Response created;
+	HttpApi::createRule(
+		firewall,
+		requestWithBody(
+			R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","action":"accept"})"),
+		created);
+	TestSupport::require(
+		created.status == 400 &&
+			created.body.find(R"("code":"invalid_request")") !=
+				std::string::npos &&
+			created.body.find("protocol must be tcp or udp") !=
+				std::string::npos,
+		"backend rule rejections should return 400 with the backend reason");
+	httplib::Response deleted;
+	HttpApi::deleteRule(
+		firewall,
+		requestWithBody(
+			R"({"family":"inet","table":"filter","chain":"input","handle":4})"),
+		deleted);
+	TestSupport::require(deleted.status == 400,
+						 "backend target rejections should return 400");
+}
 } // namespace
 
 void runRulesApiTests() {
+	reportsBackendRuleRejectionsAsClientErrors();
 	createsStructuredRule();
 	acceptsMaximumDestinationPortAndNullOptionalAddresses();
 	rejectsInvalidRuleRequestsBeforeBackendMutation();

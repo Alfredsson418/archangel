@@ -1,11 +1,11 @@
 #pragma once
 
-#include "auth/providers/auth_provider.hpp"
+#include "auth/auth_provider.hpp"
 #include "config/app_config.hpp"
 #include "cpp-httplib/cpp-httplib.hpp"
-#include "firewall/providers/firewall.hpp"
+#include "firewall/firewall.hpp"
 #include "http/authentication.hpp"
-#include "logs/providers/log_source.hpp"
+#include "logs/log_source.hpp"
 
 #include <chrono>
 #include <memory>

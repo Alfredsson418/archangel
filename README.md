@@ -67,7 +67,7 @@ username with `ADMIN_USER=name`, and write a default runtime config with
 deletes it, including local accounts. Other `./archangel` commands below refer
 to `bin/archangel`, for example `sudo bin/archangel --help`.
 
-For deployment, `make build_release` builds an optimized binary with fortification, stack protection, PIE, and full RELRO.
+For deployment, `make release` builds an optimized binary with fortification, stack protection, PIE, and full RELRO.
 
 See the [test and verification guide](docs/test.md) for prerequisites, test coverage, commands, expected output, and GitHub Actions behavior.
 

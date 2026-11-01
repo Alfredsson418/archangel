@@ -9,7 +9,7 @@ from .helpers import DashboardTestCase
 
 class SettingsPageTests(DashboardTestCase):
     def test_configuration_page_is_rendered(self):
-        response = self.client.get("/config")
+        response = self.client.get("/api-connection")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"API base URL", response.data)
         self.assertIn(b"http://127.0.0.1:8080", response.data)
@@ -65,7 +65,7 @@ class SettingsPageTests(DashboardTestCase):
 
     def test_browser_cannot_change_backend_destination(self):
         response = self.client.post(
-            "/config",
+            "/api-connection",
             data={
                 "api_url": "http://10.0.0.5:8081/",
                 "action": "save",

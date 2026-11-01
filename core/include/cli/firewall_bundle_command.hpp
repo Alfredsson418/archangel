@@ -1,11 +1,11 @@
 #pragma once
 
-#include "firewall/providers/firewall.hpp"
-#include "firewall/providers/firewall_config_provider.hpp"
+#include "firewall/firewall.hpp"
+#include "firewall/firewall_bundle_provider.hpp"
 
 #include <string>
 
-namespace FirewallConfigCommand {
+namespace FirewallBundleCommand {
 
 /**
  * @brief Requires a firewall backend to support bundle import and export.
@@ -13,7 +13,7 @@ namespace FirewallConfigCommand {
  * @return The backend's firewall configuration provider.
  * @throws std::runtime_error If the backend lacks this optional capability.
  */
-FirewallConfigProvider &requireProvider(Firewall &firewall);
+FirewallBundleProvider &requireProvider(Firewall &firewall);
 
 /**
  * @brief Reads a bounded firewall configuration bundle from disk.
@@ -33,4 +33,4 @@ std::string readBundle(const std::string &path);
  */
 void writeBundle(const std::string &path, const std::string &ruleset);
 
-} // namespace FirewallConfigCommand
+} // namespace FirewallBundleCommand

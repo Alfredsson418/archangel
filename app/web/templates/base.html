@@ -24,7 +24,7 @@
           <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('pages.index') }}" {% if page == 'dashboard' %}aria-current="page"{% endif %}><span class="nav-index">01</span>Overview</a>
           <a class="nav-link {% if page == 'rules' %}active{% endif %}" href="{{ url_for('pages.rules_page') }}" {% if page == 'rules' %}aria-current="page"{% endif %}><span class="nav-index">02</span>Firewall configuration</a>
           <a class="nav-link {% if page == 'system' %}active{% endif %}" href="{{ url_for('pages.system_page') }}" {% if page == 'system' %}aria-current="page"{% endif %}><span class="nav-index">03</span>System management</a>
-          <a class="nav-link {% if page == 'config' %}active{% endif %}" href="{{ url_for('pages.config_page') }}" {% if page == 'config' %}aria-current="page"{% endif %}><span class="nav-index">04</span>Configuration</a>
+          <a class="nav-link {% if page == 'api_connection' %}active{% endif %}" href="{{ url_for('pages.api_connection_page') }}" {% if page == 'api_connection' %}aria-current="page"{% endif %}><span class="nav-index">04</span>API connection</a>
         </nav>
         <div class="sidebar-foot"><span class="edge-indicator" aria-hidden="true"></span><span>CONNECTED SERVER</span></div>
       {% endif %}

@@ -62,4 +62,4 @@ void serializesStatisticsResponse() {
 }
 } // namespace
 
-void runStatisticsApiTests() { serializesStatisticsResponse(); }
+void runStatsApiTests() { serializesStatisticsResponse(); }

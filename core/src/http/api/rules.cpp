@@ -151,6 +151,8 @@ void createRule(Firewall &firewall, const httplib::Request &request,
 			"application/json");
 	} catch (const ApiError &error) {
 		Detail::sendError(response, error);
+	} catch (const InvalidRuleError &error) {
+		Detail::sendError(response, ValidationError(error.what()));
 	} catch (const std::exception &error) {
 		Detail::sendOperationError(response, "POST /api/v1/rules", error,
 								   "firewall_error",
@@ -173,6 +175,8 @@ void deleteRule(Firewall &firewall, const httplib::Request &request,
 			"application/json");
 	} catch (const ApiError &error) {
 		Detail::sendError(response, error);
+	} catch (const InvalidRuleError &error) {
+		Detail::sendError(response, ValidationError(error.what()));
 	} catch (const std::exception &error) {
 		Detail::sendOperationError(response, "DELETE /api/v1/rules", error,
 								   "firewall_error",

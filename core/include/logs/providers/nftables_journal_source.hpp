@@ -1,7 +1,7 @@
 #pragma once
 
-#include "firewall/providers/firewall.hpp"
-#include "logs/providers/log_source.hpp"
+#include "firewall/firewall.hpp"
+#include "logs/log_source.hpp"
 
 namespace Logging {
 

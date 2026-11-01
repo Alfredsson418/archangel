@@ -1,6 +1,6 @@
 #pragma once
 
-#include "auth/providers/auth_provider.hpp"
+#include "auth/auth_provider.hpp"
 #include "config/app_config.hpp"
 #include "cpp-httplib/cpp-httplib.hpp"
 

@@ -1,6 +1,6 @@
 #include "http/request_audit.hpp"
 
-#include "logger.hpp"
+#include "logs/logger.hpp"
 #include "json/json.hpp"
 
 #include <array>

@@ -1,4 +1,4 @@
-#include "firewall/config.hpp"
+#include "firewall/bundle.hpp"
 #include "test_support.hpp"
 #include "json/json.hpp"
 
@@ -22,7 +22,7 @@ const std::string fullRuleset = R"({
 })";
 
 void roundTripsV2ManagedAndExternalSections() {
-	const std::string encoded  = serializeFirewallConfig(fullRuleset);
+	const std::string encoded  = serializeFirewallBundle(fullRuleset);
 	const Json		  document = Json::parse(encoded);
 	TestSupport::require(
 		document["format"] == "archangel-firewall-config",
@@ -37,7 +37,7 @@ void roundTripsV2ManagedAndExternalSections() {
 	TestSupport::require(document["firewall"]["archangel_rules"].size() == 1,
 						 "v2 managed section should contain marked rules only");
 
-	const FirewallConfig config	  = parseFirewallConfig(encoded);
+	const FirewallBundle config	  = parseFirewallBundle(encoded);
 	const Json			 combined = Json::parse(config.ruleset);
 	TestSupport::require(combined["nftables"].size() == 5,
 						 "combined ruleset should reconstruct every object");
@@ -47,60 +47,60 @@ void roundTripsV2ManagedAndExternalSections() {
 }
 
 void rejectsIncorrectOwnershipSections() {
-	Json document = Json::parse(serializeFirewallConfig(fullRuleset));
+	Json document = Json::parse(serializeFirewallBundle(fullRuleset));
 	document["firewall"]["archangel_rules"].push_back(Json{
 		{"rule", {{"family", "inet"}, {"comment", "external"}}}
 	   });
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { parseFirewallConfig(document.dump()); },
+		[&] { parseFirewallBundle(document.dump()); },
 		"unmarked rules must not be accepted as Archangel-owned");
 
-	document = Json::parse(serializeFirewallConfig(fullRuleset));
+	document = Json::parse(serializeFirewallBundle(fullRuleset));
 	document["firewall"]["other_ruleset"]["nftables"].push_back(
 		document["firewall"]["archangel_rules"][0]);
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { parseFirewallConfig(document.dump()); },
+		[&] { parseFirewallBundle(document.dump()); },
 		"marked rules must not appear in the external section");
 }
 
 void rejectsUnsupportedConfigVersions() {
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseFirewallConfig(
+			parseFirewallBundle(
 				R"({"format":"archangel-firewall-config","version":2,"firewall":{"other_ruleset":{"nftables":[]},"archangel_rules":[]}})");
 		},
 		"the former version 2 firewall bundle must be rejected");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseFirewallConfig(
+			parseFirewallBundle(
 				R"({"format":"archangel-firewall-config","version":1,"server":{"interface":"127.0.0.1","port":8080},"firewall":{"other_ruleset":{"nftables":[]},"archangel_rules":[]}})");
 		},
 		"firewall bundles must reject listener settings");
 	TestSupport::requireThrows<std::runtime_error>(
 		[] {
-			parseFirewallConfig(
+			parseFirewallBundle(
 				R"({"format":"archangel-backend-config","version":2,"server":{"interface":"127.0.0.1","port":8080},"firewall":{"other_ruleset":{"nftables":[]},"archangel_rules":[]}})");
 		},
 		"the ambiguous old format name must not be accepted");
 }
 
 void resolvesImportModes() {
-	TestSupport::require(resolveFirewallConfigImportMode("replace") ==
-							 FirewallConfigImportMode::ReplaceArchangel,
+	TestSupport::require(resolveFirewallBundleImportMode("replace") ==
+							 FirewallBundleImportMode::ReplaceArchangel,
 						 "replace must target only marked Archangel rules");
-	TestSupport::require(resolveFirewallConfigImportMode("replace-all") ==
-							 FirewallConfigImportMode::ReplaceAll,
+	TestSupport::require(resolveFirewallBundleImportMode("replace-all") ==
+							 FirewallBundleImportMode::ReplaceAll,
 						 "replace-all must explicitly target the full ruleset");
-	TestSupport::require(resolveFirewallConfigImportMode("merge") ==
-							 FirewallConfigImportMode::Merge,
+	TestSupport::require(resolveFirewallBundleImportMode("merge") ==
+							 FirewallBundleImportMode::Merge,
 						 "merge must be supported");
 	TestSupport::requireThrows<std::runtime_error>(
-		[] { resolveFirewallConfigImportMode("invalid"); },
+		[] { resolveFirewallBundleImportMode("invalid"); },
 		"unknown import modes should fail");
 }
 } // namespace
 
-void runFirewallConfigTests() {
+void runFirewallBundleTests() {
 	roundTripsV2ManagedAndExternalSections();
 	rejectsIncorrectOwnershipSections();
 	rejectsUnsupportedConfigVersions();

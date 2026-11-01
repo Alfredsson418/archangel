@@ -5,8 +5,8 @@
 // (sqlite_auth_accounts.cpp) translation units.
 
 #include "../auth_crypto.hpp"
-#include "../sqlite_auth_storage.hpp"
 #include "auth/providers/sqlite_auth_provider.hpp"
+#include "sqlite_auth_storage.hpp"
 
 #include <sqlite3.h>
 

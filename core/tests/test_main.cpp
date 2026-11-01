@@ -1,14 +1,14 @@
 #include <exception>
 #include <iostream>
 
-void runFirewallConfigTests();
+void runFirewallBundleTests();
 void runAuthProviderTests();
 void runRuntimeConfigTests();
 void runNftStatisticsTests();
 void runNftImportTests();
 void runRulesApiTests();
-void runStatisticsApiTests();
-void runFirewallConfigCommandTests();
+void runStatsApiTests();
+void runFirewallBundleCommandTests();
 void runNetworkAddressTests();
 void runHttpAuthenticationTests();
 void runAuthApiTests();
@@ -20,12 +20,12 @@ int main() {
 	try {
 		runAuthProviderTests();
 		runRuntimeConfigTests();
-		runFirewallConfigTests();
+		runFirewallBundleTests();
 		runNftStatisticsTests();
 		runNftImportTests();
 		runRulesApiTests();
-		runStatisticsApiTests();
-		runFirewallConfigCommandTests();
+		runStatsApiTests();
+		runFirewallBundleCommandTests();
 		runNetworkAddressTests();
 		runHttpAuthenticationTests();
 		runAuthApiTests();

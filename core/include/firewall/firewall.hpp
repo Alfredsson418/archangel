@@ -3,7 +3,20 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
+
+/**
+ * @brief Thrown when a firewall backend rejects a rule or rule target as
+ * invalid, as opposed to failing to apply it.
+ *
+ * The message describes the invalid field without echoing its value and is
+ * safe to return to API callers.
+ */
+class InvalidRuleError : public std::invalid_argument {
+  public:
+	using std::invalid_argument::invalid_argument;
+};
 
 struct RuleSpec {
 	std::string					 family;
@@ -46,6 +59,7 @@ class Firewall {
 	 * @brief Adds a validated rule to the selected firewall backend.
 	 * @param rule Structured description of the rule to add.
 	 * @return No value.
+	 * @throws InvalidRuleError If the backend rejects the rule as invalid.
 	 * @throws std::exception If the rule cannot be applied.
 	 */
 	virtual void addRule(const RuleSpec &rule) = 0;
@@ -57,7 +71,8 @@ class Firewall {
 	 * @param chain Chain containing the rule.
 	 * @param handle Positive backend rule handle.
 	 * @return No value.
-	 * @throws std::exception If the target is invalid or deletion fails.
+	 * @throws InvalidRuleError If the target is invalid.
+	 * @throws std::exception If deletion fails.
 	 */
 	virtual void deleteRule(const std::string &family, const std::string &table,
 							const std::string &chain, std::uint64_t handle) = 0;

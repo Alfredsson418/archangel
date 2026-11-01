@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from server import app
 from webapp.api_client import ApiClient, UrllibTransport, create_ssl_context
-from webapp.logging_config import JsonlFileHandler
+from webapp.audit_log import JsonlFileHandler
 
 from .helpers import TEST_ACTOR_ID, DashboardTestCase, UpstreamResponse
 
@@ -20,12 +20,12 @@ def read_records(path):
 class LoggingTests(DashboardTestCase):
     def test_dashboard_request_logging_omits_query_values(self):
         with self.assertLogs(app.logger, level="INFO") as captured:
-            response = self.client.get("/config?token=do-not-log")
+            response = self.client.get("/api-connection?token=do-not-log")
 
         self.assertEqual(response.status_code, 200)
         messages = "\n".join(captured.output)
         self.assertIn(
-            "request_completed method=GET path=/config status=200 outcome=success", messages
+            "request_completed method=GET path=/api-connection status=200 outcome=success", messages
         )
         self.assertNotIn("do-not-log", messages)
         response.close()
@@ -51,16 +51,16 @@ class LoggingTests(DashboardTestCase):
 
     def test_requests_are_recorded_as_owner_only_jsonl(self):
         log_path = Path(os.environ["ARCHANGEL_WEB_LOG_PATH"])
-        response = self.client.get("/config?token=do-not-log")
+        response = self.client.get("/api-connection?token=do-not-log")
         response.close()
 
         records = read_records(log_path)
         authorized = [r for r in records if r["event"] == "dashboard_request_authorized"][-1]
-        self.assertEqual(authorized["path"], "/config")
+        self.assertEqual(authorized["path"], "/api-connection")
         self.assertEqual(authorized["actor_id"], TEST_ACTOR_ID)
         completed = [r for r in records if r["event"] == "request_completed"][-1]
         self.assertEqual(completed["service"], "dashboard")
-        self.assertEqual(completed["path"], "/config")
+        self.assertEqual(completed["path"], "/api-connection")
         self.assertEqual(completed["status"], "200")
         self.assertEqual(completed["outcome"], "success")
         self.assertEqual(completed["actor_id"], TEST_ACTOR_ID)
@@ -73,7 +73,7 @@ class LoggingTests(DashboardTestCase):
         handler = app.extensions["archangel_audit_log"]
         with patch.object(handler, "write_audit", return_value=False):
             post = self.client.post("/logout", data={"csrf_token": self.csrf_token()})
-            page = self.client.get("/config")
+            page = self.client.get("/api-connection")
             health = self.client.get("/healthz")
         self.assertEqual(post.status_code, 503)
         self.assertEqual(page.status_code, 503)

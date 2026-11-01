@@ -12,7 +12,7 @@
 #include "http/authentication.hpp"
 #include "http/request_audit.hpp"
 #include "http/tls.hpp"
-#include "logger.hpp"
+#include "logs/logger.hpp"
 #include <chrono>
 #include <optional>
 #include <stdexcept>

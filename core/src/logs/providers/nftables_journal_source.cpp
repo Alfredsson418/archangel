@@ -1,7 +1,7 @@
 #include "logs/providers/nftables_journal_source.hpp"
 
 #include "config/app_config.hpp"
-#include "logger.hpp"
+#include "logs/logger.hpp"
 #include "json/json.hpp"
 
 #include <algorithm>

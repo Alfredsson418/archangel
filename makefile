@@ -6,7 +6,7 @@ NAME = archangel
 
 # Directories
 # The binary is built into OUT. Debug builds keep their private state, including
-# app.log, in OUT/.archangel-dev beside it.
+# backend.jsonl, in OUT/.archangel-dev beside it.
 OUT = bin
 TARGET = $(OUT)/$(NAME)
 CORE = core
@@ -56,11 +56,11 @@ TEST_SRCFILES = $(shell find $(CORE)/tests -name '*.cpp')
 # and the nftables provider (which needs libnftables and a live ruleset).
 TEST_EXCLUDED_SRCFILES = $(SRC)/main.cpp $(SRC)/app/application.cpp \
 	$(SRC)/http/server.cpp $(SRC)/firewall/providers/nft.cpp \
-	$(SRC)/firewall/providers/nft_config.cpp
+	$(SRC)/firewall/providers/nft_bundle.cpp
 TEST_APP_SRCFILES = $(filter-out $(TEST_EXCLUDED_SRCFILES),$(SRCFILES))
 TEST_BINARY = $(BUILD)/$(CORE)/tests/backend_tests
 
-.PHONY: debug build_release test clean clean-dev-state run bootstrap-admin recover-admin config FORCE
+.PHONY: debug release test clean clean-dev-state run bootstrap-admin recover-admin config FORCE
 
 FORCE:
 
@@ -80,7 +80,7 @@ debug: $(DEBUG_OBJFILES) $(DEBUG_LIB_OBJFILES)
 
 
 # Target to build the executable with release flags
-build_release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
+release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
 	@mkdir -p $(OUT)
 	@echo "Building $(TARGET) in release mode"
 	@$(CC) $(RELEASE_CFLAGS) $(RELEASE_LDFLAGS) $^ -o $(TARGET) $(LDFLAGS)

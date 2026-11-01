@@ -2,7 +2,7 @@
 
 // Shared fixtures for the HTTP authentication, login, and account API tests.
 
-#include "auth/providers/auth_provider.hpp"
+#include "auth/auth_provider.hpp"
 #include "cpp-httplib/cpp-httplib.hpp"
 #include "http/api/schema.hpp"
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "cpp-httplib/cpp-httplib.hpp"
-#include "error.hpp"
-#include "logger.hpp"
+#include "http/api/error.hpp"
+#include "logs/logger.hpp"
 #include "json/json.hpp"
 #include <exception>
 #include <string>

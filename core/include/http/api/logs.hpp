@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cpp-httplib/cpp-httplib.hpp"
-#include "logs/providers/log_source.hpp"
+#include "logs/log_source.hpp"
 
 #include <memory>
 #include <vector>

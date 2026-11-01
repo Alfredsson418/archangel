@@ -1,6 +1,6 @@
 #pragma once
 
-#include "firewall/providers/firewall.hpp"
+#include "firewall/firewall.hpp"
 #include <string>
 
 /**

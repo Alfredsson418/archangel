@@ -1,7 +1,7 @@
 #pragma once
 
+#include "auth/auth_provider.hpp"
 #include "auth/password_blocklist.hpp"
-#include "auth/providers/auth_provider.hpp"
 #include "config/app_config.hpp"
 
 #include <chrono>

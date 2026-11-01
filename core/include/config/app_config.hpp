@@ -97,7 +97,7 @@ inline constexpr std::size_t  MAX_LOGIN_BODY_BYTES			   = 16 * 1024;
 inline constexpr std::size_t  MAX_ACCOUNT_BODY_BYTES		   = 16 * 1024;
 inline constexpr std::int64_t MAX_RUNTIME_CONFIG_BYTES		   = 1024 * 1024;
 inline constexpr std::size_t  MAX_RUNTIME_CONFIG_STRING_LENGTH = 4096;
-inline constexpr std::int64_t MAX_FIREWALL_CONFIG_BYTES = 16 * 1024 * 1024;
+inline constexpr std::int64_t MAX_FIREWALL_BUNDLE_BYTES = 16 * 1024 * 1024;
 // Operator-provided list of common or compromised passwords, held in memory.
 inline constexpr std::int64_t MAX_PASSWORD_BLOCKLIST_BYTES = 64 * 1024 * 1024;
 

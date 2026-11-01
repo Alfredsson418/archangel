@@ -1,6 +1,6 @@
 #pragma once
 
-#include "auth/providers/auth_provider.hpp"
+#include "auth/auth_provider.hpp"
 #include "cpp-httplib/cpp-httplib.hpp"
 
 namespace HttpApi {

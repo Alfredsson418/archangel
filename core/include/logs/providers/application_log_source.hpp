@@ -1,6 +1,6 @@
 #pragma once
 
-#include "logs/providers/log_source.hpp"
+#include "logs/log_source.hpp"
 
 #include <string>
 

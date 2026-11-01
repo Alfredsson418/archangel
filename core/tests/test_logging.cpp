@@ -1,6 +1,6 @@
 #include "config/app_config.hpp"
 #include "http/request_audit.hpp"
-#include "logger.hpp"
+#include "logs/logger.hpp"
 #include "logs/providers/application_log_source.hpp"
 #include "logs/providers/jsonl_file_sink.hpp"
 #include "logs/providers/nftables_journal_source.hpp"

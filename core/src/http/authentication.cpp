@@ -1,7 +1,7 @@
 #include "http/authentication.hpp"
 #include "config/app_config.hpp"
 #include "http/api/schema.hpp"
-#include "logger.hpp"
+#include "logs/logger.hpp"
 #include "json/json.hpp"
 
 #include <algorithm>

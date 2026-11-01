@@ -1,5 +1,5 @@
 #include "config/app_config.hpp"
-#include "logs/providers/log_source.hpp"
+#include "logs/log_source.hpp"
 
 #include <regex>
 #include <string>

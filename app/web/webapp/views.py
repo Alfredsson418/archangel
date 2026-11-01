@@ -19,7 +19,7 @@ from .api_client import (
     ApiConnectionError,
     ApiResponseError,
 )
-from .backend import BackendSessionExpired, load, load_all
+from .page_data import BackendSessionExpired, load, load_all
 from .firewall_rules import (
     MAX_IMPORTED_RULES,
     MAX_RULE_BUNDLE_BYTES,
@@ -419,15 +419,15 @@ def system_logs_page():
     )
 
 
-@pages.get("/config")
-def config_page():
+@pages.get("/api-connection")
+def api_connection_page():
     """Render the deployment-selected API address without allowing browser edits.
 
     Returns:
         A pair of (rendered HTML, HTTP status code) for Flask to return.
     """
     return render_template(
-        "config.html",
+        "api_connection.html",
         api_url=current_app.config["API_URL"],
         api_url_source="ARCHANGEL_API_URL" if current_app.config.get(
             "API_URL_FROM_ENV"

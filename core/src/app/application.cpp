@@ -1,14 +1,14 @@
 #include "app/application.hpp"
 #include "auth/providers/sqlite_auth_provider.hpp"
 #include "auth/secret_input.hpp"
-#include "cli/firewall_config.hpp"
+#include "cli/firewall_bundle_command.hpp"
 #include "config/runtime_config.hpp"
-#include "firewall/config.hpp"
-#include "firewall/providers/firewall_config_provider.hpp"
+#include "firewall/bundle.hpp"
+#include "firewall/firewall_bundle_provider.hpp"
 #include "firewall/providers/nft.hpp"
 #include "http/server.hpp"
 #include "http/tls.hpp"
-#include "logger.hpp"
+#include "logs/logger.hpp"
 #include "logs/providers/application_log_source.hpp"
 #include "logs/providers/jsonl_file_sink.hpp"
 #include "logs/providers/nftables_journal_source.hpp"
@@ -118,11 +118,11 @@ int runApplication(int argc, char *argv[]) {
 					   "HTTP server bind address (overrides runtime config)");
 	auto *portOption = app.add_option(
 		"--port", portOverride, "HTTP server port (overrides runtime config)");
-	std::string importFirewallConfigPath;
-	std::string exportFirewallConfigPath;
-	app.add_option("--import-firewall-config", importFirewallConfigPath,
+	std::string importFirewallBundlePath;
+	std::string exportFirewallBundlePath;
+	app.add_option("--import-firewall-config", importFirewallBundlePath,
 				   "Import a versioned firewall ruleset bundle before serving");
-	app.add_option("--export-firewall-config", exportFirewallConfigPath,
+	app.add_option("--export-firewall-config", exportFirewallBundlePath,
 				   "Export the complete nftables ruleset as a firewall bundle");
 	std::string rulesModeText;
 	auto	   *rulesModeOption =
@@ -134,8 +134,8 @@ int runApplication(int argc, char *argv[]) {
 
 	if (generateConfigCommand->parsed()) {
 		if (runtimeConfigOption->count() > 0 || hostOption->count() > 0 ||
-			portOption->count() > 0 || !importFirewallConfigPath.empty() ||
-			!exportFirewallConfigPath.empty() || rulesModeOption->count() > 0) {
+			portOption->count() > 0 || !importFirewallBundlePath.empty() ||
+			!exportFirewallBundlePath.empty() || rulesModeOption->count() > 0) {
 			std::cerr << "config generate cannot be combined with runtime "
 						 "overrides or firewall bundle operations\n";
 			return 2;
@@ -250,24 +250,24 @@ int runApplication(int argc, char *argv[]) {
 		}
 	}
 
-	if (!importFirewallConfigPath.empty() &&
-		!exportFirewallConfigPath.empty()) {
+	if (!importFirewallBundlePath.empty() &&
+		!exportFirewallBundlePath.empty()) {
 		std::cerr
 			<< "--import-firewall-config and --export-firewall-config cannot "
 			   "be used together\n";
 		return 2;
 	}
-	if (!importFirewallConfigPath.empty() && rulesModeOption->count() == 0) {
+	if (!importFirewallBundlePath.empty() && rulesModeOption->count() == 0) {
 		std::cerr << "--firewall-rules-mode merge|replace is required with "
 					 "--import-firewall-config\n";
 		return 2;
 	}
-	if (importFirewallConfigPath.empty() && rulesModeOption->count() > 0) {
+	if (importFirewallBundlePath.empty() && rulesModeOption->count() > 0) {
 		std::cerr << "--firewall-rules-mode can only be used with "
 					 "--import-firewall-config\n";
 		return 2;
 	}
-	if (!importFirewallConfigPath.empty() && rulesModeText != "merge" &&
+	if (!importFirewallBundlePath.empty() && rulesModeText != "merge" &&
 		rulesModeText != "replace" && rulesModeText != "replace-all") {
 		std::cerr << "--firewall-rules-mode must be merge, replace, or "
 					 "replace-all\n";
@@ -292,12 +292,12 @@ int runApplication(int argc, char *argv[]) {
 	try {
 		Nftables nftables;
 
-		if (!exportFirewallConfigPath.empty()) {
-			FirewallConfigProvider &configProvider =
-				FirewallConfigCommand::requireProvider(nftables);
-			FirewallConfigCommand::writeBundle(
-				exportFirewallConfigPath,
-				configProvider.exportFirewallConfig());
+		if (!exportFirewallBundlePath.empty()) {
+			FirewallBundleProvider &configProvider =
+				FirewallBundleCommand::requireProvider(nftables);
+			FirewallBundleCommand::writeBundle(
+				exportFirewallBundlePath,
+				configProvider.exportFirewallBundle());
 			Logger::Program::log("Exported Archangel firewall config bundle");
 			return 0;
 		}
@@ -314,13 +314,13 @@ int runApplication(int argc, char *argv[]) {
 			return sources;
 		};
 
-		if (!importFirewallConfigPath.empty()) {
-			FirewallConfigProvider &configProvider =
-				FirewallConfigCommand::requireProvider(nftables);
-			const FirewallConfigImportMode importMode =
-				resolveFirewallConfigImportMode(rulesModeText);
-			configProvider.importFirewallConfig(
-				FirewallConfigCommand::readBundle(importFirewallConfigPath),
+		if (!importFirewallBundlePath.empty()) {
+			FirewallBundleProvider &configProvider =
+				FirewallBundleCommand::requireProvider(nftables);
+			const FirewallBundleImportMode importMode =
+				resolveFirewallBundleImportMode(rulesModeText);
+			configProvider.importFirewallBundle(
+				FirewallBundleCommand::readBundle(importFirewallBundlePath),
 				importMode);
 			Logger::Program::log("Imported Archangel firewall config bundle");
 			HttpServer server(nftables, authProvider, logSources(),

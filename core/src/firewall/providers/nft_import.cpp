@@ -1,6 +1,6 @@
 #include "nft_import.hpp"
 
-#include "firewall/config.hpp"
+#include "firewall/bundle.hpp"
 #include "json/json.hpp"
 
 #include <stdexcept>

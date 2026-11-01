@@ -17,7 +17,7 @@ class DashboardAuthenticationTests(DashboardTestCase):
             browser_session["_csrf_token"] = "test-csrf-token"
 
     def test_protected_pages_require_dashboard_login(self):
-        for path in ("/", "/rules", "/system", "/system/logs", "/config"):
+        for path in ("/", "/rules", "/system", "/system/logs", "/api-connection"):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 302)
@@ -156,11 +156,11 @@ class DashboardAuthenticationTests(DashboardTestCase):
     def test_unchanged_session_is_not_rewritten(self):
         with self.client.session_transaction() as browser_session:
             browser_session["access_token"] = "test-api-access-token"
-        first = self.client.get("/config")
+        first = self.client.get("/api-connection")
         self.assertEqual(first.status_code, 200)
         first.close()
 
-        response = self.client.get("/config")
+        response = self.client.get("/api-connection")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.headers.get("Set-Cookie"))
         response.close()

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "firewall/providers/firewall.hpp"
-#include "firewall/providers/firewall_config_provider.hpp"
+#include "firewall/firewall.hpp"
+#include "firewall/firewall_bundle_provider.hpp"
 #include <mutex>
 #include <nftables/libnftables.h>
 #include <stdexcept>
 #include <string>
 
-class Nftables : public Firewall, public FirewallConfigProvider {
+class Nftables : public Firewall, public FirewallBundleProvider {
   public:
 	/**
 	 * @brief Creates an nftables context configured for buffered JSON output.
@@ -32,7 +32,7 @@ class Nftables : public Firewall, public FirewallConfigProvider {
 	 * @return Versioned firewall bundle JSON.
 	 * @throws std::exception If the active configuration cannot be exported.
 	 */
-	std::string exportFirewallConfig() override;
+	std::string exportFirewallBundle() override;
 
 	/**
 	 * @brief Validates and applies a versioned firewall bundle.
@@ -41,8 +41,8 @@ class Nftables : public Firewall, public FirewallConfigProvider {
 	 * @return No value.
 	 * @throws std::exception If the bundle is invalid or cannot be applied.
 	 */
-	void importFirewallConfig(const std::string		  &bundle,
-							  FirewallConfigImportMode mode) override;
+	void importFirewallBundle(const std::string		  &bundle,
+							  FirewallBundleImportMode mode) override;
 
 	/**
 	 * @brief Implements Firewall::getStatistics.
@@ -54,8 +54,8 @@ class Nftables : public Firewall, public FirewallConfigProvider {
 	 * @brief Implements Firewall::addRule using libnftables.
 	 * @param rule Structured rule description.
 	 * @return No value.
-	 * @throws ApiError If the rule is invalid; std::exception if nftables
-	 * fails.
+	 * @throws InvalidRuleError If the rule is invalid; std::exception if
+	 * nftables fails.
 	 */
 	void addRule(const RuleSpec &rule) override;
 
@@ -66,8 +66,8 @@ class Nftables : public Firewall, public FirewallConfigProvider {
 	 * @param chain Chain containing the rule.
 	 * @param handle Positive nftables rule handle.
 	 * @return No value.
-	 * @throws ApiError If the target is invalid; std::exception if nftables
-	 * fails.
+	 * @throws InvalidRuleError If the target is invalid; std::exception if
+	 * nftables fails.
 	 */
 	void deleteRule(const std::string &family, const std::string &table,
 					const std::string &chain, std::uint64_t handle) override;

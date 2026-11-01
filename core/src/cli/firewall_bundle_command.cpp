@@ -1,15 +1,15 @@
-#include "cli/firewall_config.hpp"
+#include "cli/firewall_bundle_command.hpp"
 #include "config/app_config.hpp"
-#include "firewall/config.hpp"
+#include "firewall/bundle.hpp"
 
 #include <fstream>
 #include <stdexcept>
 
-namespace FirewallConfigCommand {
+namespace FirewallBundleCommand {
 namespace {}
 
-FirewallConfigProvider &requireProvider(Firewall &firewall) {
-	auto *provider = dynamic_cast<FirewallConfigProvider *>(&firewall);
+FirewallBundleProvider &requireProvider(Firewall &firewall) {
+	auto *provider = dynamic_cast<FirewallBundleProvider *>(&firewall);
 	if (provider == nullptr) {
 		throw std::runtime_error(
 			"The selected firewall backend does not support config "
@@ -26,7 +26,7 @@ std::string readBundle(const std::string &path) {
 	}
 	input.seekg(0, std::ios::end);
 	const std::streamoff size = input.tellg();
-	if (size <= 0 || size > AppConfigLimits::MAX_FIREWALL_CONFIG_BYTES) {
+	if (size <= 0 || size > AppConfigLimits::MAX_FIREWALL_BUNDLE_BYTES) {
 		throw std::runtime_error(
 			"Firewall config bundle must be between 1 byte and 16 MiB");
 	}
@@ -40,9 +40,9 @@ std::string readBundle(const std::string &path) {
 }
 
 void writeBundle(const std::string &path, const std::string &ruleset) {
-	const std::string configuration = serializeFirewallConfig(ruleset);
+	const std::string configuration = serializeFirewallBundle(ruleset);
 	if (configuration.size() >
-		static_cast<std::size_t>(AppConfigLimits::MAX_FIREWALL_CONFIG_BYTES)) {
+		static_cast<std::size_t>(AppConfigLimits::MAX_FIREWALL_BUNDLE_BYTES)) {
 		throw std::runtime_error(
 			"Exported firewall config exceeds the 16 MiB limit");
 	}
@@ -60,4 +60,4 @@ void writeBundle(const std::string &path, const std::string &ruleset) {
 	}
 }
 
-} // namespace FirewallConfigCommand
+} // namespace FirewallBundleCommand

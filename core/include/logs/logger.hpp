@@ -1,6 +1,6 @@
 #pragma once
 
-#include "logs/providers/log_sink.hpp"
+#include "logs/log_sink.hpp"
 
 #include <memory>
 #include <string>

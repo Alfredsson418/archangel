@@ -1,5 +1,5 @@
-#include "cli/firewall_config.hpp"
-#include "firewall/config.hpp"
+#include "cli/firewall_bundle_command.hpp"
+#include "firewall/bundle.hpp"
 #include "test_support.hpp"
 
 #include <cstdlib>
@@ -52,7 +52,7 @@ class TemporaryDirectory {
 void requiresAnImportExportCapableBackend() {
 	TestFirewall firewall;
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { FirewallConfigCommand::requireProvider(firewall); },
+		[&] { FirewallBundleCommand::requireProvider(firewall); },
 		"unsupported firewall backends should fail explicitly");
 }
 
@@ -61,9 +61,9 @@ void writesAndReadsVersionedBundles() {
 	const auto		   path	   = directory.file("bundle.json");
 	const std::string  ruleset = R"({"nftables":[]})";
 
-	FirewallConfigCommand::writeBundle(path.string(), ruleset);
-	const std::string bundle = FirewallConfigCommand::readBundle(path.string());
-	const FirewallConfig parsed = parseFirewallConfig(bundle);
+	FirewallBundleCommand::writeBundle(path.string(), ruleset);
+	const std::string bundle = FirewallBundleCommand::readBundle(path.string());
+	const FirewallBundle parsed = parseFirewallBundle(bundle);
 	TestSupport::require(parsed.ruleset == ruleset,
 						 "written bundle should preserve its native ruleset");
 }
@@ -72,18 +72,18 @@ void rejectsMissingAndEmptyBundleFiles() {
 	TemporaryDirectory directory;
 	const auto		   missing = directory.file("missing.json");
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { FirewallConfigCommand::readBundle(missing.string()); },
+		[&] { FirewallBundleCommand::readBundle(missing.string()); },
 		"missing bundles should fail explicitly");
 
 	const auto empty = directory.file("empty.json");
 	std::ofstream(empty).close();
 	TestSupport::requireThrows<std::runtime_error>(
-		[&] { FirewallConfigCommand::readBundle(empty.string()); },
+		[&] { FirewallBundleCommand::readBundle(empty.string()); },
 		"empty bundles should be rejected");
 }
 } // namespace
 
-void runFirewallConfigCommandTests() {
+void runFirewallBundleCommandTests() {
 	requiresAnImportExportCapableBackend();
 	writesAndReadsVersionedBundles();
 	rejectsMissingAndEmptyBundleFiles();

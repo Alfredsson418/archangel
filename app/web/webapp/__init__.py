@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from flask import Flask, abort, redirect, request, session, url_for
 
 from .api_client import ApiClient, UrllibTransport, create_ssl_context
-from .logging_config import configure_logging, install_audit_gate
+from .audit_log import configure_logging, install_audit_gate
 from .server_sessions import SqliteSessionInterface
 from .settings import load_api_settings
 from .views import pages

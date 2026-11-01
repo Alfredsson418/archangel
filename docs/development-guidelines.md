@@ -17,7 +17,7 @@ These conventions apply to all code changes in Archangel. They complement the [a
 
 - Define each backend limit, bound, and built-in default exactly once in [`core/include/config/app_config.hpp`](../core/include/config/app_config.hpp): limits in `AppConfigLimits`, and defaults such as paths and session lifetimes in `AppConfigDefaults` or the `AppConfig` settings object. This covers values such as password, username, and token lengths; Argon2id bounds; request-body and file-size limits; log-read bounds; lifetimes; and rate-limit and tracking bounds.
 - Reference these constants wherever the value is needed, including in validation, error messages, and documentation comments. Do not add local `constexpr` copies or repeat the value as a literal.
-- Keep format and contract constants with the module that owns them, not in `app_config.hpp`. Examples are the API schema version and header in `core/include/http/api/schema.hpp`, the `archangel-managed` rule marker in `core/include/firewall/config.hpp`, the authentication database migration version, and fixed algorithm output sizes.
+- Keep format and contract constants with the module that owns them, not in `app_config.hpp`. Examples are the API schema version and header in `core/include/http/api/schema.hpp`, the `archangel-managed` rule marker in `core/include/firewall/bundle.hpp`, the authentication database migration version, and fixed algorithm output sizes.
 - In the dashboard, define each limit once as a named module constant and derive form attributes and user-facing text from it rather than repeating the number. When a dashboard value mirrors a backend limit, name the backend constant it mirrors in a comment; the backend remains authoritative.
 
 ## Documentation comments
@@ -31,7 +31,7 @@ These conventions apply to all code changes in Archangel. They complement the [a
 - Log at meaningful operational boundaries: service startup and failure, request method and path, response status and duration, backend API call outcomes, validation rejections, configuration changes, and firewall operation success or failure.
 - Include enough non-sensitive context to diagnose failures, such as operation name, error category, status, and duration. Log unexpected exceptions with appropriate severity, and do not swallow them silently.
 - Never log request or response bodies, query-string values, submitted form values, credentials, tokens, secrets, or raw firewall-rule input; log safe event summaries instead.
-- Follow the existing conventions in `core/include/logger.hpp` and `app/web/webapp/logging_config.py`.
+- Follow the existing conventions in `core/include/logs/logger.hpp` and `app/web/webapp/audit_log.py`.
 
 ## Keeping documentation synchronized
 

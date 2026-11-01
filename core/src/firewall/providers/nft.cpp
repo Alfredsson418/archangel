@@ -1,8 +1,7 @@
 #include "firewall/providers/nft.hpp"
 #include "config/app_config.hpp"
-#include "error.hpp"
-#include "firewall/config.hpp"
-#include "logger.hpp"
+#include "firewall/bundle.hpp"
+#include "logs/logger.hpp"
 #include "nft_import.hpp"
 #include "nft_statistics.hpp"
 #include "json/json.hpp"
@@ -68,14 +67,14 @@ bool isIpv6Address(const std::string &address) {
  * @param family Requested nftables family.
  * @param address Address text supplied by the caller.
  * @return No value.
- * @throws ValidationError If the address is invalid or incompatible.
+ * @throws InvalidRuleError If the address is invalid or incompatible.
  */
 void validateAddress(const std::string &family, const std::string &address) {
 	const bool ipv4 = isIpv4Address(address);
 	const bool ipv6 = isIpv6Address(address);
 	if ((!ipv4 && !ipv6) || (family == "ip" && !ipv4) ||
 		(family == "ip6" && !ipv6)) {
-		throw ValidationError("An address is invalid for the selected family");
+		throw InvalidRuleError("An address is invalid for the selected family");
 	}
 }
 
@@ -83,26 +82,26 @@ void validateAddress(const std::string &family, const std::string &address) {
  * @brief Validates every supported field and required match in a rule.
  * @param rule Backend-neutral rule description.
  * @return No value.
- * @throws ValidationError If a field is unsupported or invalid.
+ * @throws InvalidRuleError If a field is unsupported or invalid.
  */
 void validateRule(const RuleSpec &rule) {
 	if (rule.family != "ip" && rule.family != "ip6" && rule.family != "inet") {
-		throw ValidationError("family must be ip, ip6, or inet");
+		throw InvalidRuleError("family must be ip, ip6, or inet");
 	}
 	if (!isIdentifier(rule.table) || !isIdentifier(rule.chain)) {
-		throw ValidationError(
+		throw InvalidRuleError(
 			"table and chain must be valid nftables identifiers");
 	}
 	if (rule.protocol != "tcp" && rule.protocol != "udp") {
-		throw ValidationError("protocol must be tcp or udp");
+		throw InvalidRuleError("protocol must be tcp or udp");
 	}
 	if (rule.action != "accept" && rule.action != "drop" &&
 		rule.action != "reject") {
-		throw ValidationError("action must be accept, drop, or reject");
+		throw InvalidRuleError("action must be accept, drop, or reject");
 	}
 	if (!rule.source_address && !rule.destination_address &&
 		!rule.destination_port) {
-		throw ValidationError(
+		throw InvalidRuleError(
 			"at least one address or destination port match is required");
 	}
 	if (rule.source_address) {
@@ -347,7 +346,7 @@ void Nftables::deleteRule(const std::string &family, const std::string &table,
 						  const std::string &chain, std::uint64_t handle) {
 	if ((family != "ip" && family != "ip6" && family != "inet") ||
 		!isIdentifier(table) || !isIdentifier(chain) || handle == 0) {
-		throw ValidationError(
+		throw InvalidRuleError(
 			"family, table, chain, or rule handle is invalid");
 	}
 
