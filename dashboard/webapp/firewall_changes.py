@@ -31,7 +31,7 @@ _TABLE_TYPES = (CREATE_TABLE, DELETE_TABLE, SET_TABLE_ENABLED)
 _MAX_FLAG_CANDIDATES = 64
 _INCOMING_HOOKS = ("input", "prerouting")
 _MAX_HIGHLIGHTED_RULES = 200
-# With more rules than this, chains start collapsed so that the tree stays usable.
+# A table with more rules than this starts with its chains collapsed.
 _MAX_RULES_OPEN_BY_DEFAULT = 30
 _FAMILY_ORDER = ("inet", "ip", "ip6")
 # What the API accepts for chain and table changes; the rest is for the review.
@@ -193,9 +193,10 @@ def rule_tree(ruleset, query="", highlighted=(), changes=()):
     # rule changes, so those chains use the organize page instead.
     pending = {change_chain(change) for change in changes if change["type"] in (ADD_RULE, DELETE_RULE, REPLACE_RULE)}
     blocked = blocked_chains(changes)
-    open_by_default = bool(needle) or len(all_rules) <= _MAX_RULES_OPEN_BY_DEFAULT
     for table in tables.values():
         chains = list(table["chains"].values())
+        # A table with many rules starts with its chains collapsed.
+        open_by_default = bool(needle) or sum(chain["total"] for chain in chains) <= _MAX_RULES_OPEN_BY_DEFAULT
         for chain in chains:
             chain["open"] = open_by_default or chain["just_applied"]
             chain["blocked"] = chain["key"] in blocked
@@ -214,6 +215,34 @@ def rule_tree(ruleset, query="", highlighted=(), changes=()):
         if kept:
             result.append({"name": family, "tables": sorted(kept, key=lambda table: str(table["name"]))})
     return {"families": result, "total": len(all_rules), "matching": matching}
+
+
+def select_in_tree(tree, wanted):
+    """Choose what the rules page shows, falling back to something that exists.
+
+    Args:
+        tree: A tree from rule_tree.
+        wanted: A list of [family, table, chain], where chain may be empty.
+
+    Returns:
+        A dictionary with "family", "table", and "chain": the selected names,
+        or None for a chain if the whole table is selected, and for all three
+        if the tree is empty. A chain with just-applied rules wins, so that
+        the result of a change is on screen.
+    """
+    tables = [(family["name"], table) for family in tree["families"] for table in family["tables"]]
+    if not tables:
+        return {"family": None, "table": None, "chain": None}
+    for family, table in tables:
+        if any(chain["just_applied"] for chain in table["chains"]):
+            return {"family": family, "table": table["name"], "chain": None}
+    family_name, table_name, chain_name = (list(wanted) + [None, None, None])[:3]
+    for family, table in tables:
+        if family == family_name and table["name"] == table_name:
+            chains = [chain["name"] for chain in table["chains"]]
+            return {"family": family, "table": table["name"], "chain": chain_name if chain_name in chains else None}
+    family, table = tables[0]
+    return {"family": family, "table": table["name"], "chain": None}
 
 
 def _rule_matches(rule, needle):

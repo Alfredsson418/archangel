@@ -81,7 +81,7 @@ def work_ports():
 
 
 def row_text(page):
-    return [text.split("to port ")[1].split()[0] for text in page.locator('[data-tree-id="chain:inet filter work"] tbody tr').all_inner_texts()]
+    return [text.split("to port ")[1].split()[0] for text in page.locator('[data-chain="inet filter work"] tbody tr').all_inner_texts()]
 
 
 def drag(page, source, target):
@@ -136,8 +136,11 @@ def main():
             page.click('button[type="submit"]')
             page.goto(f"{WEB}/rules")
             shot("tree")
-            failures.check(page.locator('[data-tree-id="family:inet"]').is_visible(), "the family is visible")
-            failures.check(page.locator('[data-tree-id="chain:inet filter work"] tbody tr').count() == 4, "a chain's rules are visible in place")
+            failures.check(page.locator('[data-nav="family:inet"]').is_visible(), "the tree shows the family")
+            failures.check(page.locator('[data-nav="table:ip nat"]').is_visible(), "the tree shows other tables")
+            failures.check(page.locator('[data-chain="inet filter work"] tbody tr').count() == 4, "the first table's chains are open")
+            failures.check(page.locator('[data-nav="chain:inet filter work"]').is_visible(), "its chains are listed in the tree")
+            failures.check(page.locator('[data-chain="ip nat postrouting"]').count() == 0, "other tables' chains aren't shown")
             failures.check(external == [], f"nothing loads from other sites: {external[:2]}")
 
             def overlaps(locator):
@@ -153,22 +156,36 @@ def main():
                     }"""
                 )
 
-            raw = page.locator('[data-tree-id="chain:ip nat postrouting"] tbody tr').first
+            print("-- navigating the file tree")
+            page.click('[data-nav="table:ip nat"]')
+            failures.check(page.locator('[data-chain="ip nat postrouting"]').is_visible(), "selecting a table opens its chain")
+            failures.check(page.locator('[data-nav="chain:ip nat postrouting"]').is_visible(), "its chain appears in the tree")
+            failures.check(page.locator('[data-nav="chain:inet filter work"]').count() == 0, "the previous table closes in the tree")
+            failures.check(page.locator('[data-nav="table:ip nat"]').get_attribute("aria-current") == "page", "the selection is marked")
+            shot("table-selected")
+            raw = page.locator('[data-chain="ip nat postrouting"] tbody tr').first
             failures.check("masquerade" in raw.inner_text() and not overlaps(raw), "a long raw rule wraps instead of covering its actions")
+            page.reload()
+            failures.check(page.locator('[data-chain="ip nat postrouting"]').is_visible(), "the selection survives a reload")
+            page.click('[data-nav="table:inet filter"]')
+            page.click('[data-nav="chain:inet filter work"]')
+            failures.check(page.locator("[data-chain]").count() == 1, "selecting a chain shows only that chain")
+            shot("chain-selected")
+            page.click('.detail-path a')
+            failures.check(page.locator("[data-chain]").count() == 4, "the path goes back to the table")
+            page.focus('[data-nav="table:ip nat"]')
+            page.keyboard.press("Enter")
+            page.wait_for_url("**table=nat**")
+            failures.check(True, "the tree works with the keyboard")
+            page.click('[data-nav="table:inet filter"]')
 
-            print("-- collapsing and expanding")
-            work = page.locator('[data-tree-id="chain:inet filter work"]')
+            print("-- collapsing a chain")
+            work = page.locator('[data-chain="inet filter work"]')
             work.locator("summary").first.click()
             failures.check(not work.locator("tbody").is_visible(), "a chain collapses")
-            # The browser reports a toggle shortly after the click.
-            time.sleep(0.2)
-            page.reload()
-            failures.check(not work.locator("tbody").is_visible(), "it stays collapsed after a reload")
-            page.click('[data-tree-all="close"]')
-            failures.check(not page.locator('[data-tree-id="chain:inet filter input"]').locator("tbody").is_visible(), "collapse all closes everything")
-            page.click('[data-tree-all="open"]')
-            failures.check(work.locator("tbody").is_visible(), "expand all opens everything")
-            failures.check(not work.locator(".tree-manage-body").is_visible(), "expand all leaves management forms closed")
+            work.locator("summary").first.click()
+            failures.check(work.locator("tbody").is_visible(), "and opens again")
+            failures.check(not work.locator(".tree-manage-body").is_visible(), "management forms start closed")
 
             print("-- finding and using the drag handle")
             handles = work.locator("[data-drag-handle]")
@@ -198,7 +215,7 @@ def main():
             failures.check(row_text(page) == ["1004", "1001", "1002", "1003"], "the tree shows the result")
 
             print("-- the arrow buttons, for keyboards")
-            first = page.locator('[data-tree-id="chain:inet filter work"] tbody tr').first
+            first = page.locator('[data-chain="inet filter work"] tbody tr').first
             first.locator('button[data-move="down"]').click()
             failures.check(row_text(page)[:2] == ["1001", "1004"], f"moving down works: {row_text(page)}")
             failures.check(page.evaluate("document.activeElement.dataset.move") == "down", "focus stays on the button")
@@ -244,26 +261,31 @@ def main():
             print("-- on a phone")
             phone = browser.new_context(viewport={"width": 390, "height": 800}, has_touch=True, storage_state=context.storage_state())
             small = phone.new_page()
-            small.goto(f"{WEB}/rules")
+            small.goto(f"{WEB}/rules?family=inet&table=filter")
             if shots:
                 small.screenshot(path=str(shots / "phone.png"), full_page=True)
             width = small.evaluate("document.documentElement.scrollWidth")
             failures.check(width <= 390, f"the page doesn't scroll sideways: {width}px")
-            delete = small.locator('[data-tree-id="chain:inet filter input"] button:has-text("Delete")').first
+            delete = small.locator('[data-chain="inet filter input"] button:has-text("Delete")').first
             box = delete.bounding_box()
             failures.check(box and box["x"] + box["width"] <= 390, "a rule's actions are on screen without scrolling")
-            scrolling = small.locator('[data-tree-id="chain:ip nat postrouting"] .tree-rules-wrap').evaluate("wrap => wrap.scrollWidth > wrap.clientWidth")
-            failures.check(not scrolling, "a long raw rule wraps too")
-            touch_handle = small.locator('[data-tree-id="chain:inet filter input"] [data-drag-handle]').first
+            touch_handle = small.locator('[data-chain="inet filter input"] [data-drag-handle]').first
             failures.check(touch_handle.is_visible(), "drag handles are available")
+            tree_box = small.locator(".file-tree").bounding_box()
+            detail_box = small.locator(".rules-detail").bounding_box()
+            failures.check(tree_box["y"] + tree_box["height"] <= detail_box["y"] + 1, "the tree stacks above the chains")
+            small.goto(f"{WEB}/rules?family=ip&table=nat")
+            scrolling = small.locator('[data-chain="ip nat postrouting"] .tree-rules-wrap').evaluate("wrap => wrap.scrollWidth > wrap.clientWidth")
+            failures.check(not scrolling, "a long raw rule wraps too")
             phone.close()
 
             print("-- without JavaScript")
             plain = browser.new_context(java_script_enabled=False, storage_state=context.storage_state())
             nojs = plain.new_page()
-            nojs.goto(f"{WEB}/rules")
+            nojs.goto(f"{WEB}/rules?family=inet&table=filter")
             failures.check(nojs.locator("[data-drag-handle]").first.is_hidden(), "handles stay hidden")
-            failures.check(nojs.locator('[data-tree-id="family:inet"]').is_visible(), "the tree still works")
+            nojs.click('[data-nav="table:ip nat"]')
+            failures.check(nojs.locator('[data-chain="ip nat postrouting"]').is_visible(), "the file tree still works")
             nojs.goto(f"{WEB}/rules/organize?chain=inet+filter+renamed")
             failures.check(nojs.locator("[data-order-buttons]").first.is_hidden(), "the arrows stay hidden, since they'd do nothing")
             nojs.select_option('select[name="move_rule"]', index=2)

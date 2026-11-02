@@ -65,7 +65,7 @@ class RulePageTests(DashboardTestCase):
         response = self.client.get("/rules")
         self.assertEqual(response.status_code, 200)
         # inet comes before ip, whatever order nftables lists them in.
-        self.assertLess(response.data.index(b'data-tree-id="family:inet"'), response.data.index(b'data-tree-id="family:ip"'))
+        self.assertLess(response.data.index(b'data-nav="family:inet"'), response.data.index(b'data-nav="family:ip"'))
         self.assertIn(b"Edit", response.data)
         self.assertIn(b"disabled", response.data)
         self.assertIn(b"Search family, table, chain", response.data)
@@ -74,9 +74,8 @@ class RulePageTests(DashboardTestCase):
 
         response = self.client.get("/rules?q=forward")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'data-tree-id="chain:inet filter forward"', response.data)
-        self.assertNotIn(b'data-tree-id="chain:ip filter input"', response.data)
-        self.assertNotIn(b'data-tree-id="family:ip"', response.data)
+        self.assertIn(b'data-chain="inet filter forward"', response.data)
+        self.assertNotIn(b'data-nav="family:ip"', response.data)
         self.assertIn(b"1 matching / 2 total", response.data)
         response.close()
 

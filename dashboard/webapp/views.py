@@ -29,7 +29,7 @@ from .firewall_rules import (
     ruleset_shape_error,
 )
 from . import pending_changes
-from .firewall_changes import dormant_tables, rule_tree
+from .firewall_changes import dormant_tables, rule_tree, select_in_tree
 from .formatting import host_context
 
 
@@ -245,6 +245,7 @@ def rules_context(*, error=None, firewall_result=None):
     query = request.args.get("q", "").strip()[:100]
     context = {
         "tree": {"families": [], "total": 0, "matching": 0},
+        "selected": {"family": None, "table": None, "chain": None},
         "query": query,
         "error": error or load_error,
         "api_unavailable": load_error is not None,
@@ -259,16 +260,26 @@ def rules_context(*, error=None, firewall_result=None):
         changes = pending_changes.load(actor)["changes"] if isinstance(actor, str) else []
         highlighted = firewall_result.get("highlight", []) if firewall_result else []
         context["tree"] = rule_tree(ruleset, query, highlighted, changes)
+        # An explicit choice is remembered, so that returning from a form or a
+        # review comes back to the same place.
+        wanted = (request.args.get("family"), request.args.get("table"), request.args.get("chain"))
+        if not wanted[1]:
+            remembered = session.get("rules_selection")
+            wanted = remembered if isinstance(remembered, list) else wanted
+        context["selected"] = select_in_tree(context["tree"], wanted)
+        selected = context["selected"]
+        session["rules_selection"] = [selected["family"], selected["table"], selected["chain"]]
         context["dormant_tables"] = dormant_tables(ruleset)
     return context
 
 
 @pages.get("/rules")
 def rules_page():
-    """Render the active firewall as a tree of families, tables, and chains.
+    """Render a tree of families and tables beside the selected table's chains.
 
     Returns:
-        Rendered rules HTML, filtered by the q query parameter if present.
+        Rendered rules HTML. The family, table, and chain query parameters
+        choose what's shown, and q filters the tree.
     """
     return render_template("rules.html", **rules_context(firewall_result=session.pop("firewall_result", None)))
 

@@ -40,7 +40,7 @@ The test modules are organized by responsibility:
 | `dashboard/tests/test_firewall_changes.py` | The rule form, ordering rules, tables and chains and their typed confirmations, the review page and its `before -> new` list, management-risk flags, warnings, confirmations, every error outcome when applying, storage and expiry of pending changes, and that logs omit rule contents. |
 | `dashboard/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
-Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 246 tests. The exact count and incidental application log lines may change as coverage grows.
+Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 259 tests. The exact count and incidental application log lines may change as coverage grows.
 
 
 ## Dashboard, API, and nftables together
@@ -57,7 +57,7 @@ Expected result: the command exits with status 0 and ends with `0 failures`.
 
 ## In a real browser
 
-This check drives the dashboard in headless Chromium against the real backend and nftables: the rules tree, dragging a rule and applying the result, the arrow buttons, the organize page, phone layout, and use without JavaScript. It's the only check that runs the page scripts. It needs a debug build from `make debug`, and Playwright:
+This check drives the dashboard in headless Chromium against the real backend and nftables: navigating the file tree, dragging a rule and applying the result, the arrow buttons, the organize page, phone layout, and use without JavaScript. It's the only check that runs the page scripts. It needs a debug build from `make debug`, and Playwright:
 
 ```sh
 dashboard/.venv/bin/python -m pip install playwright

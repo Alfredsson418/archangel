@@ -13,7 +13,7 @@ Renders the server overview with nftables enforcement status, backend version/co
 
 Fetches the C++ ruleset in Flask and renders individual firewall rules on the Firewall Configuration page with the `rules.html` template.
 
-The rules appear as a tree of families, tables, and chains, with each chain's rules in true order. The `q` query parameter filters across family, table, chain, handle, and expression. Each rule offers Edit and Duplicate if the rule form can represent it, and Delete. Chains also offer dragging rules into a new order, and tables and chains can be managed in place. None of these change the firewall until the resulting pending changes are applied.
+A file tree lists families and tables. The `family`, `table`, and `chain` query parameters choose what's shown beside it: a table's chains, or one chain, each with its rules in true order. Without them, the page returns to the last selection in the session, or the first table. After changes are applied, it shows the table holding the result. The `q` query parameter filters across family, table, chain, handle, and expression. Each rule offers Edit and Duplicate if the rule form can represent it, and Delete. Chains also offer dragging rules into a new order, and tables and chains can be managed in place. None of these change the firewall until the resulting pending changes are applied.
 
 ### `GET /rules/export`
 
