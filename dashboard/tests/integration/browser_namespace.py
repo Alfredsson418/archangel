@@ -233,6 +233,19 @@ def main():
             subprocess.run(["nft", "delete", "table", "ip", "appended"], check=True)
             page.goto(f"{WEB}/rules?family=inet&table=filter")
 
+            print("-- seeing the hierarchy")
+            left = lambda selector: page.locator(selector).bounding_box()["x"]
+            family_left = left('[data-branch="family:inet"] .file-tree-family-name')
+            table_left = left('[data-nav="table:inet filter"]')
+            chain_left = left('[data-nav="chain:inet filter input"]')
+            failures.check(family_left + 10 < table_left < chain_left - 10, f"each level is indented further: {family_left:.0f}, {table_left:.0f}, {chain_left:.0f}")
+            page.click('[data-nav="chain:inet filter input"]')
+            failures.check(page.locator("[data-narrowed]").is_visible(), "a narrowed view says so")
+            page.reload()
+            failures.check(page.locator("[data-narrowed]").is_visible(), "it still says so when remembered")
+            page.click('[data-narrowed] a')
+            failures.check(page.locator("[data-chain]").count() == 4, "it can show every chain again")
+
             print("-- collapsing a chain")
             work = page.locator('[data-chain="inet filter work"]')
             work.locator("summary").first.click()

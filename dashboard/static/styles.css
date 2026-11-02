@@ -346,31 +346,28 @@ tbody tr:last-child td { border-bottom: 0; }
   .tree-rules .rule-actions { white-space: normal; }
 }
 .sortable-fallback { opacity: 0.9; box-shadow: 0 2px 8px #142b4933; }
-.rules-browser { display: grid; grid-template-columns: 250px minmax(0, 1fr); border-top: 1px solid #e9eef3; }
+.rules-browser { display: grid; grid-template-columns: 280px minmax(0, 1fr); border-top: 1px solid #e9eef3; }
 .file-tree { min-width: 0; padding: 12px 0; border-right: 1px solid var(--line); background: #f9fbfc; font-size: 12px; }
 .file-tree ul { margin: 0; padding: 0; list-style: none; }
-.file-tree ul ul { margin-left: 18px; border-left: 1px solid var(--line); }
 .file-tree-controls { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 14px 8px; }
 .file-tree summary:focus-visible, .file-tree-item:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
 .file-tree-branch > summary { display: flex; align-items: center; cursor: pointer; list-style: none; }
 .file-tree-branch > summary::-webkit-details-marker { display: none; }
-.file-tree-branch > summary::before { content: "\25B8"; flex: none; width: 22px; padding-left: 8px; color: var(--muted); font-size: 11px; }
+.file-tree-branch > summary::before { content: "\25B8"; flex: none; width: 16px; color: var(--muted); font-size: 11px; }
 .file-tree-branch[open] > summary::before { content: "\25BE"; }
-.file-tree-branch > summary .file-tree-item { flex: 1; min-width: 0; padding-left: 4px; }
-.file-tree-family-name { padding: 6px 0; color: var(--muted); font: 500 11px var(--mono); }
-.file-tree-item { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 26px; color: var(--ink); text-decoration: none; }
-.file-tree ul ul .file-tree-item { padding-left: 12px; }
+.file-tree-branch > summary .file-tree-item { flex: 1; min-width: 0; padding-left: 6px; }
+.file-tree-family-name { padding: 6px 0; color: var(--ink); font: 700 12px var(--mono); letter-spacing: 0.02em; }
+.file-tree-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px 5px 6px; color: var(--ink); text-decoration: none; }
 .file-tree-item:hover { background: #eef3f7; }
 .file-tree-item.is-selected { background: #e2ecf3; box-shadow: inset 3px 0 0 var(--blue); font-weight: 700; }
 .file-tree-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); }
 .file-tree-count { color: var(--muted); font: 10px var(--mono); }
 .file-tree-empty { padding: 6px 14px; color: var(--muted); font-size: 11px; }
-.file-tree-new > summary { padding: 6px 14px 6px 26px; color: var(--blue); cursor: pointer; font: 700 11px var(--sans); list-style: none; }
+.file-tree-new > summary { padding: 6px 10px 6px 6px; color: var(--blue); cursor: pointer; font: 700 11px var(--sans); list-style: none; }
 .file-tree-new > summary::-webkit-details-marker { display: none; }
 .file-tree-new > summary:hover { background: #eef3f7; }
-.file-tree ul ul .file-tree-new > summary { padding-left: 12px; }
 .file-tree-new .field-hint { margin: 2px 0; font-size: 10px; }
-.file-tree-new form { display: grid; gap: 6px; padding: 6px 14px 10px 26px; background: #eef3f7; }
+.file-tree-new form { display: grid; gap: 6px; margin-right: 10px; padding: 8px 10px 10px; background: #eef3f7; }
 .file-tree-new label { font-size: 11px; font-weight: 700; }
 .file-tree-new input, .file-tree-new select { width: 100%; min-height: 30px; border: 1px solid var(--line); padding: 0 7px; background: var(--white); color: var(--ink); font: 11px var(--sans); }
 .file-tree-new button { justify-self: start; }
@@ -385,3 +382,16 @@ tbody tr:last-child td { border-bottom: 0; }
   .rules-browser { grid-template-columns: minmax(0, 1fr); }
   .file-tree { border-right: 0; border-bottom: 1px solid var(--line); }
 }
+/* Connector lines, so that each level of the tree reads like a directory listing. */
+.file-tree > details > summary { padding-left: 12px; }
+.file-tree > details > ul { margin-left: 18px; }
+.file-tree ul ul { margin-left: 22px; }
+.file-tree li { position: relative; padding-left: 16px; }
+.file-tree li::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; border-left: 1px solid #b9c7d4; }
+.file-tree li::after { content: ""; position: absolute; top: 15px; left: 0; width: 11px; border-top: 1px solid #b9c7d4; }
+.file-tree li:last-child::before { bottom: auto; height: 15px; }
+.file-tree-branch .file-tree-branch .file-tree-name { font-weight: 500; }
+.file-tree ul ul .file-tree-name { font-weight: 400; color: #33475f; }
+.file-tree ul ul .is-selected .file-tree-name { font-weight: 700; color: var(--ink); }
+.detail-narrowed { margin-top: 6px; font-size: 12px; }
+.detail-narrowed a { color: var(--blue); font-weight: 700; }

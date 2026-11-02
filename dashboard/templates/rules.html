@@ -263,6 +263,7 @@
             <div class="detail-heading">
               <p class="detail-path">{{ family.name }} <span aria-hidden="true">/</span> {% if selected.chain %}<a href="{{ url_for('pages.rules_page', family=family.name, table=table.name, q=query or none) }}">{{ table.name }}</a> <span aria-hidden="true">/</span> {{ selected.chain }}{% else %}{{ table.name }}{% endif %}</p>
               <p class="tree-meta">{{ table.contents.chains }} chain{{ "" if table.contents.chains == 1 else "s" }} &middot; {{ table.contents.rules }} rule{{ "" if table.contents.rules == 1 else "s" }}{% if table.contents.objects %} &middot; {{ table.contents.objects }} other object{{ "" if table.contents.objects == 1 else "s" }}{% endif %}{% if table.dormant %} &middot; <span class="tree-state">ENFORCEMENT OFF</span>{% endif %}</p>
+              {% if selected.chain and table.chains|length > 1 %}<p class="detail-narrowed" data-narrowed>Showing only {{ selected.chain }}. <a href="{{ url_for('pages.rules_page', family=family.name, table=table.name, q=query or none) }}">Show all {{ table.chains|length }} chains</a></p>{% endif %}
             </div>
             {% if not table.manageable %}<p class="tree-empty">Tables in the {{ table.family }} family can't be managed here.</p>{% endif %}
             {% for chain in table.chains if not selected.chain or chain.name == selected.chain %}{{ chain_node(chain, table) }}{% else %}<p class="tree-empty">This table has no chains.</p>{% endfor %}

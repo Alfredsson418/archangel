@@ -1565,6 +1565,19 @@ class RuleTreeTests(ChangeFlowTestCase):
         self.assertIn('class="detail-path"', text)
         self.assertIn('href="/rules?family=inet&amp;table=filter"', text)
 
+    def test_a_narrowed_view_says_so_and_offers_every_chain(self):
+        text = self.page("/rules?family=inet&table=filter&chain=empty")
+        self.assertIn("Showing only empty", text)
+        self.assertIn("Show all 2 chains", text)
+        self.assertNotIn("Showing only", self.page("/rules?family=inet&table=filter"))
+
+    def test_a_remembered_chain_still_says_it_is_narrowed(self):
+        self.page("/rules?family=inet&table=filter&chain=empty")
+        self.assertIn("Showing only empty", self.page("/rules"))
+
+    def test_a_table_with_one_chain_has_nothing_to_show_instead(self):
+        self.assertNotIn("Showing only", self.page("/rules?family=ip&table=nat&chain=post"))
+
     def test_an_unknown_selection_falls_back(self):
         self.assertIn('data-chain="inet filter input"', self.page("/rules?family=ip&table=gone"))
         text = self.page("/rules?family=inet&table=filter&chain=gone")

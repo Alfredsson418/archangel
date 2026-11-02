@@ -40,7 +40,7 @@ The test modules are organized by responsibility:
 | `dashboard/tests/test_firewall_changes.py` | The rule form, ordering rules, tables and chains and their typed confirmations, the review page and its `before -> new` list, management-risk flags, warnings, confirmations, every error outcome when applying, storage and expiry of pending changes, and that logs omit rule contents. |
 | `dashboard/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
-Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 264 tests. The exact count and incidental application log lines may change as coverage grows.
+Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 267 tests. The exact count and incidental application log lines may change as coverage grows.
 
 
 ## Dashboard, API, and nftables together
