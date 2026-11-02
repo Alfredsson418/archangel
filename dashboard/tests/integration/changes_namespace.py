@@ -29,6 +29,7 @@ PORT = 18080
 USERNAME = "admin"
 PASSWORD = "correct-horse-battery-staple-9"
 BASE = "inet filter "
+OTHER_TEST_PORT = 7200
 
 
 class Failures(list):
@@ -382,6 +383,82 @@ def main():
         failures.check(after[0].get("comment") == "archangel-managed", "the new rule is managed")
         failures.check("counter" in ports(after[3]) and "ordered" in ports(after[3]) and "7003" in ports(after[3]), "a rule the form can't represent keeps its set, counter, and log")
         failures.check("Applied 2 changes" in dashboard.page("/rules"), "the result is confirmed by reading it back")
+
+        print("-- creating a table, chain, and rule in one list")
+        structure = lambda action, **fields: dashboard.post("/firewall/structure", structure_action=action, **fields)
+        structure("create_table", family="inet", name="made")
+        structure("create_chain", family="inet", table="made", name="regular")
+        structure("create_chain", family="inet", table="made", name="base", hook="forward", priority="-10", policy="drop")
+        dashboard.add(chain="inet made regular", protocol="tcp", destination_port="7100", action="accept")
+        failures.check("table inet made" not in listed(), "nothing changes before applying")
+        result = dashboard.apply()
+        rules = listed()
+        failures.check(result.status_code == 302 and "table inet made" in rules, f"they apply together: {result.status_code}")
+        failures.check("chain regular" in rules and "tcp dport 7100 accept" in rules, "the new chain has its rule")
+        failures.check("type filter hook forward priority -10; policy drop;" in rules.replace("filter - 10", "-10"), "the base chain has its definition")
+
+        print("-- renaming a chain that another rule jumps to")
+        nft("add chain inet made caller", "add rule inet made caller jump regular")
+        structure("rename_chain", family="inet", table="made", name="regular", new_name="renamed")
+        result = dashboard.apply(confirm_risk="yes")
+        rules = listed()
+        failures.check(result.status_code == 302 and "chain renamed" in rules and "chain regular" not in rules, f"the chain is renamed: {result.status_code}")
+        failures.check("jump renamed" in rules, "the jump follows the new name")
+        failures.check("tcp dport 7100 accept" in rules, "its rules are kept")
+
+        print("-- changing a policy really changes it")
+        structure("set_chain_policy", family="inet", table="made", name="base", policy="accept")
+        result = dashboard.apply()
+        failures.check(result.status_code == 302 and "policy accept" in subprocess.run(["nft", "list", "chain", "inet", "made", "base"], capture_output=True, text=True).stdout, f"the policy changed: {result.status_code}")
+
+        print("-- deleting chains")
+        structure("delete_chain", family="inet", table="made", name="renamed")
+        review = dashboard.page("/changes")
+        failures.check("Other rules jump to this chain" in review, "a chain other rules jump to is refused")
+        result = dashboard.apply()
+        failures.check(result.status_code == 409 and "chain renamed" in listed(), "it isn't deleted")
+        dashboard.post("/changes/discard")
+
+        nft("delete chain inet made caller")
+        structure("delete_chain", family="inet", table="made", name="renamed")
+        with client.session_transaction() as session:
+            actor = session["actor_id"]
+        with client.application.app_context():
+            from webapp import pending_changes
+
+            change_id = pending_changes.load(actor)["changes"][0]["id"]
+        dashboard.post("/changes/refresh")
+        result = dashboard.apply()
+        failures.check(result.status_code == 400 and "chain renamed" in listed(), "a chain with rules needs its name typed")
+        result = dashboard.apply(**{f"confirm_name_{change_id}": "renamed"})
+        rules = listed()
+        failures.check(result.status_code == 302 and "chain renamed" not in rules and "dport 7100" not in rules, f"typing the name deletes it and its rules: {result.status_code}")
+
+        print("-- turning a table off and on")
+        nft("add chain inet made blocker { type filter hook input priority 0 ; }", f"add rule inet made blocker tcp dport {OTHER_TEST_PORT} drop")
+        structure("disable_table", family="inet", name="made")
+        with client.application.app_context():
+            change_id = pending_changes.load(actor)["changes"][0]["id"]
+        result = dashboard.apply(confirm_risk="yes")
+        failures.check(result.status_code == 400, "turning a table off needs its name typed")
+        result = dashboard.apply(confirm_risk="yes", **{f"confirm_name_{change_id}": "made"})
+        failures.check(result.status_code == 302 and "flags dormant" in listed(), f"the table is dormant: {result.status_code}")
+        failures.check("Enforcement is off for table inet made" in dashboard.page("/rules"), "the rules page reports it")
+        failures.check("Enforcement is off for table inet made" in dashboard.page("/"), "the overview reports it")
+        structure("enable_table", family="inet", name="made")
+        result = dashboard.apply(confirm_risk="yes")
+        failures.check(result.status_code == 302 and "flags dormant" not in listed(), f"the table is back on: {result.status_code}")
+
+        print("-- deleting a table")
+        structure("delete_table", family="inet", name="made")
+        with client.application.app_context():
+            change_id = pending_changes.load(actor)["changes"][0]["id"]
+        review = dashboard.page("/changes")
+        failures.check("Deleted table" in review, "the review lists it")
+        result = dashboard.apply(confirm_risk="yes")
+        failures.check(result.status_code == 400 and "table inet made" in listed(), "it needs its name typed")
+        result = dashboard.apply(confirm_risk="yes", **{f"confirm_name_{change_id}": "made"})
+        failures.check(result.status_code == 302 and "table inet made" not in listed(), f"typing the name deletes it: {result.status_code}")
 
         print("-- the connection warning, through the real API")
         nft("add chain inet filter input { type filter hook input priority 0 ; }")

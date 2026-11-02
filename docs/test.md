@@ -37,21 +37,21 @@ The test modules are organized by responsibility:
 | `dashboard/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export (including the rule shapes nftables actually lists), and preview/confirmed import behavior. |
 | `dashboard/tests/test_rule_model.py` | Reading every structured rule shape from nftables listings, including default `reject` options, using shapes taken from real output; rejecting what the form can't represent; rule validation and normalization; bundle versions 1 and 2; plain-language rule descriptions. |
 | `dashboard/tests/test_connection_check.py` | Following the dashboard's connection through rulesets: rule order, jumps, multiple base chains, NAT, loopback behavior, and what counts as uncertain. |
-| `dashboard/tests/test_firewall_changes.py` | The rule form, the review page and its `before -> new` list, management-risk flags, warnings, confirmations, every error outcome when applying, storage and expiry of pending changes, and that logs omit rule contents. |
+| `dashboard/tests/test_firewall_changes.py` | The rule form, ordering rules, tables and chains and their typed confirmations, the review page and its `before -> new` list, management-risk flags, warnings, confirmations, every error outcome when applying, storage and expiry of pending changes, and that logs omit rule contents. |
 | `dashboard/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
-Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 167 tests. The exact count and incidental application log lines may change as coverage grows.
+Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 226 tests. The exact count and incidental application log lines may change as coverage grows.
 
 
 ## Dashboard, API, and nftables together
 
-This check starts the real backend, signs in through the real dashboard code, and applies real changes: collecting and applying a list, detecting a change made outside Archangel, all-or-nothing failures, a change nftables itself rejects, 1,000 changes at once, and confirmations. It needs a debug build from `make debug`, and needs no root privileges.
+This check starts the real backend, signs in through the real dashboard code, and applies real changes: collecting and applying a list, detecting a change made outside Archangel, all-or-nothing failures, a change nftables itself rejects, 1,000 changes at once, editing, ordering, chains, tables, and confirmations. The drag-and-drop script isn't covered, and needs checking by hand in a browser. It needs a debug build from `make debug`, and needs no root privileges.
 
 ```sh
 unshare -rn dashboard/.venv/bin/python dashboard/tests/integration/changes_namespace.py
 ```
 
-`unshare -rn` gives it a private user and network namespace, so it can't change the host's firewall, and the script refuses to run outside one. It isn't part of the ordinary test suites or CI. Run it after changing how changes are applied.
+`unshare -rn` gives it a private user and network namespace, so it can't change the host's firewall, and the script refuses to run outside one. It isn't part of the ordinary test suites, but CI runs it. Run it after changing how changes are applied.
 
 Expected result: the command exits with status 0 and ends with `0 failures`.
 
@@ -63,7 +63,7 @@ Expected result: the command exits with status 0 and ends with `0 failures`.
 unshare -rn dashboard/.venv/bin/python dashboard/tests/integration/connection_check_namespace.py
 ```
 
-`unshare -rn` gives it a private user and network namespace, so it can't change the host's firewall, and the script refuses to run outside one. It isn't part of the ordinary test suites or CI. Run it after changing `dashboard/webapp/connection_check.py`.
+`unshare -rn` gives it a private user and network namespace, so it can't change the host's firewall, and the script refuses to run outside one. It isn't part of the ordinary test suites, but CI runs it. Run it after changing `dashboard/webapp/connection_check.py`.
 
 Expected result: the command exits with status 0 and ends with `0 failures`.
 ## Backend tests

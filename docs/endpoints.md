@@ -57,6 +57,12 @@ Import is additive: it adds rules and does not delete or replace existing ones. 
 
 `GET` shows the rules of the chain named by `chain` in true order, including pending new rules. `POST` adds a new order to pending changes, replacing any pending order for that chain. The `order` fields list every rule once, as `handle:N` or `new:ID`; a list that no longer matches the chain is refused. With `form_action=move`, `move_rule` and `move_position` move one rule instead. This form doesn't need JavaScript. With JavaScript, rules can also be dragged, or moved with buttons.
 
+### `GET, POST /firewall/structure`
+
+`GET` lists tables and chains, and states what nftables can't change: tables can't be renamed, and a base chain's hook and priority are fixed. `POST` adds a change to pending changes, using `structure_action`: `create_table`, `delete_table`, `disable_table`, `enable_table`, `create_chain`, `rename_chain`, `set_chain_policy`, or `delete_chain`. Only `ip`, `ip6`, and `inet` tables can be managed, and new base chains use the `filter` type.
+
+Applying requires the name typed as `confirm_name_<change id>` when deleting a table or a chain with rules, or when turning a table's enforcement off. A chain that other rules jump to can't be deleted, and a chain's rules can't change in the same list as renaming it or after deleting it. nftables applies a rename at the end of a transaction, so changes to that chain's rules must be applied first.
+
 ### `POST /rules/delete`
 
 Adds a rule's deletion to pending changes, without changing the firewall. The fields are `family`, `table`, `chain`, and `handle`.
@@ -353,7 +359,22 @@ Applies an ordered list of up to 1,000 changes in one transaction, so that eithe
 }
 ```
 
-`add_rule` takes the same fields as `POST /api/v1/rules` and adds the rule at the end of its chain. `replace_rule` takes `handle` and `rule`, and replaces that rule in place, keeping its position, handle, and comment. `rule`'s family, table, and chain identify the existing rule's chain. `expected_revisions` must include every chain a change touches.
+`add_rule` takes the same fields as `POST /api/v1/rules` and adds the rule at the end of its chain. It can also take an `id`, so that a later `set_rule_order` can place it. `replace_rule` takes `handle` and `rule`, and replaces that rule in place, keeping its position, handle, and comment. `rule`'s family, table, and chain identify the existing rule's chain.
+
+These change a chain or table:
+
+| Type | Fields |
+| --- | --- |
+| `set_rule_order` | `family`, `table`, `chain`, and `order`, which lists every rule once: a handle, or the `id` of a rule added earlier in the list. Moved rules get new handles, and keep their counters. A chain can't also be renamed or deleted in the same list. |
+| `create_chain` | `family`, `table`, `name`, and for a base chain `base`: `type` (`filter`), `hook`, `priority` (-1000 to 1000), and `policy`. |
+| `rename_chain` | `family`, `table`, `name`, and `new_name`. Rules that jump to the chain follow the new name. Its rules can't change later in the same list, under either name. |
+| `set_chain_policy` | `family`, `table`, `name`, and `policy` (`accept` or `drop`). |
+| `delete_chain` | `family`, `table`, and `name`. This also deletes its rules. It's rejected if other rules jump to it. |
+| `create_table` | `family` and `name`. |
+| `delete_table` | `family` and `name`. This deletes everything in the table. |
+| `set_table_enabled` | `family`, `name`, and `enabled`. A table that isn't enabled stops enforcing all of its rules. |
+
+A table can't be renamed, and a base chain's hook and priority can't be changed, because nftables doesn't support it. `expected_revisions` must include every existing chain a change touches, which for a change to a table means all of its chains. Chains the list itself creates have no revision.
 
 | Status | Code | Meaning |
 | --- | --- | --- |

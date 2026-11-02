@@ -77,6 +77,12 @@
       <p class="field-hint rule-preview">No MANAGEMENT RISK flag doesn't prove a change is safe. Archangel checks only the dashboard's connection to the API, and can't see SSH or other firewalls on the path.</p>
       <form class="settings-form import-confirm-form review-confirm" action="{{ url_for('pages.apply_changes') }}" method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% for entry in entries if entry.typed_name %}
+          <div class="typed-name">
+            <label for="confirm-name-{{ entry.change.id }}">{{ entry.summary.kind }}: type <code>{{ entry.typed_name }}</code> to confirm</label>
+            <input id="confirm-name-{{ entry.change.id }}" name="confirm_name_{{ entry.change.id }}" type="text" autocomplete="off" required>
+          </div>
+        {% endfor %}
         <label class="confirm-import-label"><input type="checkbox" name="confirm" value="yes" required> I reviewed these changes and understand they apply immediately.</label>
         {% if risk_count or unmanaged_count %}
           <label class="confirm-import-label"><input type="checkbox" name="confirm_risk" value="yes" required> I accept {% if risk_count %}{{ risk_count }} MANAGEMENT RISK change{{ "" if risk_count == 1 else "s" }}{% endif %}{% if risk_count and unmanaged_count %} and {% endif %}{% if unmanaged_count %}{{ unmanaged_count }} change{{ "" if unmanaged_count == 1 else "s" }} to rules Archangel doesn't manage{% endif %}.</label>

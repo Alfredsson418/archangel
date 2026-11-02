@@ -86,7 +86,7 @@ The same rules apply when an OIDC provider is added behind `auth.provider`.
 | `dashboard/server.py` | WSGI entry point. |
 | `dashboard/webapp/__init__.py` | Flask app factory: configuration, session store, CSRF and login guards. |
 | `dashboard/webapp/views.py` | Page routes and their request handling. |
-| `dashboard/webapp/rule_views.py` | Page routes for the rule form and for reviewing and applying pending changes. |
+| `dashboard/webapp/rule_views.py` | Page routes for the rule form, ordering rules, tables and chains, and reviewing and applying pending changes. |
 | `dashboard/webapp/firewall_changes.py` | Pending changes' effect on a ruleset, warnings, management-risk flags, and API payloads; no Flask dependency. |
 | `dashboard/webapp/pending_changes.py` | Per-user storage of pending changes, in the dashboard's owner-only store. |
 | `dashboard/webapp/page_data.py` | Loading C++ API resources for pages with the session credential, including expired-session handling. |
@@ -97,7 +97,7 @@ The same rules apply when an OIDC provider is added behind `auth.provider`.
 | `dashboard/webapp/server_sessions.py`, `settings.py` | Server-side session store and deployment-fixed API settings. |
 | `dashboard/webapp/audit_log.py` | Stdout and JSONL audit logging, request IDs, and the fail-closed audit gate for every request except health and static files. |
 | `dashboard/templates/` | Server-rendered Jinja templates. Page templates extend `base.html`. |
-| `dashboard/static/` | Shared frontend assets such as stylesheets. |
+| `dashboard/static/` | Shared frontend assets such as stylesheets, progressive-enhancement scripts, and vendored libraries in `vendor/`. |
 | `dashboard/tests/` | Dashboard tests grouped by responsibility. |
 
 The dashboard uses ordinary HTTP form submissions and server-rendered HTML. Page-specific content belongs in the relevant template, not a duplicated layout. Dashboard pages that need backend data call the configured C++ API from Flask.

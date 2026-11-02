@@ -29,7 +29,7 @@ from .firewall_rules import (
     rules_from,
     ruleset_shape_error,
 )
-from .firewall_changes import chains_from
+from .firewall_changes import chains_from, dormant_tables
 from .formatting import host_context
 
 
@@ -81,6 +81,7 @@ def _dashboard_context():
     return {
         **host_context(payloads["/api/v1/system"], payloads["/status/info"]),
         "firewall_status": status_label,
+        "dormant_tables": dormant_tables(payloads["/api/v1/rules"]),
         "active_base_chains": active_base_chains,
         "errors": errors,
         "api_connected": connected,
@@ -269,6 +270,7 @@ def rules_page():
         "rules.html",
         firewall_result=firewall_result,
         chains=chains_from(ruleset) if error is None else [],
+        dormant_tables=dormant_tables(ruleset) if error is None else [],
         rules=rules,
         total_rules=total_rules,
         error=error,

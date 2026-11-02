@@ -1,5 +1,6 @@
 """Routes for collecting, reviewing, and applying firewall changes."""
 import json
+import re
 import uuid
 
 from flask import current_app, redirect, render_template, request, session, url_for
@@ -19,11 +20,20 @@ from .firewall_changes import (
     REPLACE_RULE,
     SET_RULE_ORDER,
     MANAGED_RULE_COMMENT,
+    CREATE_CHAIN,
+    CREATE_TABLE,
+    DELETE_CHAIN,
+    DELETE_TABLE,
+    RENAME_CHAIN,
+    SET_CHAIN_POLICY,
+    SET_TABLE_ENABLED,
     affects_incoming_traffic,
     api_payload,
     apply_to_ruleset,
     chain_key,
+    blocked_chains,
     chain_rules,
+    chains_touched,
     change_chain,
     change_warnings,
     chains_from,
@@ -31,8 +41,13 @@ from .firewall_changes import (
     describe_listed_rule,
     find_rule,
     highlight_entries,
+    is_dormant,
     is_unmanaged,
+    jumps_to_chain,
+    required_typed_name,
     rule_key,
+    table_contents,
+    tables_from,
     management_risk,
     pending_on_rule,
     stale_changes,
@@ -44,6 +59,7 @@ from .firewall_rules import (
     MAX_RULE_BUNDLE_SIZE_TEXT,
     RULE_ACTIONS,
     RULE_FAMILIES,
+    RULE_NAME_PATTERN,
     RULE_PROTOCOLS,
     describe_rule,
     portable_rule,
@@ -56,6 +72,10 @@ from .views import pages
 
 
 _APPLY_FAILED_UNKNOWN = "The change may or may not have been applied. Check the rules before trying again."
+# Mirrors Config::Limits::MAX_CHAIN_PRIORITY; the backend is authoritative.
+MAX_CHAIN_PRIORITY = 1000
+CHAIN_HOOKS = ("input", "forward", "output", "prerouting", "postrouting")
+CHAIN_POLICIES = ("accept", "drop")
 _ALREADY_PENDING = "This rule already has a pending change. Remove that change first."
 _FORM_FIELDS = (
     "chain",
@@ -104,7 +124,7 @@ def _store_changes(changes):
     pending = pending_changes.load(actor)
     if len(pending["changes"]) + len(changes) > pending_changes.MAX_PENDING_CHANGES:
         return f"You can have up to {pending_changes.MAX_PENDING_CHANGES} pending changes. Apply or remove some first."
-    touched = {change_chain(change) for change in changes}
+    touched = set().union(*chains_touched(pending["changes"] + changes_with_ids(changes)).values())
     new_chains = touched - set(pending["revisions"])
     if new_chains:
         revisions, error = load("/api/v1/firewall/revisions")
@@ -115,10 +135,30 @@ def _store_changes(changes):
         if missing:
             return f"These chains don't exist, so nothing was added: {', '.join(sorted(missing))}."
         pending["revisions"].update({chain: current[chain] for chain in new_chains})
-    for change in changes:
-        change["id"] = uuid.uuid4().hex
     pending["changes"].extend(changes)
     pending_changes.save(actor, pending)
+    return None
+
+
+def changes_with_ids(changes):
+    """Give changes the IDs they'll be stored with.
+
+    Returns:
+        The same list, with each change's "id" set if it was missing.
+    """
+    for change in changes:
+        change.setdefault("id", uuid.uuid4().hex)
+    return changes
+
+
+def _chain_blocked_message(chain):
+    """Explain why a chain's rules can't change in the current list.
+
+    Returns:
+        A message if the chain is being renamed or deleted, otherwise None.
+    """
+    if chain in blocked_chains(pending_changes.load(_actor_id())["changes"]):
+        return f"The chain {chain} has a pending rename or deletion, so its rules can't change in the same list. Apply or remove that change first."
     return None
 
 
@@ -131,6 +171,10 @@ def add_rules_to_pending(rules):
     Raises:
         BackendSessionExpired: If the backend rejects the session.
     """
+    for rule in rules:
+        blocked = _chain_blocked_message(chain_key(rule["family"], rule["table"], rule["chain"]))
+        if blocked:
+            return blocked
     return _store_changes([{"type": ADD_RULE, "rule": rule} for rule in rules])
 
 
@@ -244,7 +288,16 @@ def _form_chains():
     ruleset, error = load("/api/v1/rules")
     if error is None:
         error = ruleset_shape_error(ruleset)
-    return (chains_from(ruleset) if error is None else []), error
+    if error is not None:
+        return [], error
+    # Includes chains this list creates, and leaves out ones it renames or deletes.
+    changes = pending_changes.load(_actor_id())["changes"]
+    blocked = blocked_chains(changes)
+    return [
+        chain
+        for chain in chains_from(apply_to_ruleset(ruleset, changes))
+        if chain_key(chain.get("family"), chain.get("table"), chain.get("name")) not in blocked
+    ], None
 
 
 @pages.route("/rules/new", methods=["GET", "POST"])
@@ -307,7 +360,8 @@ def _rule_to_edit(values):
         return None, "This rule uses features the form can't represent, so it can't be edited here."
     if pending_on_rule(pending_changes.load(_actor_id())["changes"], family, table, chain, rule["handle"]):
         return None, _ALREADY_PENDING
-    return rule, None
+    blocked = _chain_blocked_message(chain_key(family, table, chain))
+    return (None, blocked) if blocked else (rule, None)
 
 
 @pages.route("/rules/edit", methods=["GET", "POST"])
@@ -393,6 +447,9 @@ def delete_rule():
         return _rules_redirect(False, error or "This rule has changed or no longer exists, so nothing was added.")
     if pending_on_rule(pending_changes.load(_actor_id())["changes"], family, table, chain, handle):
         return _rules_redirect(False, _ALREADY_PENDING)
+    blocked = _chain_blocked_message(chain_key(family, table, chain))
+    if blocked:
+        return _rules_redirect(False, blocked)
     store_error = _store_changes(
         [{"type": DELETE_RULE, "family": family, "table": table, "chain": chain, "handle": handle, "before": rule}]
     )
@@ -495,6 +552,9 @@ def organize_rules():
     }:
         return _rules_redirect(False, "This chain no longer exists.")
     family, table, chain = parts
+    blocked = _chain_blocked_message(chain_key(*parts))
+    if blocked:
+        return _rules_redirect(False, blocked)
 
     actor = _actor_id()
     pending = pending_changes.load(actor)
@@ -546,6 +606,162 @@ def organize_rules():
     return redirect(url_for("pages.review_changes"))
 
 
+def _structure_rows(ruleset):
+    """Summarize tables and chains for the structure page.
+
+    Returns:
+        A list of table dictionaries, each with its chains.
+    """
+    chains = chains_from(ruleset)
+    rows = []
+    for table in tables_from(ruleset):
+        family, name = table.get("family"), table.get("name")
+        rows.append(
+            {
+                "family": family,
+                "name": name,
+                "dormant": is_dormant(table),
+                "manageable": family in RULE_FAMILIES,
+                "contents": table_contents(ruleset, family, name),
+                "chains": [
+                    dict(
+                        chain,
+                        key=chain_key(family, name, chain.get("name")),
+                        rule_count=len(chain_rules(ruleset, family, name, chain.get("name"))),
+                    )
+                    for chain in chains
+                    if chain.get("family") == family and chain.get("table") == name
+                ],
+            }
+        )
+    return rows
+
+
+def _base_chain_from_form(form):
+    """Read a new base chain's definition from a form.
+
+    Returns:
+        A pair of (definition or None for a regular chain, error or None).
+    """
+    hook = form.get("hook", "")
+    if not hook:
+        return None, None
+    if hook not in CHAIN_HOOKS:
+        return None, "Choose a supported hook."
+    priority = form.get("priority", "0").strip()
+    if not re.fullmatch(r"-?\d{1,4}", priority) or abs(int(priority)) > MAX_CHAIN_PRIORITY:
+        return None, f"Priority must be a number from -{MAX_CHAIN_PRIORITY} to {MAX_CHAIN_PRIORITY}."
+    policy = form.get("policy", "")
+    if policy not in CHAIN_POLICIES:
+        return None, "Policy must be accept or drop."
+    return {"type": "filter", "hook": hook, "priority": int(priority), "policy": policy}, None
+
+
+def _structure_change(form, ruleset, changes):
+    """Build a chain or table change from a submitted form.
+
+    Args:
+        form: Submitted fields.
+        ruleset: The current listing.
+        changes: The user's pending changes.
+
+    Returns:
+        A pair of (change dictionary, error message). Exactly one is None.
+    """
+    action = form.get("structure_action", "")
+    family = form.get("family", "")
+    table = form.get("table", "")
+    name = form.get("name", "").strip()
+    if family not in RULE_FAMILIES:
+        return None, "Tables can be managed here only in the ip, ip6, and inet families."
+    if not RULE_NAME_PATTERN.fullmatch(name):
+        return None, "Names must use letters, digits, _, or -, and can't start with a digit or -."
+
+    if action in (CREATE_TABLE, DELETE_TABLE, "disable_table", "enable_table"):
+        table_chains = [
+            chain_key(family, name, chain.get("name"))
+            for chain in chains_from(ruleset)
+            if chain.get("family") == family and chain.get("table") == name
+        ]
+        if action == CREATE_TABLE:
+            return {"type": CREATE_TABLE, "family": family, "name": name}, None
+        if action == DELETE_TABLE:
+            if any(chain_key(family, name, change.get("chain", "")) in table_chains for change in changes if change["type"] == SET_RULE_ORDER):
+                return None, "This table has a pending rule order. Remove that change first."
+            return {"type": DELETE_TABLE, "family": family, "name": name, "chains": table_chains}, None
+        return {"type": SET_TABLE_ENABLED, "family": family, "name": name, "enabled": action == "enable_table", "chains": table_chains}, None
+
+    if not RULE_NAME_PATTERN.fullmatch(table):
+        return None, "Choose a table."
+    key = chain_key(family, table, name)
+    if action == CREATE_CHAIN:
+        base, error = _base_chain_from_form(form)
+        if error:
+            return None, error
+        change = {"type": CREATE_CHAIN, "family": family, "table": table, "name": name}
+        if base:
+            change["base"] = base
+        return change, None
+    if key in blocked_chains(changes):
+        return None, _chain_blocked_message(key)
+    has_order = any(change["type"] == SET_RULE_ORDER and change_chain(change) == key for change in changes)
+    if action == RENAME_CHAIN:
+        new_name = form.get("new_name", "").strip()
+        if not RULE_NAME_PATTERN.fullmatch(new_name):
+            return None, "Names must use letters, digits, _, or -, and can't start with a digit or -."
+        if has_order:
+            return None, "This chain has a pending rule order. Remove that change first."
+        return {"type": RENAME_CHAIN, "family": family, "table": table, "name": name, "new_name": new_name}, None
+    if action == SET_CHAIN_POLICY:
+        policy = form.get("policy", "")
+        if policy not in CHAIN_POLICIES:
+            return None, "Policy must be accept or drop."
+        current = next((chain for chain in chains_from(ruleset) if chain_key(chain.get("family"), chain.get("table"), chain.get("name")) == key), None)
+        if current is None or not current.get("hook"):
+            return None, "Only a base chain has a policy."
+        if current.get("policy") == policy:
+            return None, f"This chain's policy is already {policy}."
+        return {"type": SET_CHAIN_POLICY, "family": family, "table": table, "name": name, "policy": policy, "old_policy": current.get("policy")}, None
+    if action == DELETE_CHAIN:
+        if has_order:
+            return None, "This chain has a pending rule order. Remove that change first."
+        return {"type": DELETE_CHAIN, "family": family, "table": table, "name": name}, None
+    return None, "Choose an action."
+
+
+@pages.route("/firewall/structure", methods=["GET", "POST"])
+def firewall_structure():
+    """Show tables and chains, or add a change to them to pending changes.
+
+    Returns:
+        The rendered page with an HTTP status, or a redirect after adding.
+    """
+    ruleset, error = load("/api/v1/rules")
+    if error is None:
+        error = ruleset_shape_error(ruleset)
+    render = lambda **kwargs: render_template(
+        "structure.html",
+        tables=_structure_rows(ruleset) if error is None else [],
+        hooks=CHAIN_HOOKS,
+        policies=CHAIN_POLICIES,
+        families=RULE_FAMILIES,
+        **kwargs,
+    )
+    if error is not None:
+        return render(error=error), 502 if request.method == "POST" else 200
+    if request.method == "GET":
+        return render()
+    changes = pending_changes.load(_actor_id())["changes"]
+    change, form_error = _structure_change(request.form, ruleset, changes)
+    if form_error:
+        return render(error=form_error), 400
+    store_error = _store_changes([change])
+    if store_error:
+        return render(error=store_error), 409
+    current_app.logger.info("firewall_change_added type=%s", change["type"])
+    return redirect(url_for("pages.review_changes"))
+
+
 def _rules_redirect(success, message, applied=()):
     """Return to the rules page, which shows the result once.
 
@@ -586,7 +802,7 @@ def _settle_unknown_outcome(actor, pending):
     if error or revision_error or ruleset_shape_error(ruleset):
         return None
     current = _revision_map(revisions)
-    touched = {change_chain(change) for change in pending["changes"]}
+    touched = set().union(*chains_touched(pending["changes"]).values())
     # A transaction changes the revision of every chain it touches, which also
     # rules out an identical rule that already existed.
     chains_changed = all(current.get(chain) != pending["revisions"].get(chain) for chain in touched)
@@ -710,7 +926,7 @@ def _review_context(pending, *, error=None, rejected_index=None):
     if load_error:
         context["error"] = error or "The backend is unavailable, so these changes can't be reviewed."
         context["entries"] = context["other_entries"] = [
-            {"change": change, "summary": describe_change(change), "warnings": [], "problem": None, "flagged": False}
+            {"change": change, "summary": describe_change(change), "warnings": [], "problem": None, "flagged": False, "typed_name": None}
             for change in changes
         ]
         return context
@@ -723,12 +939,12 @@ def _review_context(pending, *, error=None, rejected_index=None):
 
     revisions, revision_error = load("/api/v1/firewall/revisions")
     current = _revision_map(revisions) if revision_error is None else None
+    touched = chains_touched(changes)
     conflicting = (
         {
             change["id"]
             for change in changes
-            if current is not None
-            and current.get(change_chain(change)) != pending["revisions"].get(change_chain(change))
+            if any(current.get(chain) != pending["revisions"].get(chain) for chain in touched[change["id"]])
         }
         if current is not None
         else set()
@@ -748,12 +964,19 @@ def _review_context(pending, *, error=None, rejected_index=None):
             )
         elif change["id"] in conflicting:
             problem = "This chain has changed since you added this. Review it against the current firewall."
+        elif change["type"] == DELETE_CHAIN and jumps_to_chain(after, change["family"], change["table"], change["name"]):
+            handles = ", ".join(
+                str(rule.get("handle"))
+                for rule in jumps_to_chain(after, change["family"], change["table"], change["name"])
+            )
+            problem = f"Other rules jump to this chain (handles {handles}). Delete or change them first."
         elif index == rejected_index:
             problem = "The firewall rejected this change."
         entry = {
             "change": change,
-            "summary": describe_change(change),
+            "summary": describe_change(change, ruleset),
             "warnings": change_warnings(ruleset, after, change, interfaces),
+            "typed_name": required_typed_name(change, ruleset),
             "problem": problem,
             "flagged": change["id"] in flagged,
         }
@@ -761,7 +984,8 @@ def _review_context(pending, *, error=None, rejected_index=None):
         (context["risk_entries"] if entry["flagged"] else context["other_entries"]).append(entry)
 
     context["risk_count"] = len(context["risk_entries"])
-    context["unmanaged_count"] = sum(1 for change in changes if is_unmanaged(change))
+    context["unmanaged_count"] = sum(1 for change in changes if is_unmanaged(change, ruleset))
+    blocking_problem = any(entry["problem"] for entry in context["entries"])
     context["conflict"] = bool(conflicting)
     context["connection_causes"] = check.causes
     if check.status in (WILL_BLOCK, COULD_BLOCK, UNKNOWN_CONNECTION):
@@ -769,7 +993,7 @@ def _review_context(pending, *, error=None, rejected_index=None):
     context["same_host_notice"] = browser_crosses_firewall(connection, request.remote_addr) and affects_incoming_traffic(
         ruleset, changes
     )
-    context["can_apply"] = not stale and not conflicting and rejected_index is None and current is not None
+    context["can_apply"] = not blocking_problem and current is not None
     return context
 
 
@@ -890,6 +1114,10 @@ def apply_changes():
         return refuse("Confirm that you reviewed the changes before applying them. Nothing was changed.", 400)
     if (context["risk_count"] or context["unmanaged_count"]) and request.form.get("confirm_risk") != "yes":
         return refuse("Confirm the management risks and rules Archangel doesn't manage. Nothing was changed.", 400)
+    for entry in context["entries"]:
+        name = entry["typed_name"]
+        if name and request.form.get(f"confirm_name_{entry['change']['id']}") != name:
+            return refuse(f"Type the name {name} to confirm this change. Nothing was changed.", 400)
 
     def outcome_unknown(message):
         current_app.logger.warning("firewall_changes_outcome_unknown count=%s", len(pending["changes"]))

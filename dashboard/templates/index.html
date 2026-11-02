@@ -14,6 +14,7 @@
 {% block page_status %}{{ 'API CONNECTED' if api_connected else 'API UNAVAILABLE' }}{% endblock %}
 
 {% block content %}
+  {% for table in dormant_tables %}<div class="notice" role="status"><strong>Enforcement is off for table {{ table }}.</strong> Its rules aren't being applied.</div>{% endfor %}
   {% if errors %}<div class="notice" role="status">{{ errors|join(' · ') }}</div>{% endif %}
   <section class="view active" id="view-overview" aria-labelledby="page-title">
     <div class="metric-grid">

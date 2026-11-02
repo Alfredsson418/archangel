@@ -16,11 +16,23 @@ ADD_RULE = "add_rule"
 DELETE_RULE = "delete_rule"
 REPLACE_RULE = "replace_rule"
 SET_RULE_ORDER = "set_rule_order"
+CREATE_CHAIN = "create_chain"
+RENAME_CHAIN = "rename_chain"
+SET_CHAIN_POLICY = "set_chain_policy"
+DELETE_CHAIN = "delete_chain"
+CREATE_TABLE = "create_table"
+DELETE_TABLE = "delete_table"
+SET_TABLE_ENABLED = "set_table_enabled"
+_RULE_TYPES = (ADD_RULE, DELETE_RULE, REPLACE_RULE, SET_RULE_ORDER)
+_CHAIN_TYPES = (CREATE_CHAIN, RENAME_CHAIN, SET_CHAIN_POLICY, DELETE_CHAIN)
+_TABLE_TYPES = (CREATE_TABLE, DELETE_TABLE, SET_TABLE_ENABLED)
 # Leave-one-out analysis repeats the connection check for each candidate. Past
 # this many, every candidate is flagged rather than making the page slow.
 _MAX_FLAG_CANDIDATES = 64
 _INCOMING_HOOKS = ("input", "prerouting")
 _MAX_HIGHLIGHTED_RULES = 200
+# What the API accepts for chain and table changes; the rest is for the review.
+_STRUCTURE_FIELDS = ("type", "family", "table", "name", "new_name", "base", "policy", "enabled")
 _TERMINAL_STATEMENTS = ("accept", "drop", "reject")
 
 
@@ -34,13 +46,137 @@ def chain_key(family, table, chain):
 
 
 def change_chain(change):
-    """Name the chain a pending change touches.
+    """Name the chain a pending change is about.
 
     Returns:
-        A chain key.
+        A chain key, or None for a change to a whole table.
     """
+    if change["type"] in _TABLE_TYPES:
+        return None
+    if change["type"] in _CHAIN_TYPES:
+        return chain_key(change["family"], change["table"], change["name"])
     target = change["rule"] if change["type"] in (ADD_RULE, REPLACE_RULE) else change
     return chain_key(target["family"], target["table"], target["chain"])
+
+
+def chains_touched(changes):
+    """Find the existing chains each pending change depends on.
+
+    Chains the list itself creates are left out, since they have no revision.
+    A change to a table records its chains when it's added.
+
+    Returns:
+        A dictionary of change IDs to sets of chain keys.
+    """
+    created = set()
+    touched = {}
+    for change in changes:
+        if change["type"] == CREATE_CHAIN:
+            created.add(change_chain(change))
+            keys = set()
+        elif change["type"] in (DELETE_TABLE, SET_TABLE_ENABLED):
+            keys = set(change["chains"])
+        elif change["type"] == CREATE_TABLE:
+            keys = set()
+        else:
+            keys = {change_chain(change)}
+            if change["type"] == RENAME_CHAIN:
+                created.add(chain_key(change["family"], change["table"], change["new_name"]))
+        touched[change["id"]] = keys - created
+    return touched
+
+
+def blocked_chains(changes):
+    """Find chains whose rules can't change in the same list.
+
+    nftables applies a rename at the end of a transaction, so neither name can
+    be used. A deleted chain has nothing left to change.
+
+    Returns:
+        A set of chain keys.
+    """
+    blocked = set()
+    for change in changes:
+        if change["type"] == RENAME_CHAIN:
+            blocked.add(change_chain(change))
+            blocked.add(chain_key(change["family"], change["table"], change["new_name"]))
+        elif change["type"] == DELETE_CHAIN:
+            blocked.add(change_chain(change))
+        elif change["type"] == DELETE_TABLE:
+            blocked.update(change["chains"])
+    return blocked
+
+
+def tables_from(ruleset):
+    """List the tables in a listing.
+
+    Returns:
+        A list of table dictionaries, in listing order.
+    """
+    if not isinstance(ruleset, dict) or not isinstance(ruleset.get("nftables"), list):
+        return []
+    return [entry["table"] for entry in ruleset["nftables"] if isinstance(entry, dict) and isinstance(entry.get("table"), dict)]
+
+
+def is_dormant(table):
+    """Report whether a table's enforcement is off.
+
+    Returns:
+        True if the table has the dormant flag.
+    """
+    flags = table.get("flags", [])
+    return "dormant" in (flags if isinstance(flags, list) else [flags])
+
+
+def dormant_tables(ruleset):
+    """List the tables whose rules aren't being enforced.
+
+    Returns:
+        A list of text such as "inet filter".
+    """
+    return [f"{table.get('family')} {table.get('name')}" for table in tables_from(ruleset) if is_dormant(table)]
+
+
+def table_contents(ruleset, family, table):
+    """Count what a table holds.
+
+    Returns:
+        A dictionary with "chains", "rules", "unmanaged", and "objects", the
+        number of named sets, maps, and other objects.
+    """
+    chains = [chain for chain in chains_from(ruleset) if chain.get("family") == family and chain.get("table") == table]
+    rules = [rule for rule in rules_from(ruleset) if rule.get("family") == family and rule.get("table") == table]
+    objects = 0
+    for entry in ruleset.get("nftables", []) if isinstance(ruleset, dict) else []:
+        if isinstance(entry, dict) and len(entry) == 1:
+            kind, value = next(iter(entry.items()))
+            if kind not in ("table", "chain", "rule", "metainfo") and isinstance(value, dict) and value.get("family") == family and value.get("table") == table:
+                objects += 1
+    return {
+        "chains": len(chains),
+        "rules": len(rules),
+        "unmanaged": sum(1 for rule in rules if rule.get("comment") != MANAGED_RULE_COMMENT),
+        "objects": objects,
+    }
+
+
+def jumps_to_chain(ruleset, family, table, chain):
+    """Find rules that jump or go to a chain.
+
+    Returns:
+        A list of rule dictionaries.
+    """
+    found = []
+    for rule in rules_from(ruleset):
+        if rule.get("family") != family or rule.get("table") != table or rule.get("chain") == chain:
+            continue
+        for statement in rule.get("expr", []) if isinstance(rule.get("expr"), list) else []:
+            if isinstance(statement, dict) and any(
+                isinstance(statement.get(kind), dict) and statement[kind].get("target") == chain for kind in ("jump", "goto")
+            ):
+                found.append(rule)
+                break
+    return found
 
 
 def chains_from(ruleset):
@@ -179,6 +315,8 @@ def apply_to_ruleset(ruleset, changes):
             )
         elif change["type"] == SET_RULE_ORDER:
             _reorder_entries(entries, change)
+        elif change["type"] in _CHAIN_TYPES or change["type"] in _TABLE_TYPES:
+            _apply_structure_change(entries, change)
         elif change["type"] == REPLACE_RULE:
             rule = change["rule"]
             target = find_rule(result, rule["family"], rule["table"], rule["chain"], change["handle"])
@@ -198,6 +336,75 @@ def apply_to_ruleset(ruleset, changes):
                 )
             ]
     return result
+
+
+def _apply_structure_change(entries, change):
+    """Apply a chain or table change to listing entries, in place.
+
+    Returns:
+        None.
+    """
+    def is_in_table(value):
+        return value.get("family") == change["family"] and value.get("table") == change.get("table", change["name"])
+
+    def is_in_chain(value, field):
+        return is_in_table(value) and value.get(field) == change["name"]
+
+    kind = change["type"]
+    if kind == CREATE_TABLE:
+        entries.append({"table": {"family": change["family"], "name": change["name"]}})
+    elif kind == CREATE_CHAIN:
+        chain = {"family": change["family"], "table": change["table"], "name": change["name"]}
+        if change.get("base"):
+            base = change["base"]
+            chain.update(type=base["type"], hook=base["hook"], prio=base["priority"], policy=base["policy"])
+        entries.append({"chain": chain})
+    elif kind == SET_CHAIN_POLICY:
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("chain"), dict) and is_in_chain(entry["chain"], "name"):
+                entry["chain"]["policy"] = change["policy"]
+    elif kind == RENAME_CHAIN:
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if isinstance(entry.get("chain"), dict) and is_in_chain(entry["chain"], "name"):
+                entry["chain"]["name"] = change["new_name"]
+            elif isinstance(entry.get("rule"), dict) and is_in_table(entry["rule"]):
+                rule = entry["rule"]
+                if rule.get("chain") == change["name"]:
+                    rule["chain"] = change["new_name"]
+                # Rules that jump to a renamed chain follow its new name.
+                for statement in rule.get("expr", []) if isinstance(rule.get("expr"), list) else []:
+                    for verb in ("jump", "goto"):
+                        target = statement.get(verb) if isinstance(statement, dict) else None
+                        if isinstance(target, dict) and target.get("target") == change["name"]:
+                            target["target"] = change["new_name"]
+    elif kind == DELETE_CHAIN:
+        entries[:] = [
+            entry
+            for entry in entries
+            if not (isinstance(entry, dict) and (
+                (isinstance(entry.get("chain"), dict) and is_in_chain(entry["chain"], "name"))
+                or (isinstance(entry.get("rule"), dict) and is_in_chain(entry["rule"], "chain"))
+            ))
+        ]
+    elif kind == DELETE_TABLE:
+        def in_deleted_table(entry):
+            if not isinstance(entry, dict) or len(entry) != 1:
+                return False
+            object_kind, value = next(iter(entry.items()))
+            if not isinstance(value, dict) or value.get("family") != change["family"]:
+                return False
+            return value.get("name") == change["name"] if object_kind == "table" else value.get("table") == change["name"]
+
+        entries[:] = [entry for entry in entries if not in_deleted_table(entry)]
+    elif kind == SET_TABLE_ENABLED:
+        for entry in entries:
+            table = entry.get("table") if isinstance(entry, dict) else None
+            if isinstance(table, dict) and table.get("family") == change["family"] and table.get("name") == change["name"]:
+                flags = table.get("flags", [])
+                flags = [flag for flag in (flags if isinstance(flags, list) else [flags]) if flag != "dormant"]
+                table["flags"] = flags if change["enabled"] else flags + ["dormant"]
 
 
 def rule_key(rule):
@@ -263,25 +470,60 @@ def _without_counters(rule):
 def stale_changes(ruleset, changes):
     """Find changes whose target has changed since they were added.
 
+    Follows the list in order, because a change can depend on an earlier one.
+
     Returns:
         A set of change IDs.
     """
     chains = {chain_key(chain.get("family"), chain.get("table"), chain.get("name")) for chain in chains_from(ruleset)}
+    tables = {(table.get("family"), table.get("name")) for table in tables_from(ruleset)}
     stale = set()
     for index, change in enumerate(changes):
-        if change_chain(change) not in chains:
+        kind = change["type"]
+        if kind == CREATE_TABLE:
+            tables.add((change["family"], change["name"]))
+        elif kind == DELETE_TABLE or kind == SET_TABLE_ENABLED:
+            current = {
+                chain
+                for chain in chains
+                if chain.startswith(f"{change['family']} {change['name']} ")
+            }
+            if (change["family"], change["name"]) not in tables or current - set(change["chains"]) - _created_chains(changes[:index]):
+                stale.add(change["id"])
+            if kind == DELETE_TABLE:
+                tables.discard((change["family"], change["name"]))
+                chains -= current
+        elif kind == CREATE_CHAIN:
+            if (change["family"], change["table"]) not in tables:
+                stale.add(change["id"])
+            chains.add(change_chain(change))
+        elif change_chain(change) not in chains:
             stale.add(change["id"])
-        elif change["type"] == SET_RULE_ORDER:
+        elif kind == RENAME_CHAIN:
+            chains.discard(change_chain(change))
+            chains.add(chain_key(change["family"], change["table"], change["new_name"]))
+        elif kind == DELETE_CHAIN:
+            chains.discard(change_chain(change))
+        elif kind == SET_RULE_ORDER:
             earlier = apply_to_ruleset(ruleset, changes[:index])
             current = chain_rules(earlier, change["family"], change["table"], change["chain"])
             if sorted(map(str, change["order"])) != sorted(str(rule_key(rule)) for rule in current):
                 stale.add(change["id"])
-        elif change["type"] in (DELETE_RULE, REPLACE_RULE):
-            target = change["rule"] if change["type"] == REPLACE_RULE else change
+        elif kind in (DELETE_RULE, REPLACE_RULE):
+            target = change["rule"] if kind == REPLACE_RULE else change
             current = find_rule(ruleset, target["family"], target["table"], target["chain"], change["handle"])
             if current is None or _without_counters(current) != _without_counters(change["before"]):
                 stale.add(change["id"])
     return stale
+
+
+def _created_chains(changes):
+    """Find chains a list creates.
+
+    Returns:
+        A set of chain keys.
+    """
+    return {change_chain(change) for change in changes if change["type"] == CREATE_CHAIN}
 
 
 def describe_listed_rule(rule):
@@ -295,12 +537,66 @@ def describe_listed_rule(rule):
     return describe_rule(portable) if portable else json.dumps(_without_counters(rule))
 
 
-def describe_change(change):
-    """Describe a change's target and its state before and after.
+def _count(number, noun):
+    """Format a count, such as "1 rule" or "3 rules".
+
+    Returns:
+        Text.
+    """
+    return f"{number} {noun}{'' if number == 1 else 's'}"
+
+
+def _describe_structure_change(change, ruleset):
+    """Describe a chain or table change's state before and after.
 
     Returns:
         A dictionary with "kind", "target", "before", and "new".
     """
+    kind = change["type"]
+    if kind == CREATE_TABLE:
+        return {"kind": "New table", "target": f"{change['family']} {change['name']}", "before": "(none)", "new": "empty table"}
+    if kind == CREATE_CHAIN:
+        base = change.get("base")
+        summary = f"{base['hook']} hook, priority {base['priority']}, policy {base['policy']}" if base else "regular chain"
+        return {"kind": "New chain", "target": change_chain(change), "before": "(none)", "new": summary}
+    if kind == RENAME_CHAIN:
+        return {"kind": "Renamed chain", "target": f"{change['family']} {change['table']}", "before": change["name"], "new": change["new_name"]}
+    if kind == SET_CHAIN_POLICY:
+        return {"kind": "Chain policy", "target": change_chain(change), "before": change["old_policy"], "new": change["policy"]}
+    if kind == DELETE_CHAIN:
+        rules = len(chain_rules(ruleset, change["family"], change["table"], change["name"])) if ruleset else None
+        return {
+            "kind": "Deleted chain",
+            "target": change_chain(change),
+            "before": "contents unknown" if rules is None else _count(rules, "rule"),
+            "new": "(deleted)",
+        }
+    target = f"{change['family']} {change['name']}"
+    if kind == SET_TABLE_ENABLED:
+        return {"kind": "Table enforcement", "target": target, "before": "off" if change["enabled"] else "on", "new": "on" if change["enabled"] else "off"}
+    contents = table_contents(ruleset, change["family"], change["name"]) if ruleset else None
+    return {
+        "kind": "Deleted table",
+        "target": target,
+        "before": "contents unknown"
+        if contents is None
+        else f"{_count(contents['chains'], 'chain')}, {_count(contents['rules'], 'rule')}, {_count(contents['objects'], 'other object')}",
+        "new": "(deleted)",
+    }
+
+
+def describe_change(change, ruleset=None):
+    """Describe a change's target and its state before and after.
+
+    Args:
+        change: The pending change.
+        ruleset: The current listing, for what a deletion would remove.
+
+    Returns:
+        A dictionary with "kind", "target", "before", and "new".
+    """
+    if change["type"] in _CHAIN_TYPES or change["type"] in _TABLE_TYPES:
+        return _describe_structure_change(change, ruleset)
     if change["type"] == ADD_RULE:
         return {
             "kind": "New rule",
@@ -352,14 +648,40 @@ def moved_rules(change):
     return moves
 
 
-def is_unmanaged(change):
-    """Report whether a change affects a rule Archangel doesn't manage.
+def required_typed_name(change, ruleset):
+    """Find the name a person must type to confirm a destructive change.
+
+    nftables deletes a non-empty chain without warning, and turning a table off
+    or deleting it affects everything inside, so a tick box isn't enough.
 
     Returns:
-        True if it changes or moves an existing rule without the managed marker.
+        The name to type, or None if the change doesn't need it.
     """
-    if change["type"] == ADD_RULE:
+    if change["type"] == DELETE_TABLE or (change["type"] == SET_TABLE_ENABLED and not change["enabled"]):
+        return change["name"]
+    if change["type"] == DELETE_CHAIN and chain_rules(ruleset, change["family"], change["table"], change["name"]):
+        return change["name"]
+    return None
+
+
+def is_unmanaged(change, ruleset=None):
+    """Report whether a change affects anything Archangel doesn't manage.
+
+    Args:
+        change: The pending change.
+        ruleset: The current listing, for what a chain or table contains.
+
+    Returns:
+        True if it changes or moves an existing rule without the managed marker,
+        or changes a chain or table containing such a rule.
+    """
+    if change["type"] in (ADD_RULE, CREATE_CHAIN, CREATE_TABLE):
         return False
+    if change["type"] in (RENAME_CHAIN, SET_CHAIN_POLICY, DELETE_CHAIN):
+        rules = chain_rules(ruleset, change["family"], change["table"], change["name"]) if ruleset else []
+        return any(rule.get("comment") != MANAGED_RULE_COMMENT for rule in rules)
+    if change["type"] in (DELETE_TABLE, SET_TABLE_ENABLED):
+        return bool(ruleset) and table_contents(ruleset, change["family"], change["name"])["unmanaged"] > 0
     if change["type"] == SET_RULE_ORDER:
         unmanaged = {row["key"] for row in change["old_order"] if row.get("unmanaged")}
         return any(move["key"] in unmanaged for move in moved_rules(change))
@@ -440,7 +762,9 @@ def change_warnings(ruleset, after, change, interfaces=None):
     Returns:
         A list of warning messages. These never block a change.
     """
-    hook = _hooks_by_chain(ruleset).get(change_chain(change))
+    if change["type"] in _CHAIN_TYPES or change["type"] in _TABLE_TYPES:
+        return _structure_warnings(ruleset, change)
+    hook = {**_hooks_by_chain(ruleset), **_hooks_by_chain(after)}.get(change_chain(change))
     if change["type"] == ADD_RULE:
         return _rule_warnings(change["rule"], hook, after, interfaces)
     if change["type"] == SET_RULE_ORDER:
@@ -450,6 +774,34 @@ def change_warnings(ruleset, after, change, interfaces=None):
         warnings.append("This could remove access that's currently allowed.")
     if is_unmanaged(change):
         warnings.append("Archangel doesn't manage this rule. Another program or administrator may depend on it.")
+    return warnings
+
+
+def _structure_warnings(ruleset, change):
+    """List warnings about a chain or table change.
+
+    Returns:
+        A list of warning messages.
+    """
+    warnings = []
+    kind = change["type"]
+    drop_policy = (kind == SET_CHAIN_POLICY and change["policy"] == "drop") or (
+        kind == CREATE_CHAIN and change.get("base") and change["base"]["policy"] == "drop"
+    )
+    hook = change["base"]["hook"] if kind == CREATE_CHAIN and change.get("base") else _hooks_by_chain(ruleset).get(change_chain(change))
+    if drop_policy and hook == "input":
+        warnings.append("This could block other access to this server, such as SSH.")
+    if kind == SET_TABLE_ENABLED and not change["enabled"]:
+        warnings.append("Every rule in this table stops being enforced, so traffic it blocks would be allowed.")
+    if kind == DELETE_TABLE:
+        warnings.append("Every rule in this table stops being enforced, and can't be recovered from here.")
+    if kind == DELETE_CHAIN and chain_rules(ruleset, change["family"], change["table"], change["name"]):
+        warnings.append("nftables deletes this chain's rules with it, and they can't be recovered from here.")
+    if is_unmanaged(change, ruleset):
+        warnings.append(
+            "This contains rules Archangel doesn't manage. Another program or administrator may depend on them, "
+            "and software such as Docker may recreate or depend on its own tables."
+        )
     return warnings
 
 
@@ -494,7 +846,9 @@ def affects_incoming_traffic(ruleset, changes):
         True if any change is on a chain that could see incoming traffic.
     """
     hooks = _hooks_by_chain(ruleset)
-    return any(hooks.get(change_chain(change)) in (None,) + _INCOMING_HOOKS for change in changes)
+    return any(
+        change["type"] in _TABLE_TYPES or hooks.get(change_chain(change)) in (None,) + _INCOMING_HOOKS for change in changes
+    )
 
 
 def management_risk(ruleset, changes, connection):
@@ -532,7 +886,7 @@ def _could_affect_connection(change, connection):
     """
     if change["type"] == ADD_RULE:
         return rule_could_affect(rule_statements(change["rule"]), connection)
-    if change["type"] == SET_RULE_ORDER:
+    if change["type"] not in (ADD_RULE, DELETE_RULE, REPLACE_RULE):
         return True
     if change["type"] == REPLACE_RULE and rule_could_affect(rule_statements(change["rule"]), connection):
         return True
@@ -564,6 +918,8 @@ def api_payload(pending):
                     "order": change["order"],
                 }
             )
+        elif change["type"] in _CHAIN_TYPES or change["type"] in _TABLE_TYPES:
+            changes.append({key: value for key, value in change.items() if key in _STRUCTURE_FIELDS})
         elif change["type"] == REPLACE_RULE:
             changes.append({"type": REPLACE_RULE, "handle": change["handle"], "rule": change["rule"]})
         else:
@@ -576,7 +932,7 @@ def api_payload(pending):
                     "handle": change["handle"],
                 }
             )
-    touched = {change_chain(change) for change in pending["changes"]}
+    touched = set().union(*chains_touched(pending["changes"]).values()) if pending["changes"] else set()
     expected = []
     for key in sorted(touched):
         family, table, chain = key.split(" ")
@@ -597,6 +953,39 @@ def highlight_entries(changes):
     return rules[:_MAX_HIGHLIGHTED_RULES]
 
 
+def _structure_applied(change, chains, tables, later):
+    """Check that a chain or table change shows in the listing read back.
+
+    Returns:
+        True if the change is visible, or a later change in the list altered
+        the same object, which is checked in its own turn.
+    """
+    kind = change["type"]
+    if kind in _TABLE_TYPES:
+        key = (change["family"], change["name"])
+        if any(other["type"] in _TABLE_TYPES and (other["family"], other["name"]) == key for other in later):
+            return True
+        if kind == CREATE_TABLE:
+            return key in tables
+        if kind == DELETE_TABLE:
+            return key not in tables
+        return key in tables and is_dormant(tables[key]) != change["enabled"]
+    if any(
+        other["type"] in _CHAIN_TYPES and change_chain(other) == change_chain(change)
+        or (other["type"] == DELETE_TABLE and other["family"] == change["family"] and other["name"] == change["table"])
+        for other in later
+    ):
+        return True
+    key = change_chain(change)
+    if kind == CREATE_CHAIN:
+        return key in chains
+    if kind == RENAME_CHAIN:
+        return key not in chains and chain_key(change["family"], change["table"], change["new_name"]) in chains
+    if kind == DELETE_CHAIN:
+        return key not in chains
+    return key in chains and chains[key].get("policy") == change["policy"]
+
+
 def verify_applied(ruleset, changes):
     """Confirm that applied changes appear in the ruleset read back afterward.
 
@@ -604,8 +993,15 @@ def verify_applied(ruleset, changes):
         True if every change is visible in the ruleset.
     """
     listed = [portable_rule(rule) for rule in rules_from(ruleset)]
+    chains = {chain_key(chain.get("family"), chain.get("table"), chain.get("name")): chain for chain in chains_from(ruleset)}
+    tables = {(table.get("family"), table.get("name")): table for table in tables_from(ruleset)}
+    # A later change can undo what an earlier one set up, such as a new chain
+    # that's renamed, so only each object's final state can be checked.
     for index, change in enumerate(changes):
-        if change["type"] == ADD_RULE:
+        if change["type"] in _CHAIN_TYPES or change["type"] in _TABLE_TYPES:
+            if not _structure_applied(change, chains, tables, changes[index + 1 :]):
+                return False
+        elif change["type"] == ADD_RULE:
             if change["rule"] not in listed:
                 return False
         elif change["type"] == SET_RULE_ORDER:

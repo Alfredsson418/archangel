@@ -11,12 +11,14 @@
 
 {% block content %}
   {% if error %}<div class="notice" role="status">{{ error }}</div>{% endif %}
+  {% for table in dormant_tables %}<div class="notice" role="status"><strong>Enforcement is off for table {{ table }}.</strong> Its rules are listed below but aren't being applied.</div>{% endfor %}
   {% if firewall_result %}<div class="{{ 'success-notice' if firewall_result.success else 'notice' }}" role="status">{{ firewall_result.message }}</div>{% endif %}
   <section class="panel" aria-labelledby="rules-heading">
     <div class="panel-heading">
       <div><p class="eyebrow">LIVE RULESET</p><h2 id="rules-heading">Active rules</h2></div>
       <div class="rules-actions">
         <a class="text-button" href="{{ url_for('pages.export_rules') }}">Export portable rules</a>
+        <a class="text-button" href="{{ url_for('pages.firewall_structure') }}">Tables and chains</a>
         <a class="text-button" href="{{ url_for('pages.import_rules') }}">Import rules</a>
         <a class="refresh-button action-link" href="{{ url_for('pages.new_rule') }}">Add rule</a>
       </div>

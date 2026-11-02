@@ -65,7 +65,10 @@ class FakeApi:
         if path == "/api/v1/system":
             return UpstreamResponse({"network_interfaces": self.interfaces})
         if path == "/api/v1/firewall/revisions":
-            return UpstreamResponse({"chains": [{"family": "inet", "table": "filter", "chain": "input", "revision": self.revision}]})
+            chains = [entry["chain"] for entry in self.ruleset["nftables"] if isinstance(entry, dict) and "chain" in entry]
+            return UpstreamResponse(
+                {"chains": [{"family": chain["family"], "table": chain["table"], "chain": chain["name"], "revision": self.revision} for chain in chains]}
+            )
         body = json.loads(request.data)
         if path == "/api/v1/firewall/changes/check":
             self.checked.append(body)
@@ -1202,3 +1205,294 @@ class OrganizeTests(ChangeFlowTestCase):
         data = self.page().data
         self.assertNotIn(b"<script>x", data)
         self.assertIn(b"&lt;script&gt;x", data)
+
+
+class StructureTests(ChangeFlowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.api.ruleset = {
+            "nftables": [
+                {"table": {"family": "inet", "name": "filter"}},
+                input_chain(),
+                {"chain": {"family": "inet", "table": "filter", "name": "helper"}},
+                listed_rule(7, port_match(22), {"accept": None}),
+            ]
+        }
+
+    def act(self, action, **fields):
+        return self.post("/firewall/structure", structure_action=action, family="inet", **fields)
+
+    def review(self):
+        response = self.client.get("/changes")
+        self.addCleanup(response.close)
+        return response.get_data(as_text=True).replace("&#39;", "'").replace("&gt;", ">")
+
+    def test_the_page_lists_tables_chains_and_restrictions(self):
+        response = self.client.get("/firewall/structure")
+        text = response.get_data(as_text=True)
+        response.close()
+        self.assertIn("inet filter", text)
+        self.assertIn("helper", text)
+        self.assertIn("regular chain", text)
+        self.assertIn("tables can't be renamed", text)
+        self.assertIn("hook and priority can't be changed", text)
+
+    def test_other_families_are_read_only(self):
+        self.api.ruleset["nftables"].append({"table": {"family": "netdev", "name": "edge"}})
+        response = self.client.get("/firewall/structure")
+        self.assertIn(b"can't be managed here", response.data)
+        response.close()
+        result = self.post("/firewall/structure", structure_action="delete_table", family="netdev", name="edge")
+        self.assertEqual(result.status_code, 400)
+        self.assertEqual(self.pending(), [])
+        result.close()
+
+    def test_no_change_touches_the_firewall_until_applied(self):
+        self.act("create_table", name="fresh").close()
+        self.act("create_chain", table="filter", name="fresh").close()
+        self.act("rename_chain", table="filter", name="helper", new_name="better").close()
+        self.assertEqual(len(self.pending()), 3)
+        self.assertEqual(self.api.applied, [])
+
+    def test_creating_a_table_and_chain_and_rule_in_one_list(self):
+        self.act("create_table", name="fresh").close()
+        self.act("create_chain", table="fresh", name="c").close()
+        self.add_rule(chain="inet fresh c").close()
+        text = self.review()
+        self.assertIn("New table", text)
+        self.assertIn("New chain", text)
+        self.apply().close()
+        changes = self.api.applied[0]["changes"]
+        self.assertEqual(changes[0], {"type": "create_table", "family": "inet", "name": "fresh"})
+        self.assertEqual(changes[1], {"type": "create_chain", "family": "inet", "table": "fresh", "name": "c"})
+        self.assertEqual(changes[2]["rule"]["chain"], "c")
+        self.assertEqual(self.api.applied[0]["expected_revisions"], [])
+
+    def test_a_pending_chain_can_be_chosen_in_the_rule_form(self):
+        self.act("create_chain", table="filter", name="fresh").close()
+        response = self.client.get("/rules/new")
+        self.assertIn(b"inet filter fresh", response.data)
+        response.close()
+
+    def test_creating_a_base_chain(self):
+        self.act("create_chain", table="filter", name="fw", hook="forward", priority="-10", policy="drop").close()
+        self.assertEqual(self.pending()[0]["base"], {"type": "filter", "hook": "forward", "priority": -10, "policy": "drop"})
+        self.assertIn("forward hook, priority -10, policy drop", self.review())
+
+    def test_rejects_invalid_names_and_definitions(self):
+        for action, fields in (
+            ("create_table", {"name": "bad name"}),
+            ("create_table", {"name": "1bad"}),
+            ("create_chain", {"table": "filter", "name": "bad;name"}),
+            ("create_chain", {"table": "filter", "name": "c", "hook": "ingress", "policy": "drop"}),
+            ("create_chain", {"table": "filter", "name": "c", "hook": "input", "priority": "99999", "policy": "drop"}),
+            ("create_chain", {"table": "filter", "name": "c", "hook": "input", "priority": "x", "policy": "drop"}),
+            ("create_chain", {"table": "filter", "name": "c", "hook": "input", "priority": "0", "policy": "reject"}),
+            ("rename_chain", {"table": "filter", "name": "helper", "new_name": "bad name"}),
+            ("set_chain_policy", {"table": "filter", "name": "input", "policy": "reject"}),
+            ("set_chain_policy", {"table": "filter", "name": "helper", "policy": "drop"}),
+            ("set_chain_policy", {"table": "filter", "name": "input", "policy": "accept"}),
+            ("flush_everything", {"table": "filter", "name": "input"}),
+        ):
+            response = self.act(action, **fields)
+            self.assertEqual(response.status_code, 400, (action, fields))
+            self.assertEqual(self.pending(), [], (action, fields))
+            response.close()
+
+    def test_renaming_shows_before_and_new(self):
+        self.act("rename_chain", table="filter", name="helper", new_name="better").close()
+        text = self.review()
+        self.assertIn("Renamed chain", text)
+        self.assertIn("helper", text)
+        self.assertIn("better", text)
+        self.apply().close()
+        self.assertEqual(
+            self.api.applied[0]["changes"][0],
+            {"type": "rename_chain", "family": "inet", "table": "filter", "name": "helper", "new_name": "better"},
+        )
+
+    def test_a_chains_rules_cannot_change_after_it_is_renamed(self):
+        self.act("rename_chain", table="filter", name="input", new_name="renamed").close()
+        for response in (
+            self.add_rule(chain="inet filter renamed"),
+            self.add_rule(chain="inet filter input"),
+        ):
+            self.assertEqual(response.status_code, 409)
+            self.assertIn(b"pending rename or deletion", response.data)
+            response.close()
+        self.delete_rule(7).close()
+        self.post("/rules/edit", form_action="add", family="inet", table="filter", chain="input", handle="7", protocol="tcp", destination_port="23", action="accept").close()
+        response = self.client.get("/rules/organize", query_string={"chain": "inet filter input"})
+        self.assertEqual(response.status_code, 302)
+        response.close()
+        self.assertEqual(len(self.pending()), 1)
+
+    def test_renamed_chains_leave_the_rule_form(self):
+        self.act("rename_chain", table="filter", name="helper", new_name="better").close()
+        response = self.client.get("/rules/new")
+        self.assertNotIn(b"inet filter helper", response.data)
+        self.assertNotIn(b"inet filter better", response.data)
+        response.close()
+
+    def test_a_chain_with_a_pending_order_cannot_be_renamed_or_deleted(self):
+        self.api.ruleset["nftables"].append(listed_rule(8, port_match(23), {"accept": None}))
+        self.client.post("/rules/organize", data={"csrf_token": self.csrf_token(), "chain": "inet filter input", "order": ["handle:8", "handle:7"]}).close()
+        for action, fields in (("rename_chain", {"new_name": "x"}), ("delete_chain", {})):
+            response = self.act(action, table="filter", name="input", **fields)
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(b"pending rule order", response.data)
+            response.close()
+        response = self.act("delete_table", name="filter")
+        self.assertEqual(response.status_code, 400)
+        response.close()
+
+    def test_changing_a_policy_to_drop_warns_and_flags_the_api(self):
+        self.act("set_chain_policy", table="filter", name="input", policy="drop").close()
+        text = self.review()
+        self.assertIn("accept <span", text.replace("</div>", ""))
+        self.assertIn("1 MANAGEMENT RISK", text)
+        self.assertIn("will block the dashboard's connection", text)
+        self.assertIn("other access to this server", text)
+        self.assertEqual(self.pending()[0]["old_policy"], "accept")
+
+    def test_a_policy_change_sends_only_what_the_api_accepts(self):
+        self.api.ruleset["nftables"].append(listed_rule(9, port_match(8080), {"accept": None}))
+        self.act("set_chain_policy", table="filter", name="input", policy="drop").close()
+        self.apply(confirm_risk="yes").close()
+        self.assertEqual(
+            self.api.applied[0]["changes"][0],
+            {"type": "set_chain_policy", "family": "inet", "table": "filter", "name": "input", "policy": "drop"},
+        )
+
+    def test_deleting_an_empty_chain_needs_no_typed_name(self):
+        self.act("delete_chain", table="filter", name="helper").close()
+        text = self.review()
+        self.assertIn("0 rules", text)
+        self.assertNotIn("confirm_name_", text)
+        self.apply().close()
+        self.assertEqual(len(self.api.applied), 1)
+
+    def test_deleting_a_chain_with_rules_needs_its_name_typed(self):
+        self.act("delete_chain", table="filter", name="input").close()
+        change_id = self.pending()[0]["id"]
+        text = self.review()
+        self.assertIn("1 rule ", text)
+        self.assertIn(f"confirm_name_{change_id}", text)
+        self.assertIn("deletes this chain's rules with it", text)
+        for typed in ({}, {f"confirm_name_{change_id}": "wrong"}):
+            response = self.apply(**typed)
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(self.api.applied, [])
+            response.close()
+        self.apply(**{f"confirm_name_{change_id}": "input"}).close()
+        self.assertEqual(len(self.api.applied), 1)
+
+    def test_a_chain_other_rules_jump_to_cannot_be_deleted(self):
+        self.api.ruleset["nftables"].append(listed_rule(9, {"jump": {"target": "helper"}}))
+        self.act("delete_chain", table="filter", name="helper").close()
+        text = self.review()
+        self.assertIn("Other rules jump to this chain (handles 9)", text)
+        self.assertIn("disabled", text)
+        response = self.apply()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.api.applied, [])
+        response.close()
+
+    def test_removing_the_jump_in_the_same_list_allows_deleting_the_chain(self):
+        self.api.ruleset["nftables"].append(listed_rule(9, {"jump": {"target": "helper"}}))
+        self.delete_rule(9).close()
+        self.act("delete_chain", table="filter", name="helper").close()
+        self.assertNotIn("Other rules jump", self.review())
+
+    def test_deleting_a_table_needs_its_name_typed_and_lists_its_contents(self):
+        self.api.ruleset["nftables"].append({"set": {"family": "inet", "table": "filter", "name": "ports"}})
+        self.act("delete_table", name="filter").close()
+        change = self.pending()[0]
+        text = self.review()
+        self.assertIn("2 chains, 1 rule, 1 other object", text)
+        self.assertIn(f"confirm_name_{change['id']}", text)
+        response = self.apply(confirm_risk="yes")
+        self.assertEqual(response.status_code, 400)
+        response.close()
+        self.apply(confirm_risk="yes", **{f"confirm_name_{change['id']}": "filter"}).close()
+        self.assertEqual(self.api.applied[0]["changes"][0], {"type": "delete_table", "family": "inet", "name": "filter"})
+        self.assertEqual(sorted(entry["chain"] for entry in self.api.applied[0]["expected_revisions"]), ["helper", "input"])
+
+    def test_turning_a_table_off_needs_its_name_typed_and_warns(self):
+        self.act("disable_table", name="filter").close()
+        change = self.pending()[0]
+        text = self.review()
+        self.assertIn("Table enforcement", text)
+        self.assertIn("stops being enforced", text)
+        self.assertIn(f"confirm_name_{change['id']}", text)
+        response = self.apply()
+        self.assertEqual(response.status_code, 400)
+        response.close()
+        self.apply(**{f"confirm_name_{change['id']}": "filter"}).close()
+        self.assertEqual(self.api.applied[0]["changes"][0], {"type": "set_table_enabled", "family": "inet", "name": "filter", "enabled": False})
+
+    def test_a_table_that_is_off_is_reported_everywhere(self):
+        self.api.ruleset["nftables"][0]["table"]["flags"] = ["dormant"]
+        for path in ("/rules", "/firewall/structure"):
+            response = self.client.get(path)
+            self.assertIn(b"Enforcement is off", response.data, path)
+            response.close()
+        response = self.client.get("/firewall/structure")
+        self.assertIn(b"Turn enforcement on", response.data)
+        response.close()
+
+    def test_turning_a_table_on_needs_no_typed_name(self):
+        self.api.ruleset["nftables"][0]["table"]["flags"] = ["dormant"]
+        self.act("enable_table", name="filter").close()
+        self.assertNotIn("confirm_name_", self.review())
+        self.apply().close()
+        self.assertTrue(self.api.applied[0]["changes"][0]["enabled"])
+
+
+    def test_deleting_the_table_that_allows_the_api_is_not_a_risk_on_its_own(self):
+        # With no other table, deleting it leaves everything allowed.
+        self.act("delete_table", name="filter").close()
+        self.assertIn("0 MANAGEMENT RISK", self.review())
+
+    def test_unmanaged_contents_need_the_second_confirmation(self):
+        self.api.ruleset["nftables"].append(listed_rule(9, port_match(9), {"accept": None}, comment=None))
+        self.act("rename_chain", table="filter", name="input", new_name="renamed").close()
+        text = self.review()
+        self.assertIn("rules Archangel doesn't manage", text)
+        response = self.apply()
+        self.assertEqual(response.status_code, 400)
+        response.close()
+        self.apply(confirm_risk="yes").close()
+        self.assertEqual(len(self.api.applied), 1)
+
+    def test_a_chain_changed_after_adding_a_table_change_goes_stale(self):
+        self.act("disable_table", name="filter").close()
+        self.api.ruleset["nftables"].append({"chain": {"family": "inet", "table": "filter", "name": "added"}})
+        text = self.review()
+        self.assertIn("changed or no longer exists", text)
+        self.assertIn("disabled", text)
+
+    def test_results_are_read_back(self):
+        self.act("create_table", name="fresh").close()
+        self.act("create_chain", table="filter", name="made").close()
+        self.act("rename_chain", table="filter", name="helper", new_name="better").close()
+        self.apply().close()
+        page = self.client.get("/rules")
+        self.assertIn(b"Applied 3 changes", page.data)
+        page.close()
+
+    def test_a_structure_change_that_did_not_show_is_reported(self):
+        original = self.api._apply
+        self.api._apply = lambda _body: None
+        self.act("create_table", name="fresh").close()
+        self.apply().close()
+        self.api._apply = original
+        page = self.client.get("/rules")
+        self.assertIn(b"couldn&#39;t be confirmed", page.data)
+        page.close()
+
+    def test_rendering_escapes_names(self):
+        self.api.ruleset["nftables"].append({"chain": {"family": "inet", "table": "filter", "name": "<script>x"}})
+        response = self.client.get("/firewall/structure")
+        self.assertNotIn(b"<script>x", response.data)
+        response.close()

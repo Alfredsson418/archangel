@@ -275,3 +275,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .organize-fallback label { display: block; margin-bottom: 6px; font-weight: 700; }
 .organize-fallback select, .organize-fallback input { min-height: 34px; max-width: 100%; border: 1px solid var(--line); padding: 0 8px; background: #f9fbfc; color: var(--ink); font: 12px var(--sans); }
 @media (max-width: 640px) { .rule-order-row { flex-wrap: wrap; } .rule-order-text { flex-basis: 100%; order: 3; } }
+.inline-form { display: inline-flex; align-items: center; gap: 6px; }
+.inline-form input[type="text"] { width: 110px; min-height: 28px; border: 1px solid var(--line); padding: 0 6px; background: #f9fbfc; color: var(--ink); font: 11px var(--sans); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.table-actions { display: flex; flex-wrap: wrap; gap: 18px; padding-top: 0; }
+.typed-name label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; }
+.typed-name input { min-height: 34px; border: 1px solid var(--line); padding: 0 8px; background: #f9fbfc; color: var(--ink); font: 12px var(--mono); }
+.typed-name input:focus { border-color: var(--teal); outline: 2px solid #17a6ad30; }
