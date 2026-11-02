@@ -16,7 +16,7 @@ The API routes and JSON payloads are the integration contract. API calls use the
 
 The long-term mesh direction includes an Archangel backend acting as a centralized management server for multiple peer backends, so an operator can manage a network from one instance. This is not implemented. Each peer must have an explicit identity and authorization relationship; centralized management must not be treated as implicit trust or as a replacement for authorization enforced by each managed backend.
 
-Peer enrollment is intended to begin with an enrollment token that bootstraps a backend identity and credentials for ongoing authenticated peer communication. The token is not intended to serve as a permanent peer credential. Token issuance, scope/binding, delivery, expiration, redemption and revocation rules, peer credential rotation, secure transport, and management-server failure or compromise behavior remain open design decisions. See the [project goal](goal.md) and [roadmap](roadmap.md) for the broader vision and open questions.
+Peer enrollment is intended to begin with an enrollment token that bootstraps a backend identity and credentials for ongoing authenticated peer communication. The token is not intended to serve as a permanent peer credential. Token issuance, scope/binding, delivery, expiration, redemption and revocation rules, peer credential rotation, secure transport, and management-server failure or compromise behavior are defined in the [mesh design](mesh-design.md). See the [project goal](goal.md) and [roadmap](roadmap.md) for the broader vision and open questions.
 
 ## Backend layout
 
@@ -119,4 +119,5 @@ Neither format is an implicit boot-time restore mechanism. The CLI firewall conf
 - [Backend runtime configuration](runtime-config.md)
 - [Current security posture and planned controls](security-concerns.md)
 - [Development roadmap](roadmap.md)
+- [Mesh network design](mesh-design.md)
 - [Tests and verification](test.md)

@@ -25,8 +25,8 @@ A roadmap item should record clear evidence and verification criteria: repositor
 | Backend API authentication and firewall role enforcement | Implemented | `backend/src/http/authentication.cpp`, `backend/src/http/api/auth.cpp`, auth middleware tests | All routes require backend Bearer sessions by default except health, login, and one-time setup; viewers are read-only, firewall writes require Operator/Administrator, and account APIs require Administrator. Account lifecycle APIs, dashboard login/session integration, and source/identity API and firewall-mutation limits are implemented. |
 | Native API TLS | Implemented | `backend/src/http/tls.cpp`, `dashboard/webapp/api_client.py`, [runtime config](runtime-config.md#tls) | Optional TLS 1.2+ for the C++ API with fail-closed startup checks; the dashboard verifies certificates against system trust plus an optional CA bundle. Browser-to-dashboard HTTPS is left to an operator reverse proxy. |
 | Service-manager integration | Planned | security and system-management design notes | Requires explicit deployment and trust-boundary decisions. |
-| Centralized management of multiple backends and enrollment-token-based mesh | Exploratory | [goal.md](goal.md#centralized-management-and-backend-mesh), [architecture](architecture.md#future-centralized-backend-management) | One backend may manage multiple enrolled peer backends from one instance. Enrollment-token bootstrap is the intended direction; no peer enrollment, mesh transport, or centralized management is implemented. |
-| Long-term EG/RG/SG mesh architecture | Exploratory | [goal.md](goal.md) and the thesis-inspired concept material | Strategic direction rather than a current implementation commitment. |
+| Mesh network: centralized management, audited inter-zone tunnels, and optional internet access | Planned | [mesh design](mesh-design.md) | One controller manages enrolled backends, and inter-zone traffic passes through scalable transit hubs that record it. No peer enrollment, mesh transport, or centralized management is implemented. |
+| Device Agent, Policy Decision Point, and wider thesis architecture | Exploratory | [goal.md](goal.md) and the thesis-inspired concept material | Strategic direction rather than a current implementation commitment. The Edge, Resource, and Segmentation Gateway roles are part of the planned mesh. |
 
 ## Current Baseline
 
@@ -57,7 +57,7 @@ The decisions below record agreed direction as well as remaining questions. Unre
 | Should TLS terminate in the application, a trusted reverse proxy, or support both? | Affects trust assumptions, deployment complexity, and certificate lifecycle. | Phase 2 / Phase 4 | Optional native C++ API TLS in backend config, off by default, with operator-managed certificates. Dashboard validates using system trust plus an optional private CA bundle. Dashboard remains loopback by default; remote browser access uses an operator-managed reverse proxy. |
 | What permission roles and rate-limit policy fit expected single-gateway and multi-gateway use? | Affects access control, abuse resistance, and API stability. | Phase 2 | Viewer/operator/administrator roles and configurable conservative per-identity/source-IP rate limits, with no permanent account lockout; health is exempt. Set tested defaults and state handling before implementation. |
 | Which service-manager integrations and authorized operations, if any, should be supported by the System Management page? | Governs service restart and administrative scope, which are high-impact operations. | Phase 3 / Phase 4 | Enabling operational controls or system-management actions. |
-| How should peer backends authenticate, authorize, discover, and securely communicate when forming a mesh? | Core requirement for backend-to-backend trust and topology decisions. | Phase 5 | Designing peer mesh relationships or backend federation. |
+| How should peer backends authenticate, authorize, discover, and securely communicate when forming a mesh? | Core requirement for backend-to-backend trust and topology decisions. | Mesh network | Enrollment tokens, a built-in private CA with mTLS, signed configuration pulled by nodes, and WireGuard tunnels through central transit hubs. See [Decisions](mesh-design.md#decisions) in the mesh design. |
 | Which platforms and firewall implementations are in scope for a usable release? | Prevents overextending the project into unsupported environments. | Phase 4 | Linux is the primary design and development platform. Other operating systems may be supported later, but are not a current priority or compatibility commitment. Assess them only when a concrete platform and firewall capability set is selected. |
 | Which long-term network features are priorities, and which remain out of scope? | Keeps the roadmap aligned with realistic product scope. | Phase 5 | Committing to new network or policy features. |
 | What availability and recovery requirements should apply to the PDP, SG, PKI, and security-log services? | These are critical dependencies and may become single points of failure. | Phase 5 | Launching a broader Zero Trust or segmented architecture. |
@@ -193,6 +193,24 @@ The API already supports structured rule creation and deletion. The dashboard ca
 4. Keep API validation authoritative; the dashboard may improve usability but must not be treated as a security boundary.
 5. **Exit criteria:** tests cover successful and rejected form submissions, and an authorized user can verify the target and result of each mutation. The UI never implies a change succeeded if the API rejected or failed it.
 
+## Mesh Network
+
+**Status: Planned; follows Phase 3 and runs alongside Phase 4**
+
+The [mesh design](mesh-design.md) defines the behavior, security model, and completion tests for each milestone. Isolated networks are the primary target. The milestones build on each other, and the project can stop usefully after M3 or M5.
+
+| Milestone | Delivers |
+| --- | --- |
+| M0: Foundations | Phase 3, stable rule IDs, atomic apply with automatic rollback, service-manager integration from Phase 4, and a threat model. |
+| M1: Identity | Private CA, enrollment, renewal, revocation, and the mTLS node listener. |
+| M2: Read-only fleet | Inventory, node status, and alerts. |
+| M3: Managed policy | Zones, structured policy, signed configuration, and staged rollout. This completes the management mesh. |
+| M4: Single hub | WireGuard tunnels through one hub, with policy enforced at three points. |
+| M5: Central audit | Flow records, tamper-evident collection, MFA, and the emergency override. |
+| M6: Internet egress | Optional per-zone internet access, a DNS resolver, and a kill switch. |
+| M7: Scaled hubs | Multiple hubs, failover, and optional connection-state synchronization. |
+| M8: Hardening | Controller standby, key rotation drills, an optional second edge gateway per zone, and the Resource Gateway role. |
+
 ## Phase 4: Operational and Platform Maturity
 
 **Status: Planned; Linux is the primary target; other operating systems are not a current priority**
@@ -232,10 +250,11 @@ The following additional items originate from the broader project vision and req
 - Packet-flow visualization and network topology views.
 - Expanded hardware information and monitoring.
 - A management frontend used to administer and update backend services.
-- Backend API communication with peer backends to form a mesh network, building on the Resource Gateway, Device Agent, Segmentation Gateway, and encrypted gateway-tunnel concepts described in [goal.md](goal.md).
-- A centralized management backend that can enroll and manage multiple peer backends, with enrollment initiated using a scoped enrollment token and continuing through authenticated peer credentials.
+- A Policy Decision Point that detects attacks such as floods and isolates the affected zone until an administrator reopens it. This needs its own design, because an attacker could try to trigger isolation against a healthy zone.
 
-For any item selected for development, first document the use case, trust boundaries, required data and permissions, failure behavior, privacy implications, operational impact, and API/UI contract. For centralized backend management and a mesh, also decide peer identity and authentication, authorization across peers, secure transport, discovery and membership, topology, configuration authority and propagation, and behavior when links or peers fail; do not assume that network location implies trust. Enrollment-token design must cover who may issue tokens, how tokens are delivered and bound to an intended enrollment, expiration and single-use or replay behavior, revocation, and how the exchange establishes durable peer credentials. Prefer high-entropy, short-lived bootstrap tokens used only over an authenticated protected channel, with least-privilege scope and explicit approval where appropriate; these are design criteria, not implemented controls or a final protocol choice. Then define testable acceptance criteria and update the relevant architecture, endpoint, security, and goal documentation. These concepts are not current capabilities.
+The mesh network and centralized backend management have moved to the [Mesh Network](#mesh-network) section.
+
+For any item selected for development, first document the use case, trust boundaries, required data and permissions, failure behavior, privacy implications, operational impact, and API/UI contract. Then define testable acceptance criteria and update the relevant architecture, endpoint, security, and goal documentation. These concepts are not current capabilities.
 
 The thesis discusses Swedish Armed Forces security-function requirements (KSF). It is not evidence that Archangel or a future deployment is KSF-compliant or certified. Any real deployment must be assessed against its applicable requirements, threat model, and component-specific security obligations.
 
@@ -244,9 +263,6 @@ The thesis discusses Swedish Armed Forces security-function requirements (KSF). 
 The first secured release's users and environments, identity and recovery model, TLS placement, and roles and rate limits are settled; see [Decisions and Open Questions](#decisions-and-open-questions) and Phase 2.
 
 - Which backend service-manager integrations and authorized operations, if any, should be supported by the System Management page? Define restart scope, authorization, and behavior before enabling controls.
-- What should the centralized manager be authoritative for across managed backends, and which actions remain locally controlled?
-- How should enrollment tokens be issued, scoped, delivered, expired, redeemed, and revoked, and how should they bootstrap durable peer identities and credentials?
-- How should peer backends authenticate, authorize, discover, and securely communicate when forming a mesh?
 - Which platforms and firewall implementations are in scope for a usable release?
 - Which long-term network features are priorities, and which should remain out of scope?
 - What availability and recovery requirements should apply to the PDP, SG, PKI, and security-log services?

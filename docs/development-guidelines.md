@@ -49,6 +49,7 @@ Update only the documents relevant to a change:
 | Current security posture or planned controls | [security-concerns.md](security-concerns.md) |
 | Vulnerability-reporting process | [SECURITY.md](../SECURITY.md) |
 | Planned work, status, exit criteria, or design decisions | [roadmap.md](roadmap.md) |
+| Planned mesh behavior, topology, or build plan | [mesh-design.md](mesh-design.md) |
 | Test suites, commands, prerequisites, or expected output | [test.md](test.md) |
 | Coding conventions | this document |
 | Contribution or conduct process | [CONTRIBUTING.md](../CONTRIBUTING.md), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) |
