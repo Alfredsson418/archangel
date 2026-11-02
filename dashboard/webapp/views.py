@@ -22,14 +22,12 @@ from .api_client import (
 from .page_data import BackendSessionExpired, load, load_all
 from .firewall_rules import (
     MAX_IMPORTED_RULES,
-    MAX_RULE_BUNDLE_BYTES,
     MAX_RULE_BUNDLE_SIZE_TEXT,
-    describe_rule,
     firewall_status,
     portable_bundle,
+    portable_rule,
     rules_from,
     ruleset_shape_error,
-    validate_rule_bundle,
 )
 from .formatting import host_context
 
@@ -259,6 +257,8 @@ def rules_page():
         return (1, str(value).casefold())
 
     rules.sort(key=sort_key, reverse=direction == "desc")
+    # Whether the rule form can represent each rule, which edit and duplicate need.
+    rules = [dict(rule, representable=portable_rule(rule) is not None) for rule in rules]
     return render_template(
         "rules.html",
         firewall_result=session.pop("firewall_result", None),
@@ -297,99 +297,6 @@ def export_rules():
         skipped,
     )
     return response
-
-
-@pages.route("/rules/import", methods=["GET", "POST"])
-def import_rules():
-    """Preview or apply a validated, additive portable firewall-rules bundle.
-
-    Returns:
-        Rendered import/preview page with an appropriate HTTP status.
-    """
-    if request.method == "GET":
-        return render_template("rules_import.html")
-
-    if request.form.get("action") == "apply":
-        if request.form.get("confirm") != "yes":
-            return render_template(
-                "rules_import.html",
-                error="Confirm that you reviewed the rules before applying the bundle.",
-            ), 400
-        raw_bundle = request.form.get("bundle", "")
-        if len(raw_bundle.encode("utf-8")) > MAX_RULE_BUNDLE_BYTES:
-            return render_template("rules_import.html", error=f"The bundle exceeds the {MAX_RULE_BUNDLE_SIZE_TEXT} limit."), 413
-        try:
-            bundle = json.loads(raw_bundle)
-            rules = validate_rule_bundle(bundle)
-        except (json.JSONDecodeError, ValueError) as error:
-            return render_template("rules_import.html", error=str(error)), 400
-
-        applied = 0
-        failure = None
-        for index, rule in enumerate(rules, start=1):
-            try:
-                result = current_app.config["API_CLIENT"].request(
-                    "/api/v1/rules",
-                    method="POST",
-                    body=json.dumps(rule).encode("utf-8"),
-                    bearer_token=session.get("access_token"),
-                )
-            except (ApiConnectionError, ApiResponseError) as error:
-                failure = f"Rule {index}: {error}"
-                break
-            if result.status == 401:
-                current_app.logger.warning(
-                    "firewall_rule_bundle_import_partial applied=%s total=%s",
-                    applied,
-                    len(rules),
-                )
-                session.clear()
-                raise BackendSessionExpired
-            if result.schema_version != API_SCHEMA_VERSION:
-                failure = f"Rule {index}: the API returned an unsupported schema version."
-                break
-            if not 200 <= result.status < 300:
-                try:
-                    payload = json.loads(result.body)
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    payload = {}
-                detail = payload.get("error") if isinstance(payload, dict) else None
-                failure = f"Rule {index}: {detail or f'API returned HTTP {result.status}.'}"
-                break
-            applied += 1
-        if failure:
-            current_app.logger.warning(
-                "firewall_rule_bundle_import_partial applied=%s total=%s",
-                applied,
-                len(rules),
-            )
-            return render_template(
-                "rules_import.html",
-                error=f"Import stopped after applying {applied} of {len(rules)} rules. {failure}",
-            ), 502
-        current_app.logger.info("firewall_rule_bundle_imported applied=%s", applied)
-        return render_template(
-            "rules_import.html",
-            message=f"Successfully added {applied} rules. Existing rules were not removed.",
-        )
-
-    raw_bundle = request.files.get("bundle_file")
-    if raw_bundle is None:
-        return render_template("rules_import.html", error="Choose a JSON bundle to preview."), 400
-    content = raw_bundle.stream.read(MAX_RULE_BUNDLE_BYTES + 1)
-    if len(content) > MAX_RULE_BUNDLE_BYTES:
-        return render_template("rules_import.html", error=f"The bundle exceeds the {MAX_RULE_BUNDLE_SIZE_TEXT} limit."), 413
-    try:
-        bundle = json.loads(content.decode("utf-8"))
-        rules = validate_rule_bundle(bundle)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
-        return render_template("rules_import.html", error=f"Invalid firewall bundle: {error}"), 400
-    return render_template(
-        "rules_import.html",
-        preview_rules=[dict(rule, description=describe_rule(rule)) for rule in rules],
-        bundle_json=json.dumps(bundle, separators=(",", ":")),
-        omitted_unsupported_rules=bundle.get("omitted_unsupported_rules", 0),
-    )
 
 
 @pages.get("/system")

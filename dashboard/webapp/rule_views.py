@@ -32,12 +32,16 @@ from .firewall_changes import (
 )
 from .firewall_rules import (
     CONNECTION_STATES,
+    MAX_RULE_BUNDLE_BYTES,
+    MAX_RULE_BUNDLE_SIZE_TEXT,
     RULE_ACTIONS,
     RULE_FAMILIES,
     RULE_PROTOCOLS,
     describe_rule,
+    portable_rule,
     ruleset_shape_error,
     validate_rule,
+    validate_rule_bundle,
 )
 from .page_data import BackendSessionExpired, fetch, load
 from .views import pages
@@ -75,10 +79,10 @@ def _pending_change_context():
     return {"pending_change_count": pending_changes.count(actor)}
 
 
-def _store_change(change, ruleset_chain):
-    """Add one change to the signed-in user's pending changes.
+def _store_changes(changes):
+    """Add changes to the signed-in user's pending changes, all or none.
 
-    Records the chain's revision the first time it's touched, so that applying
+    Records each chain's revision the first time it's touched, so that applying
     later is refused if the chain has changed since then.
 
     Returns:
@@ -89,19 +93,36 @@ def _store_change(change, ruleset_chain):
     """
     actor = _actor_id()
     pending = pending_changes.load(actor)
-    if len(pending["changes"]) >= pending_changes.MAX_PENDING_CHANGES:
+    if len(pending["changes"]) + len(changes) > pending_changes.MAX_PENDING_CHANGES:
         return f"You can have up to {pending_changes.MAX_PENDING_CHANGES} pending changes. Apply or remove some first."
-    if ruleset_chain not in pending["revisions"]:
+    touched = {change_chain(change) for change in changes}
+    new_chains = touched - set(pending["revisions"])
+    if new_chains:
         revisions, error = load("/api/v1/firewall/revisions")
         if error:
-            return "The backend is unavailable, so the change wasn't added."
-        pending["revisions"].update(_revision_map(revisions))
-        if ruleset_chain not in pending["revisions"]:
-            return "That chain no longer exists."
-    change["id"] = uuid.uuid4().hex
-    pending["changes"].append(change)
+            return "The backend is unavailable, so nothing was added."
+        current = _revision_map(revisions)
+        missing = new_chains - set(current)
+        if missing:
+            return f"These chains don't exist, so nothing was added: {', '.join(sorted(missing))}."
+        pending["revisions"].update({chain: current[chain] for chain in new_chains})
+    for change in changes:
+        change["id"] = uuid.uuid4().hex
+    pending["changes"].extend(changes)
     pending_changes.save(actor, pending)
     return None
+
+
+def add_rules_to_pending(rules):
+    """Add new rules to the signed-in user's pending changes, all or none.
+
+    Returns:
+        An error message, or None on success.
+
+    Raises:
+        BackendSessionExpired: If the backend rejects the session.
+    """
+    return _store_changes([{"type": ADD_RULE, "rule": rule} for rule in rules])
 
 
 def _revision_map(revisions):
@@ -154,6 +175,27 @@ def _rule_from_form(form):
         return None, str(error)
 
 
+def _values_from_rule(rule):
+    """Fill the rule form's fields from a structured rule.
+
+    Returns:
+        A dictionary of form values.
+    """
+    port = rule.get("destination_port")
+    end = rule.get("destination_port_end")
+    return {
+        "chain": chain_key(rule["family"], rule["table"], rule["chain"]),
+        "action": rule["action"],
+        "protocol": rule.get("protocol", ""),
+        "source_address": rule.get("source_address", ""),
+        "destination_address": rule.get("destination_address", ""),
+        "destination_port": "" if port is None else (f"{port}-{end}" if end else str(port)),
+        "input_interface": rule.get("input_interface", ""),
+        "output_interface": rule.get("output_interface", ""),
+        "connection_states": rule.get("connection_states", []),
+    }
+
+
 def _render_rule_form(*, chains, values, error=None, preview=None, message=None, status=200):
     """Render the rule form.
 
@@ -200,7 +242,7 @@ def new_rule():
     """
     chains, error = _form_chains()
     if request.method == "GET":
-        return _render_rule_form(chains=chains, values={"action": "accept"}, error=error)
+        return _render_rule_form(chains=chains, values=_duplicated_values() or {"action": "accept"}, error=error)
 
     values = {field: request.form.get(field, "") for field in _FORM_FIELDS}
     values["connection_states"] = request.form.getlist("connection_states")
@@ -211,14 +253,44 @@ def new_rule():
     if action == "preview":
         return _render_rule_form(chains=chains, values=values, preview=describe_rule(rule))
 
-    store_error = _store_change(
-        {"type": ADD_RULE, "rule": rule},
-        chain_key(rule["family"], rule["table"], rule["chain"]),
-    )
+    store_error = add_rules_to_pending([rule])
     if store_error:
         return _render_rule_form(chains=chains, values=values, error=store_error, status=409)
     current_app.logger.info("firewall_change_added type=%s", ADD_RULE)
+    if action == "add_another":
+        # Keep the values, so that adding many similar rules is quick.
+        return _render_rule_form(
+            chains=chains,
+            values=values,
+            message=f"Added to pending changes: {describe_rule(rule)}. Change what differs for the next rule.",
+        )
     return redirect(url_for("pages.review_changes"))
+
+
+def _duplicated_values():
+    """Fill the rule form from the existing rule named in the query string.
+
+    Returns:
+        A dictionary of form values, or None if no such rule can be represented.
+
+    Raises:
+        BackendSessionExpired: If the backend rejects the session.
+    """
+    handle_text = request.args.get("handle", "")
+    if not handle_text.isdecimal():
+        return None
+    ruleset, error = load("/api/v1/rules")
+    if error is not None or ruleset_shape_error(ruleset):
+        return None
+    rule = find_rule(
+        ruleset,
+        request.args.get("family", ""),
+        request.args.get("table", ""),
+        request.args.get("chain", ""),
+        int(handle_text),
+    )
+    portable = portable_rule(rule) if rule else None
+    return _values_from_rule(portable) if portable else None
 
 
 @pages.post("/rules/delete")
@@ -239,14 +311,58 @@ def delete_rule():
     rule = find_rule(ruleset, family, table, chain, handle) if error is None else None
     if rule is None:
         return _rules_redirect(False, error or "This rule has changed or no longer exists, so nothing was added.")
-    store_error = _store_change(
-        {"type": DELETE_RULE, "family": family, "table": table, "chain": chain, "handle": handle, "before": rule},
-        chain_key(family, table, chain),
+    store_error = _store_changes(
+        [{"type": DELETE_RULE, "family": family, "table": table, "chain": chain, "handle": handle, "before": rule}]
     )
     if store_error:
         return _rules_redirect(False, store_error)
     current_app.logger.info("firewall_change_added type=%s", DELETE_RULE)
     return redirect(url_for("pages.review_changes"))
+
+
+@pages.route("/rules/import", methods=["GET", "POST"])
+def import_rules():
+    """Preview a portable rules bundle, or add its rules to pending changes.
+
+    Returns:
+        Rendered import page with an HTTP status, or a redirect after adding.
+    """
+    if request.method == "GET":
+        return render_template("rules_import.html")
+
+    if request.form.get("action") == "add":
+        raw_bundle = request.form.get("bundle", "")
+        if len(raw_bundle.encode("utf-8")) > MAX_RULE_BUNDLE_BYTES:
+            return render_template("rules_import.html", error=f"The bundle exceeds the {MAX_RULE_BUNDLE_SIZE_TEXT} limit."), 413
+        try:
+            rules = validate_rule_bundle(json.loads(raw_bundle))
+        except (json.JSONDecodeError, ValueError) as error:
+            return render_template("rules_import.html", error=str(error)), 400
+        if not rules:
+            return render_template("rules_import.html", message="This bundle has no rules, so nothing was added.")
+        store_error = add_rules_to_pending(rules)
+        if store_error:
+            return render_template("rules_import.html", error=store_error), 409
+        current_app.logger.info("firewall_rule_bundle_added_to_pending count=%s", len(rules))
+        return redirect(url_for("pages.review_changes"))
+
+    raw_bundle = request.files.get("bundle_file")
+    if raw_bundle is None:
+        return render_template("rules_import.html", error="Choose a JSON bundle to preview."), 400
+    content = raw_bundle.stream.read(MAX_RULE_BUNDLE_BYTES + 1)
+    if len(content) > MAX_RULE_BUNDLE_BYTES:
+        return render_template("rules_import.html", error=f"The bundle exceeds the {MAX_RULE_BUNDLE_SIZE_TEXT} limit."), 413
+    try:
+        bundle = json.loads(content.decode("utf-8"))
+        rules = validate_rule_bundle(bundle)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        return render_template("rules_import.html", error=f"Invalid firewall bundle: {error}"), 400
+    return render_template(
+        "rules_import.html",
+        preview_rules=[dict(rule, description=describe_rule(rule)) for rule in rules],
+        bundle_json=json.dumps(bundle, separators=(",", ":")),
+        omitted_unsupported_rules=bundle.get("omitted_unsupported_rules", 0),
+    )
 
 
 def _rules_redirect(success, message):

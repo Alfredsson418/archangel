@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import time
@@ -497,6 +498,140 @@ class ApplyTests(ChangeFlowTestCase):
         self.assertIn("firewall_changes_applied count=1", joined)
         self.assertNotIn("198.51.100.77", joined)
         self.assertNotIn("4471", joined)
+
+
+class BulkInputTests(ChangeFlowTestCase):
+    def bundle(self, *rules, version=2):
+        return {"format": "archangel-firewall-rules", "version": version, "rules": list(rules)}
+
+    def test_add_and_create_another_keeps_the_values(self):
+        response = self.post("/rules/new", form_action="add_another", source_address="192.0.2.0/24", **FORM)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Added to pending changes", response.data)
+        self.assertIn(b'value="192.0.2.0/24"', response.data)
+        self.assertIn(b'value="443"', response.data)
+        response.close()
+        self.assertEqual(len(self.pending()), 1)
+
+    def test_many_rules_can_be_added_in_a_row(self):
+        for port in range(1000, 1020):
+            self.post("/rules/new", form_action="add_another", **{**FORM, "destination_port": str(port)}).close()
+        self.assertEqual(len(self.pending()), 20)
+        self.apply().close()
+        self.assertEqual(len(self.api.applied), 1)
+        self.assertEqual(len(self.api.applied[0]["changes"]), 20)
+
+    def test_duplicate_starts_from_an_existing_rule(self):
+        self.api.ruleset = {
+            "nftables": [
+                input_chain(),
+                listed_rule(
+                    7,
+                    {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": {"prefix": {"addr": "192.0.2.0", "len": 24}}}},
+                    {"match": {"op": "==", "left": {"payload": {"protocol": "tcp", "field": "dport"}}, "right": {"range": [8000, 8100]}}},
+                    {"match": {"op": "in", "left": {"ct": {"key": "state"}}, "right": ["new", "established"]}},
+                    {"drop": None},
+                ),
+            ]
+        }
+        page = self.client.get("/rules")
+        self.assertIn(b"Duplicate", page.data)
+        page.close()
+        response = self.client.get("/rules/new?family=inet&table=filter&chain=input&handle=7")
+        self.assertIn(b'value="192.0.2.0/24"', response.data)
+        self.assertIn(b'value="8000-8100"', response.data)
+        self.assertIn(b'value="established" checked', response.data)
+        self.assertIn(b'value="invalid" >', response.data.replace(b'value="invalid"  >', b'value="invalid" >'))
+        self.assertIn(b'value="drop" selected', response.data)
+        response.close()
+        self.assertEqual(self.pending(), [])
+
+    def test_duplicate_is_not_offered_for_rules_the_form_cannot_represent(self):
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(7, {"log": {"prefix": "x"}}, {"accept": None})]}
+        page = self.client.get("/rules")
+        self.assertNotIn(b"Duplicate", page.data)
+        page.close()
+        response = self.client.get("/rules/new?family=inet&table=filter&chain=input&handle=7")
+        self.assertIn(b'value="accept" selected', response.data)
+        response.close()
+
+    def preview(self, bundle):
+        return self.client.post(
+            "/rules/import",
+            data={
+                "action": "preview",
+                "csrf_token": self.csrf_token(),
+                "bundle_file": (io.BytesIO(json.dumps(bundle).encode()), "rules.json"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    def test_import_previews_without_changing_anything(self):
+        response = self.preview(self.bundle(RULE))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Accept TCP traffic to port 443", response.data)
+        self.assertIn(b"Add to pending changes", response.data)
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.api.applied, [])
+        response.close()
+
+    def test_import_adds_every_rule_to_pending_changes(self):
+        rules = [{**RULE, "destination_port": port} for port in (1, 2, 3)]
+        response = self.post("/rules/import", action="add", bundle=json.dumps(self.bundle(*rules)))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/changes", response.headers["Location"])
+        self.assertEqual([change["rule"] for change in self.pending()], rules)
+        self.assertEqual(self.api.applied, [])
+
+    def test_imported_rules_apply_together(self):
+        rules = [{**RULE, "destination_port": port} for port in (1, 2, 3)]
+        self.post("/rules/import", action="add", bundle=json.dumps(self.bundle(*rules))).close()
+        self.apply().close()
+        self.assertEqual(len(self.api.applied), 1)
+        self.assertEqual(len(self.api.applied[0]["changes"]), 3)
+
+    def test_version_1_bundles_still_import(self):
+        response = self.post("/rules/import", action="add", bundle=json.dumps(self.bundle(RULE, version=1)))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(self.pending()), 1)
+
+    def test_import_is_all_or_none_when_a_chain_is_missing(self):
+        response = self.post(
+            "/rules/import",
+            action="add",
+            bundle=json.dumps(self.bundle(RULE, {**RULE, "chain": "gone"})),
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn(b"inet filter gone", response.data)
+        self.assertEqual(self.pending(), [])
+        response.close()
+
+    def test_import_rejects_invalid_or_oversized_bundles(self):
+        response = self.post("/rules/import", action="add", bundle="not json")
+        self.assertEqual(response.status_code, 400)
+        response.close()
+        response = self.post("/rules/import", action="add", bundle=json.dumps(self.bundle({**RULE, "source_address": "192.0.2.5/24"})))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"host bits", response.data)
+        response.close()
+        response = self.post("/rules/import", action="add", bundle="x" * (512 * 1024 + 1))
+        self.assertEqual(response.status_code, 413)
+        response.close()
+        self.assertEqual(self.pending(), [])
+
+    def test_import_with_no_rules_adds_nothing(self):
+        response = self.post("/rules/import", action="add", bundle=json.dumps(self.bundle()))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"nothing was added", response.data)
+        response.close()
+
+    def test_import_respects_the_pending_limit(self):
+        rules = [{**RULE, "destination_port": 1 + index % 60000} for index in range(pending_changes.MAX_PENDING_CHANGES)]
+        self.add_rule()
+        response = self.post("/rules/import", action="add", bundle=json.dumps(self.bundle(*rules)))
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(len(self.pending()), 1)
+        response.close()
 
 
 class PendingStoreTests(ChangeFlowTestCase):

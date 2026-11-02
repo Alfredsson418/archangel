@@ -26,7 +26,7 @@
   {% if preview_rules is defined %}
     <section class="panel" aria-labelledby="preview-heading">
       {% if omitted_unsupported_rules %}<div class="notice" role="status">{{ omitted_unsupported_rules }} unsupported rule(s) were omitted when this bundle was exported. They cannot be recreated by the current structured-rule API.</div>{% endif %}
-      <div class="panel-heading"><div><p class="eyebrow">REVIEW BEFORE APPLYING</p><h2 id="preview-heading">{{ preview_rules|length }} rules will be added</h2></div><span class="table-summary">EXISTING RULES WILL REMAIN</span></div>
+      <div class="panel-heading"><div><p class="eyebrow">BUNDLE CONTENTS</p><h2 id="preview-heading">{{ preview_rules|length }} rules in this bundle</h2></div><span class="table-summary">EXISTING RULES WILL REMAIN</span></div>
       <div class="table-wrap"><table>
         <thead><tr><th>FAMILY</th><th>TABLE</th><th>CHAIN</th><th>RULE</th></tr></thead>
         <tbody>{% for rule in preview_rules %}
@@ -39,9 +39,8 @@
       <form class="settings-form import-confirm-form" action="{{ url_for('pages.import_rules') }}" method="post">
         <input type="hidden" name="bundle" value="{{ bundle_json }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="confirm-import-label"><input type="checkbox" name="confirm" value="yes" required> I reviewed these rules and understand they will be added to the active firewall.</label>
-        <p class="field-hint">Rules are added one at a time. If the backend rejects a later rule, earlier additions remain in effect; this import is not atomic.</p>
-        <div class="settings-actions"><button class="refresh-button" type="submit" name="action" value="apply">Add rules to firewall</button></div>
+        <p class="field-hint">Adding these to pending changes doesn't change the firewall. You can review them with any other changes, and they apply together, all or none.</p>
+        <div class="settings-actions"><button class="refresh-button" type="submit" name="action" value="add">Add to pending changes</button></div>
       </form>
     </section>
   {% endif %}

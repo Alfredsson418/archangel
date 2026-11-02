@@ -111,7 +111,7 @@ See the [frontend design guide](frontend-design.md) for visual and accessibility
 There are two distinct configuration workflows:
 
 - The backend CLI's versioned firewall config bundle contains the complete native nftables JSON ruleset and no runtime listener settings. Firewall bundle v1 (`archangel-firewall-config`) distinguishes rules marked with the reserved `archangel-managed` comment from other rules and nftables objects. Imports require an explicit mode: `merge`, managed-only `replace`, or full-ruleset `replace-all`.
-- The dashboard's portable structured-rule bundle contains only rules representable by the structured API. It validates and previews imports, then applies rules additively and non-atomically; exports disclose unsupported rules omitted from the bundle.
+- The dashboard's portable structured-rule bundle contains only rules representable by the structured API. It validates and previews imports, then adds their rules to pending changes, which apply in one transaction; exports disclose unsupported rules omitted from the bundle.
 
 Neither format is an implicit boot-time restore mechanism. The CLI firewall config must not be conflated with the separate backend runtime settings file documented in the [runtime config guide](runtime-config.md). See [endpoints.md](endpoints.md) for current request and bundle contracts, and [security concerns](security-concerns.md) before changing privileged firewall behavior.
 

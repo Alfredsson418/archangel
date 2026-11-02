@@ -41,13 +41,13 @@ The `omitted_unsupported_rules` count indicates rules from the active ruleset th
 
 ### `GET, POST /rules/import`
 
-`GET` renders the import page. `POST` with multipart form field `bundle_file` validates a JSON bundle and shows a preview; a separate confirmation submission is required before applying it. The importer accepts the bundle format above in version 2, or in version 1, which predates subnets, port ranges, interfaces, connection state, ICMP, and rules without a protocol. It accepts up to 512 KiB and 1,000 rules, and validates all rules before making backend requests. Bundles may contain zero rules, which is a no-op.
+`GET` renders the import page. `POST` with multipart form field `bundle_file` validates a JSON bundle and shows a preview; a separate submission with `action=add` and the `bundle` field adds its rules to pending changes. The importer accepts the bundle format above in version 2, or in version 1, which predates subnets, port ranges, interfaces, connection state, ICMP, and rules without a protocol. It accepts up to 512 KiB and 1,000 rules, and validates all rules before making backend requests. Bundles may contain zero rules, which is a no-op.
 
-Import is additive: it calls `POST /api/v1/rules` once per rule and does not delete or replace existing rules. Each change takes effect immediately. These calls are not atomic; if a later API call fails, earlier rules remain applied and the page reports the partial count. A preview warns about rules omitted during export. The bundle is a portable snapshot only; it is not loaded automatically on backend startup and does not make nftables rules persistent across restarts. The preview/apply form uses a session-bound CSRF token and explicit confirmation; this is not backend authentication or authorization.
+Import is additive: it adds rules and does not delete or replace existing ones. Because the rules join pending changes, they're reviewed with any other changes and apply in one transaction, so a failure leaves none of them applied. All rules must target chains that exist, or none are added. A preview warns about rules omitted during export. The bundle is a portable snapshot only; it is not loaded automatically on backend startup and does not make nftables rules persistent across restarts.
 
 ### `GET, POST /rules/new`
 
-`GET` renders the rule form, which offers the chains in the active ruleset. `POST` validates the submitted fields and either previews the rule in plain language or adds it to the signed-in user's pending changes. Neither changes the firewall.
+`GET` renders the rule form, which offers the chains in the active ruleset. With `family`, `table`, `chain`, and `handle` in the query string, it starts from that rule's values, for duplicating it. `POST` validates the submitted fields and either previews the rule in plain language or adds it to the signed-in user's pending changes. `form_action=add_another` returns to the form with the same values, to make adding many similar rules quick. None of these change the firewall.
 
 ### `POST /rules/delete`
 

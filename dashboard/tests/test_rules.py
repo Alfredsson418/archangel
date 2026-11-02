@@ -2,7 +2,6 @@ import io
 import json
 from unittest.mock import patch
 
-from webapp.api_client import API_SCHEMA_VERSION, API_SCHEMA_VERSION_HEADER
 from webapp.firewall_rules import firewall_status
 
 from .helpers import DashboardTestCase, UpstreamResponse
@@ -209,63 +208,6 @@ class RulePageTests(DashboardTestCase):
         )
         response.close()
 
-    @patch("webapp.api_client.urlopen")
-    def test_rule_import_previews_then_applies_after_confirmation(self, urlopen):
-        urlopen.return_value = UpstreamResponse(
-            {"status": "created"},
-            status=201,
-        )
-        bundle = {
-            "format": "archangel-firewall-rules",
-            "version": 1,
-            "rules": [
-                {
-                    "family": "inet",
-                    "table": "filter",
-                    "chain": "input",
-                    "protocol": "tcp",
-                    "destination_port": 443,
-                    "action": "accept",
-                }
-            ],
-        }
-        preview = self.client.post(
-            "/rules/import",
-            data={
-                "action": "preview",
-                "csrf_token": self.csrf_token(),
-                "bundle_file": (io.BytesIO(json.dumps(bundle).encode()), "rules.json"),
-            },
-            content_type="multipart/form-data",
-        )
-        self.assertEqual(preview.status_code, 200)
-        self.assertIn(b"1 rules will be added", preview.data)
-        self.assertIn(b"not atomic", preview.data)
-        urlopen.assert_not_called()
-        preview.close()
-
-        imported = self.client.post(
-            "/rules/import",
-            data={
-                "action": "apply",
-                "confirm": "yes",
-                "csrf_token": self.csrf_token(),
-                "bundle": json.dumps(bundle),
-            },
-        )
-        self.assertEqual(imported.status_code, 200)
-        self.assertIn(b"Successfully added 1 rules", imported.data)
-        api_request = urlopen.call_args.args[0]
-        self.assertEqual(api_request.get_method(), "POST")
-        self.assertEqual(api_request.full_url, "http://127.0.0.1:8080/api/v1/rules")
-        self.assertEqual(json.loads(api_request.data), bundle["rules"][0])
-        headers = {name.lower(): value for name, value in api_request.headers.items()}
-        self.assertEqual(headers[API_SCHEMA_VERSION_HEADER.lower()], API_SCHEMA_VERSION)
-        self.assertEqual(
-            headers["authorization"], "Bearer test-api-access-token"
-        )
-        imported.close()
-
     def test_rule_import_page_states_the_enforced_limits(self):
         response = self.client.get("/rules/import")
         self.assertEqual(response.status_code, 200)
@@ -276,8 +218,7 @@ class RulePageTests(DashboardTestCase):
         response = self.client.post(
             "/rules/import",
             data={
-                "action": "apply",
-                "confirm": "yes",
+                "action": "add",
                 "csrf_token": "invalid",
                 "bundle": "{}",
             },
