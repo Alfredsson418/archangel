@@ -9,6 +9,7 @@ void runNftImportTests();
 void runNftRuleTests();
 void runRulesApiTests();
 void runStatsApiTests();
+void runStatusApiTests();
 void runFirewallBundleCommandTests();
 void runNetworkAddressTests();
 void runHttpAuthenticationTests();
@@ -27,6 +28,7 @@ int main() {
 		runNftRuleTests();
 		runRulesApiTests();
 		runStatsApiTests();
+		runStatusApiTests();
 		runFirewallBundleCommandTests();
 		runNetworkAddressTests();
 		runHttpAuthenticationTests();

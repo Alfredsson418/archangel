@@ -70,6 +70,7 @@ These nftables behaviors were tested in an isolated network namespace with nftab
 | A single transaction can mix creating a chain, adding a rule that jumps to it, replacing and deleting rules, and adding more. A failure in the last step undid all of it. 1,000 added rules took well under a second. | Pending changes can be applied as one transaction. |
 | Flushing a chain and re-adding its rules in one transaction gives any order, including new rules among existing ones, and keeps counters. All handles change. | Ordering can include pending new rules, which have no handles yet. |
 | nftables can check a batch without applying it (`nft -c`, or `nft_ctx_set_dry_run` in libnftables). It caught stale handles, missing chains, wrong statement types, and missing interfaces. It didn't flag a `jump` loop, and a check doesn't guarantee that applying succeeds. | The review page can report most errors before the user confirms, but the apply step must still report failures. |
+| On loopback, replies also pass the input hook, addressed to the client's temporary port, and NAT happens on the way out. | A same-host dashboard needs `established` allowed, which the connection check has to model. Allowing only the API's port locks it out. |
 | After a table is deleted and recreated, its handles restart, so the same handle can identify a different rule. | A handle alone doesn't safely identify a rule. |
 
 ## Behavior

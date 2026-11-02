@@ -36,10 +36,23 @@ The test modules are organized by responsibility:
 | `dashboard/tests/test_logging.py` | Stdout and backend request logging without query-string values, owner-only JSONL records with request IDs, reopen after rotation, rejection of shared log files, message structuring, actor ID and outcome fields, `unregistered` in place of unknown paths, and fail-closed `503` for every request except health when the audit log is unavailable. |
 | `dashboard/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export (including the rule shapes nftables actually lists), and preview/confirmed import behavior. |
 | `dashboard/tests/test_rule_model.py` | Reading every structured rule shape from nftables listings, including default `reject` options, using shapes taken from real output; rejecting what the form can't represent; rule validation and normalization; bundle versions 1 and 2; plain-language rule descriptions. |
+| `dashboard/tests/test_connection_check.py` | Following the dashboard's connection through rulesets: rule order, jumps, multiple base chains, NAT, loopback behavior, and what counts as uncertain. |
 | `dashboard/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
-Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 64 tests. The exact count and incidental application log lines may change as coverage grows.
+Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 91 tests. The exact count and incidental application log lines may change as coverage grows.
 
+
+## Connection check against real connections
+
+`dashboard/tests/test_connection_check.py` uses fixtures, which can't prove what nftables really does. This separate check applies real rulesets and makes real TCP connections, from another network namespace and over loopback, then requires the connection check to agree. It needs `nft`, `ip`, `unshare`, and `nsenter`, and needs no root privileges.
+
+```sh
+unshare -rn dashboard/.venv/bin/python dashboard/tests/integration/connection_check_namespace.py
+```
+
+`unshare -rn` gives it a private user and network namespace, so it can't change the host's firewall, and the script refuses to run outside one. It isn't part of the ordinary test suites or CI. Run it after changing `dashboard/webapp/connection_check.py`.
+
+Expected result: the command exits with status 0 and ends with `0 failures`.
 ## Backend tests
 
 Build and run the backend unit tests from the repository root:
@@ -65,6 +78,7 @@ The test executable is built at `build/backend/tests/backend_tests`. The target 
 | `backend/tests/test_nft_rule.cpp` | Validates structured rules, including subnets with host bits and fields that could never match together, and builds their exact nftables statements without calling nftables. |
 | `backend/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |
 | `backend/tests/test_rules_api.cpp` | Structured rule creation and deletion, the full rule model, rejection of unknown fields, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
+| `backend/tests/test_status_api.cpp` | The connection details and other fields returned by `/status/info`. |
 | `backend/tests/test_stats_api.cpp` | JSON response shape and content type for firewall statistics. |
 
 Authentication tests use isolated temporary SQLite files. Rule-handler tests use a mock `Firewall::Backend`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.

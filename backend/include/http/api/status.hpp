@@ -7,8 +7,9 @@
 namespace Http {
 
 /**
- * @brief Writes backend version, API schema, and process uptime as JSON.
- * @param request Incoming HTTP request.
+ * @brief Writes backend version, API schema, process uptime, and the caller's
+ * connection details as JSON.
+ * @param request Incoming HTTP request, providing the connection details.
  * @param response HTTP response to populate.
  * @param backendVersion Git commit hash embedded in the backend binary.
  * @param uptimeSeconds Number of seconds the backend process has been running.

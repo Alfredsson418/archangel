@@ -76,12 +76,14 @@ Returns diagnostic status information as JSON:
   "status": "ok",
   "backend_version": "16361d171dabbef97f6017cef5ce2c537d36864c",
   "api_version": "v1",
-  "schema_version": 1,
-  "uptime_seconds": 120
+  "schema_version": 2,
+  "uptime_seconds": 120,
+  "client_address": "192.0.2.20",
+  "api_port": 8080
 }
 ```
 
-`backend_version` is the Git commit hash embedded when the backend binary is built; the example hash above is the current commit and will change with later builds from different commits. `uptime_seconds` is the number of seconds since the backend process started. Unlike `/status/health`, this endpoint requires an authenticated Bearer session.
+`backend_version` is the Git commit hash embedded when the backend binary is built; the example hash above is the current commit and will change with later builds from different commits. `uptime_seconds` is the number of seconds since the backend process started. `client_address` and `api_port` are the caller's address and the listening port as the backend sees them. The dashboard uses them to check whether a firewall change could block its connection to the API. Unlike `/status/health`, this endpoint requires an authenticated Bearer session.
 
 ### `POST /api/v1/auth/login`
 

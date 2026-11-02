@@ -88,6 +88,7 @@ The same rules apply when an OIDC provider is added behind `auth.provider`.
 | `dashboard/webapp/page_data.py` | Loading C++ API resources for pages with the session credential, including expired-session handling. |
 | `dashboard/webapp/api_client.py` | HTTP transport to the C++ API and schema-version checks. |
 | `dashboard/webapp/firewall_rules.py` | Ruleset inspection and portable rule-bundle conversion and validation; no Flask dependency. |
+| `dashboard/webapp/connection_check.py` | Follows the dashboard's connection to the API through nftables rulesets, to warn when a change could block it; no Flask dependency. |
 | `dashboard/webapp/formatting.py` | Display formatting for host and backend metrics. |
 | `dashboard/webapp/server_sessions.py`, `settings.py` | Server-side session store and deployment-fixed API settings. |
 | `dashboard/webapp/audit_log.py` | Stdout and JSONL audit logging, request IDs, and the fail-closed audit gate for every request except health and static files. |
