@@ -41,13 +41,10 @@ from .firewall_changes import (
     describe_listed_rule,
     find_rule,
     highlight_entries,
-    is_dormant,
     is_unmanaged,
     jumps_to_chain,
     required_typed_name,
     rule_key,
-    table_contents,
-    tables_from,
     management_risk,
     pending_on_rule,
     stale_changes,
@@ -68,14 +65,10 @@ from .firewall_rules import (
     validate_rule_bundle,
 )
 from .page_data import BackendSessionExpired, fetch, load
-from .views import pages
+from .views import CHAIN_HOOKS, CHAIN_POLICIES, MAX_CHAIN_PRIORITY, pages, rules_context
 
 
 _APPLY_FAILED_UNKNOWN = "The change may or may not have been applied. Check the rules before trying again."
-# Mirrors Config::Limits::MAX_CHAIN_PRIORITY; the backend is authoritative.
-MAX_CHAIN_PRIORITY = 1000
-CHAIN_HOOKS = ("input", "forward", "output", "prerouting", "postrouting")
-CHAIN_POLICIES = ("accept", "drop")
 _ALREADY_PENDING = "This rule already has a pending change. Remove that change first."
 _FORM_FIELDS = (
     "chain",
@@ -309,7 +302,8 @@ def new_rule():
     """
     if request.method == "GET":
         chains, error = _form_chains()
-        return _render_rule_form(chains=chains, values=_duplicated_values() or {"action": "accept"}, error=error)
+        values = _duplicated_values() or {"action": "accept", "chain": request.args.get("chain", "")}
+        return _render_rule_form(chains=chains, values=values, error=error)
 
     values = {field: request.form.get(field, "") for field in _FORM_FIELDS}
     values["connection_states"] = request.form.getlist("connection_states")
@@ -606,37 +600,6 @@ def organize_rules():
     return redirect(url_for("pages.review_changes"))
 
 
-def _structure_rows(ruleset):
-    """Summarize tables and chains for the structure page.
-
-    Returns:
-        A list of table dictionaries, each with its chains.
-    """
-    chains = chains_from(ruleset)
-    rows = []
-    for table in tables_from(ruleset):
-        family, name = table.get("family"), table.get("name")
-        rows.append(
-            {
-                "family": family,
-                "name": name,
-                "dormant": is_dormant(table),
-                "manageable": family in RULE_FAMILIES,
-                "contents": table_contents(ruleset, family, name),
-                "chains": [
-                    dict(
-                        chain,
-                        key=chain_key(family, name, chain.get("name")),
-                        rule_count=len(chain_rules(ruleset, family, name, chain.get("name"))),
-                    )
-                    for chain in chains
-                    if chain.get("family") == family and chain.get("table") == name
-                ],
-            }
-        )
-    return rows
-
-
 def _base_chain_from_form(form):
     """Read a new base chain's definition from a form.
 
@@ -729,35 +692,26 @@ def _structure_change(form, ruleset, changes):
     return None, "Choose an action."
 
 
-@pages.route("/firewall/structure", methods=["GET", "POST"])
+@pages.post("/firewall/structure")
 def firewall_structure():
-    """Show tables and chains, or add a change to them to pending changes.
+    """Add a change to a table or chain to pending changes.
 
     Returns:
-        The rendered page with an HTTP status, or a redirect after adding.
+        A redirect after adding, or the rules page with the problem and an
+        HTTP status.
     """
     ruleset, error = load("/api/v1/rules")
     if error is None:
         error = ruleset_shape_error(ruleset)
-    render = lambda **kwargs: render_template(
-        "structure.html",
-        tables=_structure_rows(ruleset) if error is None else [],
-        hooks=CHAIN_HOOKS,
-        policies=CHAIN_POLICIES,
-        families=RULE_FAMILIES,
-        **kwargs,
-    )
     if error is not None:
-        return render(error=error), 502 if request.method == "POST" else 200
-    if request.method == "GET":
-        return render()
+        return render_template("rules.html", **rules_context(error=error)), 502
     changes = pending_changes.load(_actor_id())["changes"]
     change, form_error = _structure_change(request.form, ruleset, changes)
     if form_error:
-        return render(error=form_error), 400
+        return render_template("rules.html", **rules_context(error=form_error)), 400
     store_error = _store_changes([change])
     if store_error:
-        return render(error=store_error), 409
+        return render_template("rules.html", **rules_context(error=store_error)), 409
     current_app.logger.info("firewall_change_added type=%s", change["type"])
     return redirect(url_for("pages.review_changes"))
 

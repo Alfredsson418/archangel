@@ -48,7 +48,7 @@
         </div>
         <div class="gateway-tag {% block status_class %}{% endblock %}" id="gateway-tag"><span class="gateway-dot"></span><span>{% block page_status %}LOCAL{% endblock %}</span></div>
       </section>
-      {% if pending_change_count %}
+      {% if pending_change_count and request.endpoint != "pages.review_changes" %}
         <div class="notice" role="status">{{ pending_change_count }} pending change{{ "" if pending_change_count == 1 else "s" }}: not applied yet. <a href="{{ url_for('pages.review_changes') }}">Review changes</a></div>
       {% endif %}
       {% block content %}{% endblock %}

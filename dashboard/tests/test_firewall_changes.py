@@ -214,10 +214,14 @@ class ReviewTests(ChangeFlowTestCase):
 
     def test_every_page_shows_the_pending_notice(self):
         self.add_rule()
-        for path in ("/rules", "/changes", "/system"):
+        for path in ("/rules", "/system"):
             response = self.client.get(path)
             self.assertIn(b"1 pending change: not applied yet", response.data, path)
             response.close()
+        # The review page is where the notice links to, so it doesn't repeat it.
+        response = self.client.get("/changes")
+        self.assertNotIn(b"not applied yet", response.data)
+        response.close()
 
     def test_lists_changes_as_before_and_new(self):
         self.add_rule()
@@ -1228,18 +1232,18 @@ class StructureTests(ChangeFlowTestCase):
         return response.get_data(as_text=True).replace("&#39;", "'").replace("&gt;", ">")
 
     def test_the_page_lists_tables_chains_and_restrictions(self):
-        response = self.client.get("/firewall/structure")
+        response = self.client.get("/rules")
         text = response.get_data(as_text=True)
         response.close()
-        self.assertIn("inet filter", text)
+        self.assertIn('data-tree-id="table:inet filter"', text)
         self.assertIn("helper", text)
         self.assertIn("regular chain", text)
-        self.assertIn("tables can't be renamed", text)
+        self.assertIn("a table can't be renamed", text)
         self.assertIn("hook and priority can't be changed", text)
 
     def test_other_families_are_read_only(self):
         self.api.ruleset["nftables"].append({"table": {"family": "netdev", "name": "edge"}})
-        response = self.client.get("/firewall/structure")
+        response = self.client.get("/rules")
         self.assertIn(b"can't be managed here", response.data)
         response.close()
         result = self.post("/firewall/structure", structure_action="delete_table", family="netdev", name="edge")
@@ -1433,11 +1437,9 @@ class StructureTests(ChangeFlowTestCase):
 
     def test_a_table_that_is_off_is_reported_everywhere(self):
         self.api.ruleset["nftables"][0]["table"]["flags"] = ["dormant"]
-        for path in ("/rules", "/firewall/structure"):
-            response = self.client.get(path)
-            self.assertIn(b"Enforcement is off", response.data, path)
-            response.close()
-        response = self.client.get("/firewall/structure")
+        response = self.client.get("/rules")
+        self.assertIn(b"Enforcement is off", response.data)
+        self.assertIn(b"ENFORCEMENT OFF", response.data)
         self.assertIn(b"Turn enforcement on", response.data)
         response.close()
 
@@ -1493,6 +1495,148 @@ class StructureTests(ChangeFlowTestCase):
 
     def test_rendering_escapes_names(self):
         self.api.ruleset["nftables"].append({"chain": {"family": "inet", "table": "filter", "name": "<script>x"}})
-        response = self.client.get("/firewall/structure")
+        response = self.client.get("/rules")
         self.assertNotIn(b"<script>x", response.data)
+        response.close()
+
+
+class RuleTreeTests(ChangeFlowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.api.ruleset = {
+            "nftables": [
+                {"table": {"family": "ip", "name": "nat"}},
+                {"table": {"family": "inet", "name": "filter"}},
+                {"table": {"family": "bridge", "name": "edge"}},
+                input_chain(),
+                {"chain": {"family": "inet", "table": "filter", "name": "empty"}},
+                {"chain": {"family": "ip", "table": "nat", "name": "post", "type": "nat", "hook": "postrouting", "prio": 100, "policy": "accept"}},
+                listed_rule(1, port_match(1), {"accept": None}),
+                listed_rule(2, port_match(2), {"drop": None}, comment=None),
+                {"rule": {"family": "ip", "table": "nat", "chain": "post", "handle": 5, "expr": [{"masquerade": None}]}},
+            ]
+        }
+
+    def page(self, path="/rules"):
+        response = self.client.get(path)
+        self.addCleanup(response.close)
+        return response.get_data(as_text=True).replace("&#39;", "'")
+
+    def test_nests_families_tables_and_chains_in_order(self):
+        text = self.page()
+        positions = [
+            text.index(marker)
+            for marker in (
+                'data-tree-id="family:inet"',
+                'data-tree-id="table:inet filter"',
+                'data-tree-id="chain:inet filter input"',
+                "to port 1",
+                "to port 2",
+                'data-tree-id="family:ip"',
+                'data-tree-id="table:ip nat"',
+                'data-tree-id="chain:ip nat post"',
+                'data-tree-id="family:bridge"',
+            )
+        ]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_summaries_describe_each_level(self):
+        text = self.page()
+        self.assertIn("2 chains", text)
+        self.assertIn("input hook, priority 0, policy accept", text)
+        self.assertIn("regular chain", text)
+        self.assertIn("This chain has no rules", text)
+
+    def test_every_chain_offers_adding_a_rule_to_it(self):
+        text = self.page()
+        self.assertIn('/rules/new?chain=inet+filter+input', text)
+        response = self.client.get("/rules/new?chain=inet+filter+input")
+        self.assertIn(b'value="inet filter input" selected', response.data)
+        response.close()
+
+    def test_a_chain_with_rules_can_be_dragged_in_place(self):
+        text = self.page()
+        self.assertIn("data-order-list", text)
+        self.assertIn('value="handle:1" form="order-inet-filter-input"', text)
+        self.assertIn('data-drag-handle', text)
+        self.assertIn("rule_order.js", text)
+
+    def test_dragging_in_place_submits_the_same_way_as_the_page(self):
+        response = self.client.post(
+            "/rules/organize",
+            data={"csrf_token": self.csrf_token(), "chain": "inet filter input", "order": ["handle:2", "handle:1"]},
+        )
+        self.assertEqual(response.status_code, 302)
+        response.close()
+        self.assertEqual(self.pending()[0]["order"], [2, 1])
+
+    def test_a_chain_with_one_rule_has_nothing_to_drag(self):
+        self.assertNotIn('form="order-ip-nat-post"', self.page())
+
+    def test_a_filter_leaves_out_dragging_because_the_list_is_partial(self):
+        text = self.page("/rules?q=input")
+        self.assertIn("to port 1", text)
+        self.assertNotIn("data-order-list", text)
+        self.assertIn("Reorder rules", text)
+
+    def test_a_filter_keeps_true_positions(self):
+        text = self.page("/rules?q=dport")
+        self.assertIn("to port 2", text)
+        text = self.page("/rules?q=drop")
+        self.assertNotIn("to port 1", text)
+        self.assertIn('data-order-position>2<', text)
+
+    def test_pending_rule_changes_send_dragging_to_the_organize_page(self):
+        self.add_rule(destination_port="99")
+        text = self.page()
+        self.assertNotIn('form="order-inet-filter-input"', text)
+        self.assertIn("/rules/organize?chain=inet+filter+input", text)
+
+    def test_a_pending_order_does_not_stop_dragging_again(self):
+        self.client.post("/rules/organize", data={"csrf_token": self.csrf_token(), "chain": "inet filter input", "order": ["handle:2", "handle:1"]}).close()
+        self.assertIn('form="order-inet-filter-input"', self.page())
+
+    def test_a_renamed_chain_offers_no_reordering(self):
+        self.post("/firewall/structure", structure_action="rename_chain", family="inet", table="filter", name="input", new_name="x").close()
+        text = self.page()
+        self.assertNotIn('form="order-inet-filter-input"', text)
+        self.assertNotIn("/rules/organize?chain=inet+filter+input", text)
+
+    def test_other_families_offer_no_actions(self):
+        text = self.page()
+        self.assertIn("Tables in the bridge family can't be managed here", text)
+        self.assertNotIn('/rules/new?chain=bridge', text)
+
+    def test_unmanaged_rules_are_labelled(self):
+        text = self.page()
+        self.assertEqual(text.count("NOT MANAGED</span>"), 2)
+
+    def test_manage_controls_are_on_the_page(self):
+        text = self.page()
+        for label in ("Manage chain", "Manage table", "Rename", "Set policy to drop", "Delete chain", "Add chain", "Turn enforcement off", "Delete table", "Create a table"):
+            self.assertIn(label, text)
+        self.assertIn("can't be changed later", text)
+
+    def test_a_rejected_form_shows_the_problem_on_the_tree(self):
+        response = self.post("/firewall/structure", structure_action="create_table", family="inet", name="bad name")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"Names must use", response.data)
+        self.assertIn(b'data-tree-id="table:inet filter"', response.data)
+        response.close()
+
+    def test_small_firewalls_start_open_and_large_ones_start_collapsed(self):
+        self.assertIn('data-tree-id="chain:inet filter input" open', self.page())
+        self.api.ruleset["nftables"].extend(listed_rule(100 + index, port_match(1000 + index), {"accept": None}) for index in range(40))
+        self.assertNotIn('data-tree-id="chain:inet filter input" open', self.page())
+        self.assertIn('data-tree-id="chain:inet filter input" open', self.page("/rules?q=input"))
+
+    def test_a_chain_with_just_applied_rules_opens(self):
+        self.api.ruleset["nftables"].extend(listed_rule(100 + index, port_match(1000 + index), {"accept": None}) for index in range(40))
+        self.add_rule(destination_port="8443")
+        self.apply().close()
+        self.assertIn('data-tree-id="chain:inet filter input" open', self.page())
+
+    def test_the_old_structure_page_is_gone(self):
+        response = self.client.get("/firewall/structure")
+        self.assertEqual(response.status_code, 405)
         response.close()

@@ -144,11 +144,15 @@ Uploading a portable rule bundle validates and previews it as it does today. Acc
 
 **Delete** adds the deletion to pending changes. The review page shows the rule's chain, handle, and full expression, and whether Archangel manages it. A rule Archangel doesn't manage also requires the second confirmation box, stating that another program or administrator may depend on it.
 
+### Navigating the firewall
+
+The Firewall Configuration page shows the firewall as a tree, like navigating a file tree: family, then table, then chain, then the chain's rules in true order. Each level can be collapsed. Tables and chains are managed where they appear, so there's no separate page for them, and a chain's actions sit beside its rules. Filtering hides what doesn't match and opens what does. Sorting was removed, because within a chain only true order means anything.
+
 ### Ordering rules
 
 Rule order decides what the firewall does, because the first matching verdict wins.
 
-1. The user selects **Organize** on a chain, which opens a page listing that chain's rules in true order, including pending new rules. Sorting and filtering aren't available on this page.
+1. Each chain's rules have a drag handle, directly in the tree. If the chain has pending rule changes or a filter is active, the list isn't complete, so the chain links to its **Reorder rules** page instead, which includes pending new rules.
 2. The user drags rows by their handles into a new order. **Move up** and **Move down** buttons do the same for keyboard and screen-reader users, and dragging works on touch screens. Without JavaScript, a form moves one rule to a chosen position.
 3. Saving adds the new order to pending changes, and the review page shows the old and new order.
 
@@ -256,7 +260,9 @@ Every outcome is stated in text, and the page never implies success if the API r
 | **Check before confirming, but still report apply failures** | The review page can catch most errors early. A check isn't a guarantee, as tested. | Trusting the check alone. |
 | **Changes carry the revision of each chain they touch** | The backend reports a revision for each chain, computed from its rules and handles, excluding counters. A change list includes the revisions it was reviewed against, and the backend compares them under its lock immediately before applying. Handles alone are unsafe, as tested. This also refuses an accidental second apply. Changes made outside Archangel at that instant remain possible. | Comparing only in the dashboard, which leaves a window before the API call. Comparing the whole ruleset, which unrelated changes such as Docker's would keep invalidating. |
 | **Dragging is a progressive enhancement** | The confirmation page and fallback form are server-rendered and work without JavaScript. The script only builds a form submission to Flask and never calls the C++ API, keeping the dashboard's server-side rule. | A browser client that calls the API, which project rules forbid. |
-| **A dedicated page for ordering one chain** | Order only means something within a chain, and the existing table can be sorted and filtered. | Dragging in the main table. |
+| **Drag directly in the tree, with a page for what the tree can't show** | The developer couldn't find dragging on a separate page. The tree shows each chain in true order, so handles can sit on the rules themselves. The page remains for chains with pending rule changes, and for the form that works without JavaScript. | A separate page only, which was hard to find. |
+| **A tree of families, tables, and chains, built with `<details>`** | The developer asked for rules to be grouped like a file tree, because one long table is hard to navigate. `<details>` needs no JavaScript and works with a keyboard. Chains start collapsed past 30 rules. | A flat table, or a tree that needs JavaScript. |
+| **Manage tables and chains in the tree, and remove sorting** | One place to find everything. Sorting across a chain's rules suggests an order the firewall doesn't use. | A separate tables and chains page, and sortable columns. |
 | **Vendor SortableJS in `dashboard/static/`** | Handles touch and mouse dragging, and needs no build step. Isolated networks can't load it from a CDN. Keyboard buttons are added alongside it, since it doesn't provide them. | Hand-written dragging, which would be more code for touch support to maintain. The browser's native drag events, which don't work on touch screens. |
 | **Typed-name confirmation for destructive structure changes** | nftables deletes non-empty chains without warning, and a tick box is too easy for losing a whole table. | A tick box, or refusing to delete non-empty chains, which would make the operator delete each rule first. |
 | **Every rule, chain, and table can be managed, with extra confirmation for what isn't Archangel's** | Operators can manage the whole ruleset from one page, while changing another program's rules stays a deliberate act. | Limiting changes to managed rules. |

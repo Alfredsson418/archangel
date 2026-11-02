@@ -13,7 +13,7 @@ Renders the server overview with nftables enforcement status, backend version/co
 
 Fetches the C++ ruleset in Flask and renders individual firewall rules on the Firewall Configuration page with the `rules.html` template.
 
-Rules can be filtered across family, table, chain, handle, and expression, and sorted by family, table, chain, handle, or expression in ascending or descending order. Each rule offers Edit and Duplicate if the rule form can represent it, and Delete. None of these change the firewall until the resulting pending changes are applied.
+The rules appear as a tree of families, tables, and chains, with each chain's rules in true order. The `q` query parameter filters across family, table, chain, handle, and expression. Each rule offers Edit and Duplicate if the rule form can represent it, and Delete. Chains also offer dragging rules into a new order, and tables and chains can be managed in place. None of these change the firewall until the resulting pending changes are applied.
 
 ### `GET /rules/export`
 
@@ -47,7 +47,7 @@ Import is additive: it adds rules and does not delete or replace existing ones. 
 
 ### `GET, POST /rules/new`
 
-`GET` renders the rule form, which offers the chains in the active ruleset. With `family`, `table`, `chain`, and `handle` in the query string, it starts from that rule's values, for duplicating it. `POST` validates the submitted fields and either previews the rule in plain language or adds it to the signed-in user's pending changes. `form_action=add_another` returns to the form with the same values, to make adding many similar rules quick. None of these change the firewall.
+`GET` renders the rule form, which offers the chains in the active ruleset. A `chain` query parameter preselects a chain. With `family`, `table`, `chain`, and `handle` in the query string, it starts from that rule's values, for duplicating it. `POST` validates the submitted fields and either previews the rule in plain language or adds it to the signed-in user's pending changes. `form_action=add_another` returns to the form with the same values, to make adding many similar rules quick. None of these change the firewall.
 
 ### `GET, POST /rules/edit`
 
@@ -55,11 +55,11 @@ Import is additive: it adds rules and does not delete or replace existing ones. 
 
 ### `GET, POST /rules/organize`
 
-`GET` shows the rules of the chain named by `chain` in true order, including pending new rules. `POST` adds a new order to pending changes, replacing any pending order for that chain. The `order` fields list every rule once, as `handle:N` or `new:ID`; a list that no longer matches the chain is refused. With `form_action=move`, `move_rule` and `move_position` move one rule instead. This form doesn't need JavaScript. With JavaScript, rules can also be dragged, or moved with buttons.
+`GET` shows the rules of the chain named by `chain` in true order, including pending new rules. `POST` adds a new order to pending changes, replacing any pending order for that chain. The `order` fields list every rule once, as `handle:N` or `new:ID`; a list that no longer matches the chain is refused. With `form_action=move`, `move_rule` and `move_position` move one rule instead. This form doesn't need JavaScript. With JavaScript, rules can also be dragged, or moved with buttons. The rules page offers the same dragging directly on a chain, and this page is for chains with pending rule changes.
 
-### `GET, POST /firewall/structure`
+### `POST /firewall/structure`
 
-`GET` lists tables and chains, and states what nftables can't change: tables can't be renamed, and a base chain's hook and priority are fixed. `POST` adds a change to pending changes, using `structure_action`: `create_table`, `delete_table`, `disable_table`, `enable_table`, `create_chain`, `rename_chain`, `set_chain_policy`, or `delete_chain`. Only `ip`, `ip6`, and `inet` tables can be managed, and new base chains use the `filter` type.
+Adds a change to pending changes, using `structure_action`: `create_table`, `delete_table`, `disable_table`, `enable_table`, `create_chain`, `rename_chain`, `set_chain_policy`, or `delete_chain`. Only `ip`, `ip6`, and `inet` tables can be managed, and new base chains use the `filter` type. The rules page states what nftables can't change: tables can't be renamed, and a base chain's hook and priority are fixed.
 
 Applying requires the name typed as `confirm_name_<change id>` when deleting a table or a chain with rules, or when turning a table's enforcement off. A chain that other rules jump to can't be deleted, and a chain's rules can't change in the same list as renaming it or after deleting it. nftables applies a rename at the end of a transaction, so changes to that chain's rules must be applied first.
 

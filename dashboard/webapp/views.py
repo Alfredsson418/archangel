@@ -23,13 +23,13 @@ from .page_data import BackendSessionExpired, load, load_all
 from .firewall_rules import (
     MAX_IMPORTED_RULES,
     MAX_RULE_BUNDLE_SIZE_TEXT,
+    RULE_FAMILIES,
     firewall_status,
     portable_bundle,
-    portable_rule,
-    rules_from,
     ruleset_shape_error,
 )
-from .firewall_changes import chains_from, dormant_tables
+from . import pending_changes
+from .firewall_changes import dormant_tables, rule_tree
 from .formatting import host_context
 
 
@@ -41,7 +41,10 @@ MAX_USERNAME_LENGTH = 64
 MAX_PASSWORD_BYTES = 512
 # Backend user IDs are UUIDs; anything else is rejected before it reaches the log.
 ACTOR_ID = re.compile(r"[0-9A-Fa-f-]{1,64}")
-SORTABLE_RULE_FIELDS = ("family", "table", "chain", "handle", "expr")
+# Mirrors Config::Limits::MAX_CHAIN_PRIORITY; the backend is authoritative.
+MAX_CHAIN_PRIORITY = 1000
+CHAIN_HOOKS = ("input", "forward", "output", "prerouting", "postrouting")
+CHAIN_POLICIES = ("accept", "drop")
 
 
 @pages.errorhandler(BackendSessionExpired)
@@ -223,62 +226,51 @@ def logout():
     return redirect(url_for("pages.login", logged_out="1"))
 
 
-@pages.get("/rules")
-def rules_page():
-    """Render the searchable, sortable active firewall rules page.
+def rules_context(*, error=None, firewall_result=None):
+    """Load everything the rules page shows.
+
+    Args:
+        error: A message to show, such as why a form was rejected.
+        firewall_result: The outcome of the last change, shown once.
 
     Returns:
-        Rendered rules HTML with normalized sort and filter state.
-    """
-    ruleset, error = load("/api/v1/rules")
-    if error is None:
-        error = ruleset_shape_error(ruleset)
-    rules = rules_from(ruleset) if error is None else []
-    total_rules = len(rules)
-    query = request.args.get("q", "").strip()[:100]
-    sort = request.args.get("sort", "family")
-    if sort not in SORTABLE_RULE_FIELDS:
-        sort = "family"
-    direction = request.args.get("direction", "asc")
-    if direction not in ("asc", "desc"):
-        direction = "asc"
-    if query:
-        needle = query.casefold()
-        rules = [
-            rule for rule in rules
-            if needle in " ".join(
-                str(rule.get(field, ""))
-                for field in ("family", "table", "chain", "handle")
-            ).casefold()
-            or needle in json.dumps(rule.get("expr", []), sort_keys=True).casefold()
-        ]
-    def sort_key(rule):
-        value = rule.get(sort, "")
-        if sort == "handle" and isinstance(value, int) and not isinstance(value, bool):
-            return (0, value)
-        return (1, str(value).casefold())
+        A dictionary of template variables.
 
-    rules.sort(key=sort_key, reverse=direction == "desc")
-    # Whether the rule form can represent each rule, which edit and duplicate need.
-    firewall_result = session.pop("firewall_result", None)
-    highlighted = firewall_result.get("highlight", []) if firewall_result else []
-    rules = [
-        dict(rule, representable=portable is not None, just_applied=portable in highlighted if portable else False)
-        for rule, portable in ((rule, portable_rule(rule)) for rule in rules)
-    ]
-    return render_template(
-        "rules.html",
-        firewall_result=firewall_result,
-        chains=chains_from(ruleset) if error is None else [],
-        dormant_tables=dormant_tables(ruleset) if error is None else [],
-        rules=rules,
-        total_rules=total_rules,
-        error=error,
-        query=query,
-        sort=sort,
-        direction=direction,
-        sort_fields=SORTABLE_RULE_FIELDS,
-    )
+    Raises:
+        BackendSessionExpired: If the backend rejects the session.
+    """
+    ruleset, load_error = load("/api/v1/rules")
+    if load_error is None:
+        load_error = ruleset_shape_error(ruleset)
+    query = request.args.get("q", "").strip()[:100]
+    context = {
+        "tree": {"families": [], "total": 0, "matching": 0},
+        "query": query,
+        "error": error or load_error,
+        "api_unavailable": load_error is not None,
+        "firewall_result": firewall_result,
+        "dormant_tables": [],
+        "hooks": CHAIN_HOOKS,
+        "policies": CHAIN_POLICIES,
+        "families": RULE_FAMILIES,
+    }
+    if load_error is None:
+        actor = session.get("actor_id")
+        changes = pending_changes.load(actor)["changes"] if isinstance(actor, str) else []
+        highlighted = firewall_result.get("highlight", []) if firewall_result else []
+        context["tree"] = rule_tree(ruleset, query, highlighted, changes)
+        context["dormant_tables"] = dormant_tables(ruleset)
+    return context
+
+
+@pages.get("/rules")
+def rules_page():
+    """Render the active firewall as a tree of families, tables, and chains.
+
+    Returns:
+        Rendered rules HTML, filtered by the q query parameter if present.
+    """
+    return render_template("rules.html", **rules_context(firewall_result=session.pop("firewall_result", None)))
 
 
 @pages.get("/rules/export")
@@ -290,10 +282,10 @@ def export_rules():
     """
     ruleset, error = load("/api/v1/rules")
     if error:
-        return render_template("rules.html", rules=[], error=error), 502
+        return render_template("rules.html", **rules_context(error=error)), 502
     shape_error = ruleset_shape_error(ruleset)
     if shape_error:
-        return render_template("rules.html", rules=[], error=shape_error), 502
+        return render_template("rules.html", **rules_context(error=shape_error)), 502
     bundle, skipped = portable_bundle(ruleset)
     response = make_response(json.dumps(bundle, indent=2) + "\n")
     response.headers["Content-Type"] = "application/json"

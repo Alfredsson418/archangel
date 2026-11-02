@@ -52,7 +52,7 @@ class RulePageTests(DashboardTestCase):
         response.close()
 
     @patch("webapp.api_client.urlopen")
-    def test_rules_page_filters_sorts_and_disables_edit(self, urlopen):
+    def test_rules_page_groups_rules_and_filters_them(self, urlopen):
         urlopen.return_value = UpstreamResponse(
             {
                 "nftables": [
@@ -62,30 +62,26 @@ class RulePageTests(DashboardTestCase):
             }
         )
 
-        response = self.client.get("/rules?sort=chain&direction=desc")
+        response = self.client.get("/rules")
         self.assertEqual(response.status_code, 200)
-        self.assertLess(
-            response.data.index(b'<td class="code-cell">input</td>'),
-            response.data.index(b'<td class="code-cell">forward</td>'),
-        )
+        # inet comes before ip, whatever order nftables lists them in.
+        self.assertLess(response.data.index(b'data-tree-id="family:inet"'), response.data.index(b'data-tree-id="family:ip"'))
         self.assertIn(b"Edit", response.data)
         self.assertIn(b"disabled", response.data)
         self.assertIn(b"Search family, table, chain", response.data)
         self.assertIn(b"2 matching / 2 total", response.data)
         response.close()
 
-        response = self.client.get("/rules?sort=handle&direction=asc")
+        response = self.client.get("/rules?q=forward")
         self.assertEqual(response.status_code, 200)
-        self.assertLess(
-            response.data.index(b'<td class="code-cell">9</td>'),
-            response.data.index(b'<td class="code-cell">10</td>'),
-        )
+        self.assertIn(b'data-tree-id="chain:inet filter forward"', response.data)
+        self.assertNotIn(b'data-tree-id="chain:ip filter input"', response.data)
+        self.assertNotIn(b'data-tree-id="family:ip"', response.data)
+        self.assertIn(b"1 matching / 2 total", response.data)
         response.close()
 
-        response = self.client.get("/rules?q=forward&sort=chain&direction=desc")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'<td class="code-cell">forward</td>', response.data)
-        self.assertNotIn(b'<td class="code-cell">input</td>', response.data)
+        response = self.client.get("/rules?q=nothing-matches")
+        self.assertIn(b"No rules match this filter", response.data)
         response.close()
 
     @patch("webapp.api_client.urlopen")

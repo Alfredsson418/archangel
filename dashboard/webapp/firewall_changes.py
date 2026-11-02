@@ -8,7 +8,7 @@ import copy
 import json
 
 from .connection_check import COULD_BLOCK, WILL_BLOCK, check_connection, rule_could_affect
-from .firewall_rules import describe_rule, portable_rule, rules_from
+from .firewall_rules import RULE_FAMILIES, describe_rule, portable_rule, rules_from
 
 
 MANAGED_RULE_COMMENT = "archangel-managed"
@@ -31,6 +31,9 @@ _TABLE_TYPES = (CREATE_TABLE, DELETE_TABLE, SET_TABLE_ENABLED)
 _MAX_FLAG_CANDIDATES = 64
 _INCOMING_HOOKS = ("input", "prerouting")
 _MAX_HIGHLIGHTED_RULES = 200
+# With more rules than this, chains start collapsed so that the tree stays usable.
+_MAX_RULES_OPEN_BY_DEFAULT = 30
+_FAMILY_ORDER = ("inet", "ip", "ip6")
 # What the API accepts for chain and table changes; the rest is for the review.
 _STRUCTURE_FIELDS = ("type", "family", "table", "name", "new_name", "base", "policy", "enabled")
 _TERMINAL_STATEMENTS = ("accept", "drop", "reject")
@@ -105,6 +108,122 @@ def blocked_chains(changes):
         elif change["type"] == DELETE_TABLE:
             blocked.update(change["chains"])
     return blocked
+
+
+def rule_tree(ruleset, query="", highlighted=(), changes=()):
+    """Group a ruleset by family, table, and chain, with rules in true order.
+
+    Args:
+        ruleset: The current listing.
+        query: Filter text. A rule stays if it matches, and a chain or table
+            with nothing left is left out.
+        highlighted: Structured rules to mark as just applied.
+        changes: The user's pending changes, which limit dragging.
+
+    Returns:
+        A dictionary with "families", a nested list, and "total" and "matching"
+        rule counts.
+    """
+    tables = {}
+    families = {}
+
+    def table_entry(family, name):
+        key = (family, name)
+        if key not in tables:
+            tables[key] = {
+                "family": family,
+                "name": name,
+                "dormant": False,
+                "manageable": family in RULE_FAMILIES,
+                "chains": {},
+                "contents": table_contents(ruleset, family, name),
+            }
+            families.setdefault(family, []).append(tables[key])
+        return tables[key]
+
+    def chain_entry(family, table, name, definition=None):
+        chains = table_entry(family, table)["chains"]
+        if name not in chains:
+            chains[name] = {
+                "name": name,
+                "key": chain_key(family, table, name),
+                "family": family,
+                "table": table,
+                "hook": None,
+                "priority": None,
+                "policy": None,
+                "rules": [],
+                "total": 0,
+                "just_applied": False,
+            }
+        if definition:
+            chains[name].update(hook=definition.get("hook"), priority=definition.get("prio"), policy=definition.get("policy"))
+        return chains[name]
+
+    for table in tables_from(ruleset):
+        table_entry(table.get("family"), table.get("name"))["dormant"] = is_dormant(table)
+    for chain in chains_from(ruleset):
+        chain_entry(chain.get("family"), chain.get("table"), chain.get("name"), chain)
+
+    needle = query.casefold()
+    all_rules = rules_from(ruleset)
+    matching = 0
+    for rule in all_rules:
+        chain = chain_entry(rule.get("family"), rule.get("table"), rule.get("chain"))
+        chain["total"] += 1
+        if needle and not _rule_matches(rule, needle):
+            continue
+        matching += 1
+        portable = portable_rule(rule)
+        just_applied = portable is not None and portable in highlighted
+        chain["just_applied"] = chain["just_applied"] or just_applied
+        chain["rules"].append(
+            {
+                "rule": rule,
+                "handle": rule.get("handle"),
+                "text": describe_listed_rule(rule),
+                "position": chain["total"],
+                "representable": portable is not None,
+                "just_applied": just_applied,
+                "unmanaged": rule.get("comment") != MANAGED_RULE_COMMENT,
+            }
+        )
+
+    # Dragging submits the chain's rules as listed, which leaves out pending
+    # rule changes, so those chains use the organize page instead.
+    pending = {change_chain(change) for change in changes if change["type"] in (ADD_RULE, DELETE_RULE, REPLACE_RULE)}
+    blocked = blocked_chains(changes)
+    open_by_default = bool(needle) or len(all_rules) <= _MAX_RULES_OPEN_BY_DEFAULT
+    for table in tables.values():
+        chains = list(table["chains"].values())
+        for chain in chains:
+            chain["open"] = open_by_default or chain["just_applied"]
+            chain["blocked"] = chain["key"] in blocked
+            chain["reorderable"] = (
+                table["manageable"]
+                and not needle
+                and chain["total"] > 1
+                and chain["key"] not in pending
+                and not chain["blocked"]
+                and all(isinstance(row["handle"], int) for row in chain["rules"])
+            )
+        table["chains"] = [chain for chain in chains if not needle or chain["rules"]]
+    result = []
+    for family in sorted(families, key=lambda name: (_FAMILY_ORDER.index(name) if name in _FAMILY_ORDER else len(_FAMILY_ORDER), str(name))):
+        kept = [table for table in families[family] if not needle or table["chains"]]
+        if kept:
+            result.append({"name": family, "tables": sorted(kept, key=lambda table: str(table["name"]))})
+    return {"families": result, "total": len(all_rules), "matching": matching}
+
+
+def _rule_matches(rule, needle):
+    """Compare a rule against filter text.
+
+    Returns:
+        True if its location, handle, or statements contain the text.
+    """
+    location = " ".join(str(rule.get(field, "")) for field in ("family", "table", "chain", "handle"))
+    return needle in location.casefold() or needle in json.dumps(rule.get("expr", []), sort_keys=True).casefold()
 
 
 def tables_from(ruleset):

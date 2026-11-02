@@ -21,27 +21,30 @@
       <form action="{{ url_for('pages.organize_rules') }}" method="post" id="order-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="chain" value="{{ chain }}">
-        <ol class="rule-order-list" id="rule-order-list">
+      </form>
+      <div data-rule-order data-form="order-form">
+        <p class="order-hint" data-order-hint hidden>Drag a rule by its handle, or use the arrows. The first matching verdict wins.</p>
+        <ol class="rule-order-list" data-order-list>
           {% for row in rows %}
-            <li class="rule-order-row">
-              <input type="hidden" name="order" value="{{ row.value }}">
-              <span class="drag-handle" hidden aria-hidden="true" title="Drag to move">::</span>
-              <span class="rule-order-position">{{ loop.index }}</span>
+            <li class="rule-order-row" data-order-row>
+              <input type="hidden" name="order" value="{{ row.value }}" form="order-form">
+              <span class="drag-handle" data-drag-handle hidden title="Drag to move" aria-hidden="true">&#x2807;</span>
+              <span class="rule-order-position" data-order-position>{{ loop.index }}</span>
               <span class="rule-order-text">{{ row.text }}</span>
               {% if row.is_new %}<span class="rule-order-tag">PENDING NEW RULE</span>{% endif %}
-              <span class="rule-order-move" hidden>
-                <button type="button" data-move="up" aria-label="Move up: {{ row.text }}">Move up</button>
-                <button type="button" data-move="down" aria-label="Move down: {{ row.text }}">Move down</button>
+              <span class="rule-order-move" data-order-buttons hidden>
+                <button type="button" data-move="up" aria-label="Move up: {{ row.text }}">&uarr;</button>
+                <button type="button" data-move="down" aria-label="Move down: {{ row.text }}">&darr;</button>
               </span>
             </li>
           {% endfor %}
         </ol>
-        <p class="change-summary" id="order-status" role="status" hidden></p>
-        <div class="settings-form"><div class="settings-actions" style="margin-top:0;border-top:0;padding-top:0">
-          <button class="refresh-button" type="submit" hidden id="order-save">Add new order to pending changes</button>
+        <p class="change-summary" data-order-status role="status" hidden></p>
+        <div class="settings-form order-actions">
+          <button class="refresh-button" type="submit" form="order-form" data-order-save hidden>Add new order to pending changes</button>
           <a class="text-button" href="{{ url_for('pages.rules_page') }}">Cancel</a>
-        </div></div>
-      </form>
+        </div>
+      </div>
       <form class="organize-fallback" action="{{ url_for('pages.organize_rules') }}" method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="chain" value="{{ chain }}">

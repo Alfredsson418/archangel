@@ -40,18 +40,32 @@ The test modules are organized by responsibility:
 | `dashboard/tests/test_firewall_changes.py` | The rule form, ordering rules, tables and chains and their typed confirmations, the review page and its `before -> new` list, management-risk flags, warnings, confirmations, every error outcome when applying, storage and expiry of pending changes, and that logs omit rule contents. |
 | `dashboard/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
-Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 226 tests. The exact count and incidental application log lines may change as coverage grows.
+Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 246 tests. The exact count and incidental application log lines may change as coverage grows.
 
 
 ## Dashboard, API, and nftables together
 
-This check starts the real backend, signs in through the real dashboard code, and applies real changes: collecting and applying a list, detecting a change made outside Archangel, all-or-nothing failures, a change nftables itself rejects, 1,000 changes at once, editing, ordering, chains, tables, and confirmations. The drag-and-drop script isn't covered, and needs checking by hand in a browser. It needs a debug build from `make debug`, and needs no root privileges.
+This check starts the real backend, signs in through the real dashboard code, and applies real changes: collecting and applying a list, detecting a change made outside Archangel, all-or-nothing failures, a change nftables itself rejects, 1,000 changes at once, editing, ordering, chains, tables, and confirmations. The page scripts are covered by the browser check below. It needs a debug build from `make debug`, and needs no root privileges.
 
 ```sh
 unshare -rn dashboard/.venv/bin/python dashboard/tests/integration/changes_namespace.py
 ```
 
 `unshare -rn` gives it a private user and network namespace, so it can't change the host's firewall, and the script refuses to run outside one. It isn't part of the ordinary test suites, but CI runs it. Run it after changing how changes are applied.
+
+Expected result: the command exits with status 0 and ends with `0 failures`.
+
+## In a real browser
+
+This check drives the dashboard in headless Chromium against the real backend and nftables: the rules tree, dragging a rule and applying the result, the arrow buttons, the organize page, phone layout, and use without JavaScript. It's the only check that runs the page scripts. It needs a debug build from `make debug`, and Playwright:
+
+```sh
+dashboard/.venv/bin/python -m pip install playwright
+dashboard/.venv/bin/python -m playwright install chromium-headless-shell
+unshare -rn dashboard/.venv/bin/python dashboard/tests/integration/browser_namespace.py [screenshot-directory]
+```
+
+`unshare -rn` gives it a private user and network namespace, so it can't change the host's firewall, and the script refuses to run outside one. It isn't part of CI, and Playwright isn't a dashboard dependency. Run it after changing `dashboard/static/`, the rules page, or the organize page. It uses mouse events, so it doesn't prove touch dragging, which needs checking on a real device.
 
 Expected result: the command exits with status 0 and ends with `0 failures`.
 
