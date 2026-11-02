@@ -8,7 +8,7 @@ Archangel currently consists of two independently deployable services: a privile
 - **C++ API:** The `archangel` binary runs on the server whose firewall it manages. It exposes the firewall and system APIs and uses nftables through the backend abstraction.
 - **Flask dashboard:** The web application renders HTML and calls the C++ API from the server. It does not expose API passthrough routes. It can run on a separate management computer and must be configured with a reachable API address; a dashboard container's loopback address is not the managed server.
 - **Network boundary:** The C++ API authenticates protected requests and enforces firewall and account-management roles. The Flask dashboard authenticates with the backend and keeps its API session token in an owner-only server-side SQLite session store. The API serves HTTPS when native TLS is enabled, and the dashboard verifies its certificate; otherwise traffic is plain HTTP. Keep access on localhost or a trusted, isolated management network. See [security concerns](security-concerns.md) for the current posture and planned controls.
-- **Deployment examples:** The Docker Compose setup is a same-host development setup. Separate-host deployments require explicit network configuration and must not be treated as secure merely because Docker is used.
+- **Deployment examples:** The Docker Compose setup is a same-host development setup. Running the dashboard on the firewall's own host and reaching it from another computer isn't recommended outside development or testing, because firewall changes can then cut off the browser's connection. Separate-host deployments require explicit network configuration and must not be treated as secure merely because Docker is used.
 
 The API routes and JSON payloads are the integration contract. API calls use the `X-Archangel-Schema-Version` header, except bodyless `GET /status/health`. See [endpoints.md](endpoints.md) for the route and payload details.
 
@@ -16,7 +16,7 @@ The API routes and JSON payloads are the integration contract. API calls use the
 
 The long-term mesh direction includes an Archangel backend acting as a centralized management server for multiple peer backends, so an operator can manage a network from one instance. This is not implemented. Each peer must have an explicit identity and authorization relationship; centralized management must not be treated as implicit trust or as a replacement for authorization enforced by each managed backend.
 
-Peer enrollment is intended to begin with an enrollment token that bootstraps a backend identity and credentials for ongoing authenticated peer communication. The token is not intended to serve as a permanent peer credential. Token issuance, scope/binding, delivery, expiration, redemption and revocation rules, peer credential rotation, secure transport, and management-server failure or compromise behavior are defined in the [mesh design](mesh-design.md). See the [project goal](goal.md) and [roadmap](roadmap.md) for the broader vision and open questions.
+Peer enrollment is intended to begin with an enrollment token that bootstraps a backend identity and credentials for ongoing authenticated peer communication. The token is not intended to serve as a permanent peer credential. Token issuance, scope/binding, delivery, expiration, redemption and revocation rules, peer credential rotation, secure transport, and management-server failure or compromise behavior are defined in the [mesh design](phases/mesh.md). See the [project goal](goal.md) and [roadmap](roadmap.md) for the broader vision and open questions.
 
 ## Backend layout
 
@@ -119,5 +119,6 @@ Neither format is an implicit boot-time restore mechanism. The CLI firewall conf
 - [Backend runtime configuration](runtime-config.md)
 - [Current security posture and planned controls](security-concerns.md)
 - [Development roadmap](roadmap.md)
-- [Mesh network design](mesh-design.md)
+- [Mesh network design](phases/mesh.md)
+- [Phase designs](phases/README.md)
 - [Tests and verification](test.md)

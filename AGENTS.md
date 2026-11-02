@@ -11,7 +11,15 @@
   - [runtime-config.md](docs/runtime-config.md) before changing backend runtime settings.
   - [security-concerns.md](docs/security-concerns.md) before network or security changes.
   - [roadmap.md](docs/roadmap.md) before implementing planned work, and [goal.md](docs/goal.md) for the project's purpose and long-term direction.
+- Read the [phase design](docs/phases/README.md) for the work before implementing it.
 - Keep documentation synchronized with code. Update only the relevant documents, as listed in the documentation table in [development-guidelines.md](docs/development-guidelines.md#keeping-documentation-synchronized). Update this file only for agent-specific workflow rules; put project conventions in the reader-facing documents.
+
+## Design documents
+
+- Design choices MUST be described in a separate design document in [docs/phases/](docs/phases/README.md), following [TEMPLATE.md](docs/phases/TEMPLATE.md), before they are implemented. A design choice is anything that affects behavior, service boundaries, security, data formats, or operations.
+- A developer MUST agree to every design choice before it is implemented. Your own recommendation, or a developer's silence, is not agreement. Ask, record the answer, and mark a design Accepted only once the developer has agreed and no decisions remain open.
+- If a choice has to change during implementation, stop, update the design, and get agreement again.
+- Bug fixes and work that follows an accepted design do not need a new document.
 
 ## Architecture guardrails
 
@@ -43,3 +51,8 @@
 
 - Follow [docs/test.md](docs/test.md) for prerequisites, test commands, coverage, and expected output.
 - Run the focused applicable tests: dashboard tests for dashboard changes; `make test` and `make debug` for C++ changes. Report checks that could not be run and why.
+
+## Commits
+
+- Commit periodically: after each new feature is implemented and its applicable tests pass, commit it before starting the next one. Keep each commit focused on that feature and its documentation.
+- Do not commit work with failing tests. Pushing still requires the developer's request.

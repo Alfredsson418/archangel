@@ -14,6 +14,10 @@ These conventions apply to all code changes in Archangel. They complement the [a
 - Keep a function in the module responsible for its behavior and call it from other modules through the appropriate declaration. Do not create duplicate implementations.
 - Extend the `Firewall::Backend` contract only when a capability is needed across the API and backend boundary, and update every implementation when its virtual contract changes.
 
+## Design documents
+
+Describe design choices in a separate design document in [phases/](phases/README.md), using its [template](phases/TEMPLATE.md), before implementing them. A developer must agree to every design choice before implementation starts. Bug fixes and work that follows an accepted design don't need a new document.
+
 ## Limits, bounds, and defaults
 
 - Define each backend limit, bound, and built-in default exactly once in [`backend/include/config/app_config.hpp`](../backend/include/config/app_config.hpp): limits in `Config::Limits`, and defaults such as paths and session lifetimes in `Config::Defaults` or the `AppConfig` settings object. This covers values such as password, username, and token lengths; Argon2id bounds; request-body and file-size limits; log-read bounds; lifetimes; and rate-limit and tracking bounds.
@@ -49,7 +53,7 @@ Update only the documents relevant to a change:
 | Current security posture or planned controls | [security-concerns.md](security-concerns.md) |
 | Vulnerability-reporting process | [SECURITY.md](../SECURITY.md) |
 | Planned work, status, exit criteria, or design decisions | [roadmap.md](roadmap.md) |
-| Planned mesh behavior, topology, or build plan | [mesh-design.md](mesh-design.md) |
+| How a roadmap phase or major feature is built, and why | a design in [phases/](phases/README.md) |
 | Test suites, commands, prerequisites, or expected output | [test.md](test.md) |
 | Coding conventions | this document |
 | Contribution or conduct process | [CONTRIBUTING.md](../CONTRIBUTING.md), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) |

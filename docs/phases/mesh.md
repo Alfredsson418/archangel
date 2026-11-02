@@ -1,8 +1,8 @@
 # Mesh Network Design
 
-**Status: Planned. Nothing in this document is implemented.** It describes how an Archangel mesh should look and behave, and how to build it in stages. It does not change the current [security posture](security-concerns.md). The [roadmap](roadmap.md) tracks its status, and the decisions behind this design are listed at the end.
+**Status: Accepted. Nothing in this document is implemented.** It describes how an Archangel mesh should look and behave, and how to build it in stages. It does not change the current [security posture](../security-concerns.md). The [roadmap](../roadmap.md#mesh-network) tracks its progress.
 
-## Goals
+## Scope
 
 The mesh connects separated network zones through audited, encrypted gateways, managed from one place.
 
@@ -14,7 +14,21 @@ The mesh connects separated network zones through audited, encrypted gateways, m
 
 These are not goals for the first release: nodes roaming behind NAT, relays, decrypting traffic, endpoint agents, or non-Linux nodes.
 
-## Overview
+## Starting point
+
+These facts from the current code shape the design:
+
+| Fact | Consequence |
+| --- | --- |
+| Each backend manages only its own host, and the dashboard talks to one configured API. | A controller role is new, and the dashboard needs only that one connection. |
+| Rule changes take effect immediately with no automatic rollback, and rules are identified by host-specific handles. | Safe remote changes need atomic apply, rollback, and stable rule IDs first. See M0 in [Verification](#verification). |
+| The API authenticates users, and native TLS verifies only the server. | Nodes need their own identity and a separate mTLS listener. |
+| Audit logs are local files that aren't tamper-evident, and MFA is deferred. | Central audit and the emergency override must add both. |
+| The dashboard must not contain passthrough routes or backend identities. | The dashboard calls only the controller, never other nodes. |
+
+## Behavior
+
+### Overview
 
 ```text
                  Operator browser
@@ -47,7 +61,7 @@ These are not goals for the first release: nodes roaming behind NAT, relays, dec
     Zone A hosts    Zone B hosts
 ```
 
-### Roles
+#### Roles
 
 Every role is the `archangel` backend with a different role set in its runtime configuration. A small or lab deployment may run several roles on one host, but production deployments should split them as described below.
 
@@ -57,12 +71,10 @@ Every role is the `archangel` backend with a different role set in its runtime c
 | **Transit hub** | Terminates tunnels, forwards traffic between zones, enforces policy, produces flow records. | Its own keys. No CA or signing key. | Attacker can read and alter traffic that is unencrypted inside the tunnels, and can suppress its own records. |
 | **Egress gateway** | Connects selected zones to the internet with NAT. | Its own keys. | Attacker has a path between the internet and the mesh. Keep it separate from the controller. |
 | **Log collector** | Receives and stores records from every node. | Audit history. | Attacker can read traffic metadata. Tampering is detectable. |
-| **Edge gateway** | Enforces policy at a zone boundary and sends inter-zone traffic to the hubs. This is the Edge Gateway role from [goal.md](goal.md). | Its own keys. | Attacker controls that zone's boundary, but other zones still enforce their own policy. |
+| **Edge gateway** | Enforces policy at a zone boundary and sends inter-zone traffic to the hubs. This is the Edge Gateway role from [goal.md](../goal.md). | Its own keys. | Attacker controls that zone's boundary, but other zones still enforce their own policy. |
 | **Resource gateway** | Protects one resource using the edge gateway's mechanisms. Added late; see M8. | Its own keys. | Attacker controls access to that resource. |
 
 The controller must not carry traffic. The transit role is exposed to every zone's traffic, and the thesis's separation of control plane and data plane exists to keep that exposure away from the keys that control the whole network.
-
-## Behavior
 
 ### Traffic between two zones
 
@@ -116,7 +128,7 @@ A future Policy Decision Point could respond to this kind of attack directly: it
 
 An administrator can temporarily let inter-zone traffic through without recording it, for cases where stopping the traffic is worse than the audit gap. Because this deliberately reopens that gap, it is tightly constrained:
 
-- **Administrators only, confirmed with MFA.** Every override requires a fresh MFA check, even in an active session. The C++ API enforces this; the dashboard only presents it.
+- **Administrators only, confirmed with MFA.** Operators can't use an override. Every override requires a fresh MFA check, even in an active session. The C++ API enforces this; the dashboard only presents it.
 - **Explicit risk confirmation.** The confirmation message states that traffic will pass unrecorded, that movement between zones during this period can't be investigated later, which hubs and zones are affected, and when the override ends. The administrator must enter a reason.
 - **Narrow scope.** An override names specific hubs and zone pairs. Internet traffic stays blocked and can't be overridden.
 - **Time-limited.** It lasts one hour by default, up to a fixed maximum. Extending it requires MFA and confirmation again. It ends early if recording recovers.
@@ -178,7 +190,7 @@ A network with an egress gateway enabled should not be described as air-gapped. 
 
 Nodes pull configuration from the controller rather than the controller pushing to nodes. Nodes then need no open management port, and zones with strict outbound-only rules still work.
 
-1. An operator edits policy. The dashboard shows the exact effect per zone and requires confirmation, following the same pattern Phase 3 establishes.
+1. An operator edits policy. The dashboard shows the exact effect per zone and requires confirmation, following the same pattern [Phase 3](phase-3.md#list-of-changes) establishes. Control traffic, tunnels to hubs, record delivery, and time synchronization join the [management connections](phase-3.md#connection-warning) it checks, so a change that could cut any of them off is flagged as a **MANAGEMENT RISK**.
 2. The controller validates the policy, gives it a new increasing generation number, and signs it.
 3. Each node picks it up within a short polling interval. It rejects anything with a bad signature, an older generation, or a role change.
 4. **The node compiles structured policy into nftables rules locally.** The controller never sends native firewall commands, which keeps the existing rule against raw commands and limits what a compromised controller can express.
@@ -206,13 +218,13 @@ An operator disables a node. The controller publishes a new generation that remo
 | Egress gateway down | Internet access stops and internal traffic is unaffected. | Egress down. |
 | Edge gateway down | With one edge gateway, that zone is disconnected from the others. A zone with the optional second gateway fails over to it. | Node unreachable. |
 | Bad policy pushed | Nodes that lose connectivity roll back on their own, and a staged rollout stops. | Rolled back, with the generation and the failed check. |
-| Node reboots | It restores its last valid configuration before the network comes up, or a deny-all baseline if none is valid. See [Decisions](#decisions). | Node back, with its generation. |
+| Node reboots | It restores its last valid configuration before the network comes up, or a deny-all baseline if none is valid. See [Design choices](#design-choices). | Node back, with its generation. |
 | Clock drift | Certificates can appear invalid, which isn't unusual in isolated networks. The central site provides NTP over the mesh, and drift raises an alert. | Time drift warning. |
 | Certificate expires during a long outage | Tunnels keep working because they use WireGuard keys, not certificates. On return, a recently expired, unrevoked node can renew with its old certificate within a grace period. | Renewed after outage. |
 | Node compromised | Revoke it as above. Its certificate alone gives it no access to other zones, and all three policy checks still apply. | Audit mismatch, if detected. |
 | Controller compromised | The attacker can change policy and admit nodes. Nodes refuse role changes and record every generation they apply. Recovery means rotating the issuing CA from the offline root and re-enrolling. | Unexpected generations in node-side logs. |
 
-## Scaling the central site
+### Scaling the central site
 
 **Hub-routed traffic can scale across multiple instances**, as long as one requirement holds: both directions of a connection must use the same hub. Hubs are stateful firewalls and audit points, so a connection split across two hubs would be dropped or recorded incorrectly.
 
@@ -243,9 +255,9 @@ Known hazards to test:
 
 The controller scales differently, because its availability isn't needed for traffic. It starts as one instance with encrypted backups and a warm standby promoted by an operator. The existing SQLite storage suits this. Automatic controller failover would require a replicated database and isn't worth the complexity until there's a demonstrated need.
 
-## Security model
+### Security model
 
-### Trust hierarchy
+#### Trust hierarchy
 
 ```text
 Offline root CA (kept off the network; used rarely)
@@ -264,17 +276,41 @@ Operator accounts (existing roles; separate from node identity)
 | WireGuard keys | Generated on each node, rotated regularly through signed configuration, with a pre-shared key per link | Pre-shared keys add a second secret, and some protection against future cryptographic breaks. |
 | CA key protection | Owner-only files at first; hardware key support later | Follows the existing protected-file checks. |
 
-### Authorization
+#### Authorization
 
 - **Node certificates and operator sessions never substitute for each other.** A node certificate can't call the operator API, and an operator session can't call the node API.
 - **Each node API call is limited to that node's own identity.** A node can fetch only its own configuration and report only its own status.
-- **Every node enforces locally.** The central role doesn't replace each backend's enforcement, as [architecture.md](architecture.md) requires.
-- **New operator permissions.** Viewers can see the mesh, operators can change policy, and administrators can enroll and revoke nodes, change the CA, enable egress, and use the MFA-confirmed [emergency override](#emergency-override).
+- **Every node enforces locally.** The central role doesn't replace each backend's enforcement, as [architecture.md](../architecture.md) requires.
+- **New operator permissions.** Viewers can see the mesh, operators can change policy and enroll and revoke nodes, and administrators can change the CA, enable egress, and use the MFA-confirmed [emergency override](#emergency-override).
 - **Limits on the controller.** A node refuses a role change it didn't enroll with, so a compromised controller can't quietly make an edge gateway into a transit hub. Requiring two people to approve high-risk changes is a possible later addition.
 
-## How it fits the codebase
+## Design choices
 
-These changes respect the existing boundaries in [architecture.md](architecture.md):
+All of these were agreed with the developer on 2026-11-02.
+
+| Choice | Why | Rejected alternative |
+| --- | --- | --- |
+| **Management mesh first, then tunnels** | Each stage is usable on its own, and tunnels reuse the same identities. | Building tunnels first, or the full thesis architecture at once. |
+| **All inter-zone traffic through central hubs** | Gives one place for audit and policy, and revoking a node takes effect at the hubs. Hubs can be scaled, as described in [Scaling](#scaling-the-central-site). | Direct links between zones, which would leave no central audit point. Decentralized control, which is much harder to build and reason about. |
+| **Built-in private CA** | Self-contained for isolated networks, and supports revocation. A compromised controller could admit nodes, so an offline root limits recovery cost. | Pinned peer keys, where rotation and revocation are manual. External PKI, which adds a required service. |
+| **Isolated networks as the primary target** | This is the ideal use case. Internet access through the central site is optional and off by default. | Roaming nodes behind NAT, which need traversal and relays. |
+| **WireGuard for tunnels** | Small, in the Linux kernel, and has no cipher negotiation. There is no requirement for specific or certified cryptography. | IPsec, which isn't planned. |
+| **Enrolled nodes restore state at boot** | A node that boots with no rules would be an open path, so it restores its last signed configuration through a separate early-boot unit, or a deny-all baseline if none is valid. This isn't a firewall bundle import: it applies signed, structured policy to the mesh's own table, and starting or restarting the service still doesn't change the firewall. When implemented, describe it in `AGENTS.md` and the [architecture](../architecture.md) so that neither mechanism is mistaken for the other. | Booting without rules until the controller is reachable. |
+| **The transit hub is the Segmentation Gateway, in this repository** | It shares identity, policy, and enforcement code. Recorded in [goal.md](../goal.md). | A separate project. |
+| **Stop all zone traffic when a node can't record** | Nothing crosses a hub unrecorded, closing a path for unaudited movement between zones. A logging failure can therefore become a network outage. See [Audit pipeline](#audit-pipeline). | Allowing inter-zone traffic unrecorded with an alert. Blocking only internet traffic. |
+| **MFA-confirmed emergency override** | Stopping traffic can be worse than an audit gap, so administrators can make a narrow, temporary exception with a risk confirmation. Requires MFA, which Phase 2 deferred, so MFA moves into M5. See [Emergency override](#emergency-override). | No override, which invites someone to change the firewall by hand with no record. |
+| **TOTP as the first MFA method** | Needs no internet or special hardware, though it depends on the mesh's time synchronization. Recovery from a lost device must be designed with M5. | Hardware security keys first; these could follow. |
+| **No override while the controller is down** | The override's MFA check and signing both depend on the controller. If recording and the controller fail together, restoring inter-zone traffic means changing hubs by hand. The standby in M8 reduces this risk. | A local override on hubs, which would bypass those checks. |
+| **Automated attack response left to a future Policy Decision Point** | It could isolate a zone until an administrator reopens it, but needs its own design. Alerts and manual isolation cover this until then. | Automatic isolation in the first version. |
+| **Reject overlapping zone address ranges in the first version** | Zones keep their routed prefixes, so those with overlapping ranges must be renumbered to join. | NAT between zones, which would complicate both policy and audit. |
+| **Operators manage the firewall and nodes, with two exceptions for administrators** | Enabling internet egress weakens the network's isolation, and the emergency override allows unrecorded traffic, so both are limited to administrators. Administrators also manage users and the underlying backend, and keep the firewall access they have today. | Letting operators enable egress or use the override. |
+| **Combined controller and hub in labs only** | A hub compromise on a combined host also exposes the CA, so it carries a visible warning, and production documentation describes split roles. | Allowing it in production. |
+| **Minimal DNS resolver at the central site, added with M6** | Without it, DNS is an unaudited path out of the mesh. | Leaving DNS to zones. |
+| **Optional second edge gateway per zone** | One is the default. Support arrives with M8, and data structures allow for it from the start. Hub ranking and failover must work the same either way. | Requiring two, or leaving redundancy out. |
+
+## Code changes
+
+These changes respect the existing boundaries in [architecture.md](../architecture.md):
 
 | Area | Change |
 | --- | --- |
@@ -290,7 +326,11 @@ These changes respect the existing boundaries in [architecture.md](architecture.
 | `backend/{include,src}/mesh/` alerts | Alert conditions, active state, and acknowledgment on the controller. |
 | `dashboard/` | New Network pages: zones and nodes, policy with effect preview, rollout status, and flow search. The dashboard calls only the controller, with no passthrough routes and no direct access to other nodes. |
 
-## Build plan
+## Open decisions
+
+None.
+
+## Verification
 
 Each milestone leaves a working system. Integration tests run in Linux network namespaces, separate from `make test`, which stays free of privileged host state.
 
@@ -307,27 +347,3 @@ Each milestone leaves a working system. Integration tests run in Linux network n
 | **M8: Hardening** | Controller standby, key rotation drills, the optional second edge gateway per zone, and the resource gateway role. | A full recovery exercise from a compromised or lost controller is documented and passes. |
 
 M1–M3 can be used on their own. If priorities change, the project can stop at M3 with a useful central firewall manager, or at M5 with a useful audited network.
-
-## Decisions
-
-| Decision | Outcome | Consequence |
-| --- | --- | --- |
-| **Restoring firewall state at boot** | Enrolled mesh nodes restore their last signed configuration through a separate early-boot unit, or a deny-all baseline if none is valid. This isn't a firewall bundle import: it applies signed, structured policy to the mesh's own table, and starting or restarting the service still doesn't change the firewall. | Bundle imports stay explicit on every backend. When this is implemented, describe it in `AGENTS.md` and the [architecture](architecture.md) so that neither mechanism is mistaken for the other. |
-| **Segmentation Gateway ownership** | The transit hub is the Segmentation Gateway, built as an Archangel role in this repository. | Recorded in [goal.md](goal.md). |
-| **Audit failure** | A hub or egress gateway that can't record stops forwarding all zone traffic, including open connections. Control, time, and record-delivery traffic stay available. | Favors complete audit over availability, so a logging failure can become a network outage. See [Audit pipeline](#audit-pipeline). |
-| **Emergency override** | Administrators can temporarily allow unrecorded inter-zone traffic, confirmed with MFA and a message stating the risks. | Requires MFA, which Phase 2 deferred, so MFA moves into M5. See [Emergency override](#emergency-override). |
-| **Automated attack response** | Left to a future Policy Decision Point, which could isolate a zone until an administrator reopens it. | Not in the build plan. Alerts and manual isolation cover this until then. |
-| **Tunnel technology** | WireGuard. There is no requirement for specific or certified cryptography. | IPsec support isn't planned. |
-| **Addressing** | Overlapping zone address ranges are rejected in the first version, and zones keep their routed prefixes. | Zones with overlapping private ranges must be renumbered to join. NAT between zones would complicate both policy and audit. |
-| **Roles on one host** | A combined controller and hub is allowed for labs with a visible warning. Production documentation describes split roles. | A hub compromise on a combined host also exposes the CA. |
-| **DNS for egress** | A minimal forwarding resolver at the central site is added with M6. | Without it, DNS is an unaudited path out of the mesh. |
-| **Zone redundancy** | One edge gateway per zone is the default, and a second is optional. Support arrives with M8, and data structures allow for it from the start. | Hub ranking and failover must work the same either way. |
-| **MFA method** | TOTP authenticator codes first, because they need no internet or special hardware. Hardware security keys could follow. | Depends on the mesh's time synchronization. Recovery from a lost device must be designed with M5. |
-| **Override while the controller is down** | Not available, because the override's MFA check and signing both depend on the controller. | If recording and the controller fail together, restoring inter-zone traffic means changing hubs by hand until the controller returns. The standby in M8 reduces this risk. |
-
-## Related documentation
-
-- [Project goal and thesis concepts](goal.md)
-- [Architecture](architecture.md)
-- [Security concerns](security-concerns.md)
-- [Development roadmap](roadmap.md)
