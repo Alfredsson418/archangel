@@ -119,6 +119,17 @@ class SqliteSessionInterface(SecureCookieSessionInterface):
         )
         return connection
 
+    def connect(self, app):
+        """Open the store for other dashboard data kept alongside sessions.
+
+        Returns:
+            An open sqlite3 connection, after the same file-safety checks.
+
+        Raises:
+            RuntimeError: If the store's file is unsafe.
+        """
+        return self._connect(app)
+
     @staticmethod
     def _hash(sid):
         return hashlib.sha256(sid.encode("ascii")).hexdigest()

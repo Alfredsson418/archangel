@@ -10,6 +10,7 @@ from .audit_log import configure_logging, install_audit_gate
 from .server_sessions import SqliteSessionInterface
 from .settings import load_api_settings
 from .views import pages
+from . import rule_views  # noqa: F401  Registers its routes on the pages blueprint.
 
 
 def create_app():

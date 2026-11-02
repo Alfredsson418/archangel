@@ -261,6 +261,7 @@ def rules_page():
     rules.sort(key=sort_key, reverse=direction == "desc")
     return render_template(
         "rules.html",
+        firewall_result=session.pop("firewall_result", None),
         rules=rules,
         total_rules=total_rules,
         error=error,

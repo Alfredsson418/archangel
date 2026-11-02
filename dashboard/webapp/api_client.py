@@ -24,6 +24,8 @@ class ApiResponse:
     schema_version: str | None
     # The backend's identifier for the request, from X-Request-ID.
     request_id: str | None = None
+    # Seconds to wait after HTTP 429, from Retry-After.
+    retry_after: str | None = None
 
 
 class ApiConnectionError(Exception):
@@ -86,7 +88,8 @@ def _response_from(status, body, headers):
     """Build an ApiResponse from urllib response parts.
 
     Returns:
-        ApiResponse carrying the content type, schema version, and request ID.
+        ApiResponse carrying the content type, schema version, request ID,
+        and any Retry-After value.
     """
     return ApiResponse(
         status,
@@ -94,6 +97,7 @@ def _response_from(status, body, headers):
         headers.get("Content-Type", "application/json"),
         headers.get(API_SCHEMA_VERSION_HEADER),
         headers.get(REQUEST_ID_HEADER),
+        headers.get("Retry-After"),
     )
 
 

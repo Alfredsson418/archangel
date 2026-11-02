@@ -45,6 +45,28 @@ The `omitted_unsupported_rules` count indicates rules from the active ruleset th
 
 Import is additive: it calls `POST /api/v1/rules` once per rule and does not delete or replace existing rules. Each change takes effect immediately. These calls are not atomic; if a later API call fails, earlier rules remain applied and the page reports the partial count. A preview warns about rules omitted during export. The bundle is a portable snapshot only; it is not loaded automatically on backend startup and does not make nftables rules persistent across restarts. The preview/apply form uses a session-bound CSRF token and explicit confirmation; this is not backend authentication or authorization.
 
+### `GET, POST /rules/new`
+
+`GET` renders the rule form, which offers the chains in the active ruleset. `POST` validates the submitted fields and either previews the rule in plain language or adds it to the signed-in user's pending changes. Neither changes the firewall.
+
+### `POST /rules/delete`
+
+Adds a rule's deletion to pending changes, without changing the firewall. The fields are `family`, `table`, `chain`, and `handle`.
+
+### `GET /changes`
+
+Renders the review page: every pending change as `before -> new`, warnings, and any change flagged as a MANAGEMENT RISK because it could block the dashboard's connection to the API. It asks the API to check the list, and marks changes whose target has since changed.
+
+### `POST /changes/apply`
+
+Applies all pending changes in one transaction, after working out the review again. It requires `confirm=yes`, and `confirm_risk=yes` if the list contains a management risk or changes a rule Archangel doesn't manage. Success redirects to the rules page, which reports the result read back from the firewall.
+
+### `POST /changes/remove`, `POST /changes/discard`, `POST /changes/refresh`
+
+Remove one pending change by its `id`, discard them all, or record the current revisions of the chains they touch so that they can be reviewed against the firewall as it is now. Changes whose target rule has changed stay marked until removed.
+
+Pending changes belong to one user and are kept for 24 hours after the last addition, up to 1,000 at a time. They survive an expired sign-in.
+
 ### `GET /system`
 
 Renders the read-only System Management page with host resource information and Archangel backend version/process uptime. Restart controls are displayed as unavailable; this page does not issue service or host operations.
@@ -303,6 +325,43 @@ Every field except `family`, `table`, `chain`, and `action` is optional, but at 
 | `action` | `accept`, `drop`, or `reject` |
 
 Unknown fields are rejected, so that a backend that doesn't understand a field can't create a broader rule than requested. Success returns HTTP `201`.
+
+### `POST /api/v1/firewall/changes`
+
+Applies an ordered list of up to 1,000 changes in one transaction, so that either all of them take effect or none do. The request is limited to 2 MiB and requires the `operator` or `administrator` role. It counts as one firewall mutation for rate limiting, however many changes it contains.
+
+```json
+{
+	"expected_revisions": [
+		{ "family": "inet", "table": "filter", "chain": "input", "revision": "4e07..." }
+	],
+	"changes": [
+		{ "type": "add_rule", "rule": { "family": "inet", "table": "filter", "chain": "input", "protocol": "tcp", "destination_port": 443, "action": "accept" } },
+		{ "type": "delete_rule", "family": "inet", "table": "filter", "chain": "input", "handle": 12 }
+	]
+}
+```
+
+`add_rule` takes the same fields as `POST /api/v1/rules` and adds the rule at the end of its chain. `expected_revisions` must include every chain a change touches.
+
+| Status | Code | Meaning |
+| --- | --- | --- |
+| `200` | | `{"status":"applied","changes":2}`. |
+| `400` | `invalid_request` | The request is malformed, too large, or missing a touched chain's revision. |
+| `409` | `firewall_changed` | A chain no longer matches its expected revision. Nothing was applied. |
+| `422` | `change_rejected` | The firewall rejected a change, identified by `change_index`. Nothing was applied. |
+
+### `POST /api/v1/firewall/changes/check`
+
+Takes the same request and reports what applying it would do, without changing anything: `{"status":"valid","changes":2}`, or the same errors as above. Passing a check doesn't guarantee that applying later succeeds. It requires the same roles, but doesn't count as a firewall mutation for rate limiting.
+
+### `GET /api/v1/firewall/revisions`
+
+Returns the current revision of every chain. A revision covers the chain's definition and its rules and handles, but not counter values, so traffic doesn't change it. Treat it as opaque text.
+
+```json
+{ "chains": [ { "family": "inet", "table": "filter", "chain": "input", "revision": "4e07..." } ] }
+```
 
 ### `DELETE /api/v1/rules`
 

@@ -37,6 +37,7 @@ Peer enrollment is intended to begin with an enrollment token that bootstraps a 
 | `backend/include/firewall/firewall_bundle_provider.hpp` | Optional capability for native firewall bundle import/export. |
 | `backend/include/firewall/providers/`, `backend/src/firewall/providers/` | Firewall implementations, currently nftables, with their private parsing and import helpers. |
 | `backend/src/firewall/providers/nft_rule.cpp` | Private validation of structured rules and construction of their nftables statements, kept separate from `nft.cpp` so that it can be tested without libnftables. |
+| `backend/src/firewall/providers/nft_changes.cpp` | Private chain revisions and transaction building for change lists, kept separate from `nft.cpp` so that it can be tested without libnftables. |
 | `backend/src/firewall/bundle.cpp` | Firewall-bundle schema validation, parsing, and serialization. |
 | `backend/include/auth/auth_provider.hpp` | Backend-owned authentication contract and identity, session, and account types. |
 | `backend/include/auth/providers/`, `backend/src/auth/providers/` | Authentication implementations, currently SQLite/Argon2id, with its private storage and migration code. |
@@ -85,6 +86,9 @@ The same rules apply when an OIDC provider is added behind `auth.provider`.
 | `dashboard/server.py` | WSGI entry point. |
 | `dashboard/webapp/__init__.py` | Flask app factory: configuration, session store, CSRF and login guards. |
 | `dashboard/webapp/views.py` | Page routes and their request handling. |
+| `dashboard/webapp/rule_views.py` | Page routes for the rule form and for reviewing and applying pending changes. |
+| `dashboard/webapp/firewall_changes.py` | Pending changes' effect on a ruleset, warnings, management-risk flags, and API payloads; no Flask dependency. |
+| `dashboard/webapp/pending_changes.py` | Per-user storage of pending changes, in the dashboard's owner-only store. |
 | `dashboard/webapp/page_data.py` | Loading C++ API resources for pages with the session credential, including expired-session handling. |
 | `dashboard/webapp/api_client.py` | HTTP transport to the C++ API and schema-version checks. |
 | `dashboard/webapp/firewall_rules.py` | Ruleset inspection and portable rule-bundle conversion and validation; no Flask dependency. |

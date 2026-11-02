@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% set page = "rules" %}
+
+{% block title %}Archangel | Review changes{% endblock %}
+{% block breadcrumb %}FIREWALL CONFIGURATION / REVIEW CHANGES{% endblock %}
+{% block heading_label %}PENDING CHANGES{% endblock %}
+{% block page_heading %}Review changes{% endblock %}
+{% block page_subtitle %}These changes apply together, all or none, and take effect immediately. Archangel can't undo them automatically.{% endblock %}
+{% block page_status %}NOT APPLIED{% endblock %}
+
+{% macro change_rows(entries) %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>CHANGE</th><th>TARGET</th><th>BEFORE -&gt; NEW</th><th>ACTION</th></tr></thead>
+    <tbody>{% for entry in entries %}
+      <tr>
+        <td>{% if entry.flagged %}<span class="risk-flag">MANAGEMENT RISK</span><br>{% endif %}{{ entry.summary.kind }}</td>
+        <td class="code-cell">{{ entry.summary.target }}</td>
+        <td>
+          <div class="change-transition">{{ entry.summary.before }} <span class="change-arrow">-&gt;</span> {{ entry.summary.new }}</div>
+          {% if entry.problem %}<p class="change-problem">Problem: {{ entry.problem }}</p>{% endif %}
+          {% for warning in entry.warnings %}<p class="change-warning">Warning: {{ warning }}</p>{% endfor %}
+        </td>
+        <td>
+          <form action="{{ url_for('pages.remove_change') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="id" value="{{ entry.change.id }}">
+            <button class="text-button" type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div>
+{% endmacro %}
+
+{% block content %}
+  {% if error %}<div class="notice" role="alert">{{ error }}</div>{% endif %}
+  {% if connection_warning == "will_block" %}
+    <div class="notice" role="alert"><strong>This change will block the dashboard's connection to the API.</strong> You may lose access, and may need console access to recover. Archangel can't undo this automatically. Caused by: {{ connection_causes|join(", ") }}.</div>
+  {% elif connection_warning == "could_block" %}
+    <div class="notice" role="alert"><strong>This change could block the dashboard's connection to the API.</strong> Caused by: {{ connection_causes|join(", ") }}.</div>
+  {% elif connection_warning == "unknown_connection" %}
+    <div class="notice" role="status"><strong>Archangel can't determine how the dashboard reaches the API, so it can't check this change.</strong></div>
+  {% endif %}
+  {% if same_host_notice %}
+    <div class="notice" role="alert">You're connected to this dashboard from another computer, through the firewall you're changing. These changes could disconnect you. This setup isn't recommended outside development or testing.</div>
+  {% endif %}
+  {% if conflict %}
+    <div class="notice" role="status">The firewall has changed since these changes were added.
+      <form action="{{ url_for('pages.refresh_changes') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="text-button" type="submit">Review against the current firewall</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <section class="panel" aria-labelledby="changes-heading">
+    <div class="panel-heading">
+      <div><p class="eyebrow">LIST OF CHANGES</p><h2 id="changes-heading">{{ entries|length }} pending change{{ "" if entries|length == 1 else "s" }}</h2></div>
+      <div class="rules-actions"><a class="text-button" href="{{ url_for('pages.new_rule') }}">Add rule</a><a class="text-button" href="{{ url_for('pages.rules_page') }}">Back to rules</a></div>
+    </div>
+    {% if not entries %}
+      <p class="rule-preview">Nothing is pending. Add a rule, or delete one from the rules page, and it will appear here for review.</p>
+    {% else %}
+      <p class="change-summary">{{ entries|length }} change{{ "" if entries|length == 1 else "s" }}: {{ risk_count }} MANAGEMENT RISK, {{ entries|length - risk_count }} other</p>
+      {% if risk_entries %}
+        <h3 class="change-section-title">Could disrupt the connection used to manage this firewall</h3>
+        {{ change_rows(risk_entries) }}
+      {% endif %}
+      {% if other_entries %}
+        {% if risk_entries %}<h3 class="change-section-title">Other changes</h3>{% endif %}
+        {{ change_rows(other_entries) }}
+      {% endif %}
+      <p class="field-hint rule-preview">No MANAGEMENT RISK flag doesn't prove a change is safe. Archangel checks only the dashboard's connection to the API, and can't see SSH or other firewalls on the path.</p>
+      <form class="settings-form import-confirm-form review-confirm" action="{{ url_for('pages.apply_changes') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="confirm-import-label"><input type="checkbox" name="confirm" value="yes" required> I reviewed these changes and understand they apply immediately.</label>
+        {% if risk_count or unmanaged_count %}
+          <label class="confirm-import-label"><input type="checkbox" name="confirm_risk" value="yes" required> I accept {% if risk_count %}{{ risk_count }} MANAGEMENT RISK change{{ "" if risk_count == 1 else "s" }}{% endif %}{% if risk_count and unmanaged_count %} and {% endif %}{% if unmanaged_count %}{{ unmanaged_count }} change{{ "" if unmanaged_count == 1 else "s" }} to rules Archangel doesn't manage{% endif %}.</label>
+        {% endif %}
+        <div class="settings-actions">
+          <button class="refresh-button" type="submit" {% if not can_apply %}disabled{% endif %}>Apply {{ entries|length }} change{{ "" if entries|length == 1 else "s" }}</button>
+        </div>
+      </form>
+      <form class="settings-form" action="{{ url_for('pages.discard_changes') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="text-button" type="submit">Discard all pending changes</button>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}

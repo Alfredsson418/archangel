@@ -59,6 +59,8 @@ Both services write structured JSONL audit logs to owner-only files: the backend
 
 These files are ordinary append files, not tamper-evident storage: anyone who can write them can alter past records. They contain source IP addresses, which are privacy-sensitive; restrict access and rotate them, keeping compressed rotations for 30 days by default. The dashboard keeps only the backend user ID from the login response in its server-side session, solely to attribute its audit records; it never uses that ID for authorization and stores no username, role, or other identity data. It also records the backend's `X-Request-ID` so its records can be matched to backend records. Do not place credentials or secrets in log messages; restrict log and dashboard access as carefully as other host information.
 
+The dashboard's owner-only store also holds each user's pending firewall changes, including rule contents, for up to 24 hours after their last addition. They're keyed by backend user ID so that they survive an expired sign-in, but they authorize nothing: applying them requires a valid session and passes through the API's own authorization. The store contains no credentials beyond the session tokens it already held.
+
 ### 6. Denial-of-service and security verification controls are incomplete — Medium
 
 The API applies bounded per-source-IP and per-identity request limits, plus per-source-IP and per-identity firewall-mutation limits. These fixed-window counters reset on restart and do not provide a general capacity guarantee. No security or capacity guarantee should be inferred from the liveness endpoint.

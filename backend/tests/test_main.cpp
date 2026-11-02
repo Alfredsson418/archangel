@@ -7,6 +7,7 @@ void runRuntimeConfigTests();
 void runNftStatisticsTests();
 void runNftImportTests();
 void runNftRuleTests();
+void runNftChangesTests();
 void runRulesApiTests();
 void runStatsApiTests();
 void runStatusApiTests();
@@ -26,6 +27,7 @@ int main() {
 		runNftStatisticsTests();
 		runNftImportTests();
 		runNftRuleTests();
+		runNftChangesTests();
 		runRulesApiTests();
 		runStatsApiTests();
 		runStatusApiTests();

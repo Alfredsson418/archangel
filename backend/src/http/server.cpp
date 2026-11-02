@@ -205,6 +205,23 @@ void Server::run() {
 			 [this](const auto &request, auto &response) {
 				 deleteRule(firewall_, request, response);
 			 });
+	addRoute(server, routes, "GET", "/api/v1/firewall/revisions",
+			 {RouteAccess::Viewer},
+			 [this](const auto &request, auto &response) {
+				 getChainRevisions(firewall_, request, response);
+			 });
+	// A check changes nothing, so reviewing repeatedly doesn't use up the
+	// firewall-mutation limit.
+	addRoute(server, routes, "POST", "/api/v1/firewall/changes/check",
+			 {RouteAccess::Operator},
+			 [this](const auto &request, auto &response) {
+				 checkFirewallChanges(firewall_, request, response);
+			 });
+	addRoute(server, routes, "POST", "/api/v1/firewall/changes",
+			 {RouteAccess::Operator, true},
+			 [this](const auto &request, auto &response) {
+				 applyFirewallChanges(firewall_, request, response);
+			 });
 	addRoute(server, routes, "GET", "/api/v1/stats", {RouteAccess::Viewer},
 			 [this](const auto &request, auto &response) {
 				 getStatistics(firewall_, request, response);

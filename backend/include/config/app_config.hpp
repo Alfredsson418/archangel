@@ -109,6 +109,9 @@ inline constexpr std::int64_t MAX_LOG_READ_BYTES = 512 * 1024;
 inline constexpr std::size_t  MAX_LOG_LINE_BYTES = 4096;
 
 inline constexpr std::size_t MAX_FIREWALL_IDENTIFIER_LENGTH = 64;
+// Changes applied together, and the request carrying them.
+inline constexpr std::size_t MAX_FIREWALL_CHANGES		= 1000;
+inline constexpr std::size_t MAX_FIREWALL_CHANGES_BYTES = 2 * 1024 * 1024;
 // Linux limits interface names to 15 characters (IFNAMSIZ minus the NUL).
 inline constexpr std::size_t MAX_INTERFACE_NAME_LENGTH = 15;
 // new, established, related, and invalid.

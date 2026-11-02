@@ -193,6 +193,121 @@ std::uint64_t parseHandle(const Json &body) {
 	}
 	throw ValidationError("handle is required and must be a positive integer");
 }
+/**
+ * @brief Parses one entry of a change list.
+ * @param entry JSON object describing the change.
+ * @return The structured change.
+ * @throws ValidationError If the entry is malformed or has an unknown type.
+ */
+Firewall::Change parseChange(const Json &entry) {
+	if (!entry.is_object()) {
+		throw ValidationError("Each change must be a JSON object");
+	}
+	const std::string type = requiredString(entry, "type");
+	if (type == "add_rule") {
+		rejectUnknownFields(entry, {"type", "rule"});
+		const auto rule = entry.find("rule");
+		if (rule == entry.end() || !rule->is_object()) {
+			throw ValidationError("rule is required and must be an object");
+		}
+		return Firewall::AddRuleChange{parseRule(*rule)};
+	}
+	if (type == "delete_rule") {
+		rejectUnknownFields(entry, {"type", "family", "table", "chain", "handle"});
+		return Firewall::DeleteRuleChange{
+			requiredString(entry, "family"), requiredString(entry, "table"),
+			requiredString(entry, "chain"), parseHandle(entry)};
+	}
+	throw ValidationError("Change type is not supported");
+}
+
+/**
+ * @brief Parses a bounded change list and its expected chain revisions.
+ * @param request Request carrying the change list as JSON.
+ * @return The structured change set.
+ * @throws ValidationError If the request is malformed or too large.
+ */
+Firewall::ChangeSet parseChangeSet(const httplib::Request &request) {
+	if (request.body.size() > Config::Limits::MAX_FIREWALL_CHANGES_BYTES) {
+		throw ValidationError("Request body is too large");
+	}
+	const Json body = parseObject(request);
+	rejectUnknownFields(body, {"expected_revisions", "changes"});
+	const auto changes	= body.find("changes");
+	const auto expected = body.find("expected_revisions");
+	if (changes == body.end() || !changes->is_array() || changes->empty() ||
+		changes->size() > Config::Limits::MAX_FIREWALL_CHANGES) {
+		throw ValidationError(
+			"changes must be a list of 1 to " +
+			std::to_string(Config::Limits::MAX_FIREWALL_CHANGES) + " changes");
+	}
+	if (expected == body.end() || !expected->is_array() ||
+		expected->size() > Config::Limits::MAX_FIREWALL_CHANGES) {
+		throw ValidationError("expected_revisions must be a list");
+	}
+
+	Firewall::ChangeSet result;
+	for (const Json &entry : *expected) {
+		if (!entry.is_object()) {
+			throw ValidationError("Each expected revision must be an object");
+		}
+		rejectUnknownFields(entry, {"family", "table", "chain", "revision"});
+		result.expected.push_back(
+			{requiredString(entry, "family"), requiredString(entry, "table"),
+			 requiredString(entry, "chain"), requiredString(entry, "revision")});
+	}
+	for (const Json &entry : *changes) {
+		result.changes.push_back(parseChange(entry));
+	}
+	return result;
+}
+
+/**
+ * @brief Runs a change-set operation and maps its errors to API responses.
+ * @param request Request carrying the change list as JSON.
+ * @param response HTTP response to populate.
+ * @param operation Safe operation identifier for diagnostics.
+ * @param status Status text for a successful response.
+ * @param run Operation to perform on the parsed change set.
+ * @return No value; writes the response.
+ */
+template <typename Operation>
+void runChangeSet(const httplib::Request &request, httplib::Response &response,
+				  const char *operation, const char *status, Operation run) {
+	try {
+		const Firewall::ChangeSet changes = parseChangeSet(request);
+		run(changes);
+		response.set_content(
+			Json{
+				{ "status",				   status},
+				{"changes", changes.changes.size()}
+		   }
+				.dump(),
+			"application/json");
+	} catch (const ApiError &error) {
+		Detail::sendError(response, error);
+	} catch (const Firewall::InvalidRuleError &error) {
+		Detail::sendError(response, ValidationError(error.what()));
+	} catch (const Firewall::ChangeConflictError &error) {
+		Detail::sendError(response,
+						  ApiError(409, "firewall_changed", error.what()));
+	} catch (const Firewall::ChangeRejectedError &error) {
+		Logs::Logger::API::log("request_rejected code=change_rejected",
+							   Logs::Logger::Level::WARNING);
+		response.status = 422;
+		response.set_content(
+			Json{
+				{		"error",   error.what()},
+				{		 "code", "change_rejected"},
+				{"change_index",	error.index()}
+		   }
+				.dump(),
+			"application/json");
+	} catch (const std::exception &error) {
+		Detail::sendOperationError(response, operation, error, "firewall_error",
+								   "Firewall operation failed");
+	}
+}
 } // namespace
 
 void getRules(Firewall::Backend &firewall, const httplib::Request &,
@@ -251,6 +366,49 @@ void deleteRule(Firewall::Backend &firewall, const httplib::Request &request,
 								   "firewall_error",
 								   "Firewall operation failed");
 	}
+}
+
+void getChainRevisions(Firewall::Backend &firewall, const httplib::Request &,
+					   httplib::Response &response) {
+	try {
+		Json chains = Json::array();
+		for (const Firewall::ChainRevision &chain : firewall.chainRevisions()) {
+			chains.push_back(Json{
+				{  "family",   chain.family},
+				{	"table",	chain.table},
+				{	"chain",	chain.chain},
+				{"revision", chain.revision}
+			});
+		}
+		response.set_content(
+			Json{
+				{"chains", std::move(chains)}
+		 }
+				.dump(),
+			"application/json");
+	} catch (const std::exception &error) {
+		Detail::sendOperationError(response, "GET /api/v1/firewall/revisions",
+								   error, "firewall_error",
+								   "Firewall operation failed");
+	}
+}
+
+void checkFirewallChanges(Firewall::Backend		 &firewall,
+						  const httplib::Request &request,
+						  httplib::Response		 &response) {
+	runChangeSet(request, response, "POST /api/v1/firewall/changes/check",
+				 "valid", [&](const Firewall::ChangeSet &changes) {
+					 firewall.checkChanges(changes);
+				 });
+}
+
+void applyFirewallChanges(Firewall::Backend		 &firewall,
+						  const httplib::Request &request,
+						  httplib::Response		 &response) {
+	runChangeSet(request, response, "POST /api/v1/firewall/changes", "applied",
+				 [&](const Firewall::ChangeSet &changes) {
+					 firewall.applyChanges(changes);
+				 });
 }
 
 } // namespace Http

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace Firewall {
@@ -45,6 +47,79 @@ struct RuleSpec {
 	// Any of new, established, related, and invalid.
 	std::vector<std::string> connection_states;
 	std::string				 action;
+};
+
+/** @brief Adds a rule at the end of its chain, marked as Archangel-managed. */
+struct AddRuleChange {
+	RuleSpec rule;
+};
+
+/** @brief Deletes a rule, identified by its chain and handle. */
+struct DeleteRuleChange {
+	std::string	  family;
+	std::string	  table;
+	std::string	  chain;
+	std::uint64_t handle = 0;
+};
+
+using Change = std::variant<AddRuleChange, DeleteRuleChange>;
+
+/**
+ * @brief A chain's state when it was reviewed.
+ *
+ * The revision covers the chain's definition and its rules and handles, but not
+ * counters, which change with traffic. Callers treat it as opaque text.
+ */
+struct ChainRevision {
+	std::string family;
+	std::string table;
+	std::string chain;
+	std::string revision;
+};
+
+/**
+ * @brief Changes to apply together, all or none.
+ *
+ * Every chain a change touches must be listed in expected, so that a change is
+ * refused if its chain has changed since it was reviewed.
+ */
+struct ChangeSet {
+	std::vector<ChainRevision> expected;
+	std::vector<Change>		   changes;
+};
+
+/**
+ * @brief Thrown when a chain no longer matches the revision a change expected.
+ *
+ * Nothing has been applied. The message is safe to return to API callers.
+ */
+class ChangeConflictError : public std::runtime_error {
+  public:
+	using std::runtime_error::runtime_error;
+};
+
+/**
+ * @brief Thrown when the firewall rejects a change in a change set.
+ *
+ * Nothing has been applied. The message is safe to return to API callers.
+ */
+class ChangeRejectedError : public std::runtime_error {
+  public:
+	/**
+	 * @brief Creates the error for one change.
+	 * @param index Position of the rejected change in the change set.
+	 * @param message Safe description of the problem.
+	 */
+	ChangeRejectedError(std::size_t index, const std::string &message)
+		: std::runtime_error(message), index_(index) {}
+
+	/** @brief Gets the position of the rejected change.
+	 * @return Zero-based index into ChangeSet::changes.
+	 */
+	std::size_t index() const noexcept { return index_; }
+
+  private:
+	std::size_t index_;
 };
 
 struct Statistics {
@@ -94,6 +169,38 @@ class Backend {
 	 */
 	virtual void deleteRule(const std::string &family, const std::string &table,
 							const std::string &chain, std::uint64_t handle) = 0;
+
+	/**
+	 * @brief Reports the current revision of every chain.
+	 * @return One revision per chain.
+	 * @throws std::exception If the ruleset cannot be read.
+	 */
+	virtual std::vector<ChainRevision> chainRevisions() = 0;
+
+	/**
+	 * @brief Reports whether a change set would apply, without applying it.
+	 *
+	 * Passing this check does not guarantee that applying later succeeds.
+	 *
+	 * @param changes Changes to check.
+	 * @return No value.
+	 * @throws InvalidRuleError If the change set is malformed.
+	 * @throws ChangeConflictError If a chain has changed.
+	 * @throws ChangeRejectedError If the firewall rejects a change.
+	 * @throws std::exception If the check cannot be performed.
+	 */
+	virtual void checkChanges(const ChangeSet &changes) = 0;
+
+	/**
+	 * @brief Applies a change set in one transaction, all or none.
+	 * @param changes Changes to apply.
+	 * @return No value.
+	 * @throws InvalidRuleError If the change set is malformed.
+	 * @throws ChangeConflictError If a chain has changed.
+	 * @throws ChangeRejectedError If the firewall rejects a change.
+	 * @throws std::exception If the changes cannot be applied.
+	 */
+	virtual void applyChanges(const ChangeSet &changes) = 0;
 };
 
 } // namespace Firewall

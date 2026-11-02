@@ -280,6 +280,8 @@ Every outcome is stated in text, and the page never implies success if the API r
 
 Each row is a separate piece of work, tested and committed on its own, in this order.
 
+The check-only operation became its own route, `POST /api/v1/firewall/changes/check`, rather than a mode of `POST /api/v1/firewall/changes`, so that reviewing a list repeatedly doesn't use up the firewall-mutation rate limit. Chain revisions come from `GET /api/v1/firewall/revisions`, and `/api/v1/system` reports the host's interfaces for the missing-interface warning.
+
 The work is grouped into four parts, each reported to the developer when finished: Part 1 is pieces 1 and 2, Part 2 is pieces 3 to 5, Part 3 is pieces 6 to 8, and Part 4 is pieces 9 to 12.
 
 | Work | Backend | Dashboard |

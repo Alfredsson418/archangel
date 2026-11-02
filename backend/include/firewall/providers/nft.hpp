@@ -4,8 +4,10 @@
 #include "firewall/firewall_bundle_provider.hpp"
 #include <mutex>
 #include <nftables/libnftables.h>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace Firewall {
 
@@ -74,6 +76,31 @@ class Nftables : public Backend, public BundleProvider {
 	void deleteRule(const std::string &family, const std::string &table,
 					const std::string &chain, std::uint64_t handle) override;
 
+	/**
+	 * @brief Implements Backend::chainRevisions from the listed ruleset.
+	 * @return One revision per chain.
+	 * @throws std::exception If the ruleset cannot be read.
+	 */
+	std::vector<ChainRevision> chainRevisions() override;
+
+	/**
+	 * @brief Implements Backend::checkChanges using a libnftables dry run.
+	 * @param changes Changes to check.
+	 * @return No value.
+	 * @throws InvalidRuleError, ChangeConflictError, or ChangeRejectedError as
+	 * described by Backend::checkChanges.
+	 */
+	void checkChanges(const ChangeSet &changes) override;
+
+	/**
+	 * @brief Implements Backend::applyChanges in one nftables transaction.
+	 * @param changes Changes to apply.
+	 * @return No value.
+	 * @throws InvalidRuleError, ChangeConflictError, or ChangeRejectedError as
+	 * described by Backend::applyChanges.
+	 */
+	void applyChanges(const ChangeSet &changes) override;
+
   private:
 	/**
 	 * @brief Exports the complete active nftables ruleset as nftables JSON.
@@ -81,6 +108,27 @@ class Nftables : public Backend, public BundleProvider {
 	 * @throws std::runtime_error If the ruleset cannot be read.
 	 */
 	std::string exportRuleset();
+
+	/**
+	 * @brief Lists the ruleset. The caller must hold mutex_.
+	 * @return Serialized nftables ruleset JSON.
+	 * @throws std::runtime_error If the ruleset cannot be read.
+	 */
+	std::string listUnlocked();
+
+	/**
+	 * @brief Finds the first change the firewall rejects. The caller must hold
+	 * mutex_.
+	 *
+	 * A longer list fails whenever a shorter one does, so this bisects using dry
+	 * runs. Nothing is applied.
+	 *
+	 * @param ruleset Current ruleset listing.
+	 * @param changes Change set that the firewall rejected.
+	 * @return Index of the first rejected change.
+	 */
+	std::size_t firstRejectedChange(const std::string &ruleset,
+									const ChangeSet	  &changes);
 
 	/**
 	 * @brief Applies a native nftables JSON ruleset through libnftables.

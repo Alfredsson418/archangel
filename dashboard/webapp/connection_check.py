@@ -117,6 +117,29 @@ def check_connection(before, after, connection):
     return ConnectionCheck(NO_CHANGE)
 
 
+def rule_could_affect(statements, connection):
+    """Report whether a rule could apply to any traffic of the connection.
+
+    Returns:
+        True unless one of the rule's matches is definitely false for every
+        packet and hook of the connection.
+    """
+    if connection is None or _client_ip(connection.client_address) is None:
+        return True
+    if not isinstance(statements, list):
+        return True
+    for packet in _packets(connection):
+        for hook in packet.hooks:
+            matches = (
+                statement["match"]
+                for statement in statements
+                if isinstance(statement, dict) and "match" in statement
+            )
+            if all(_evaluate_match(match, packet, hook) is not False for match in matches):
+                return True
+    return False
+
+
 def _client_ip(address):
     """Parse an address, unwrapping IPv4 addresses reported in IPv6 form.
 

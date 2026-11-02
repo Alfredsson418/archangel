@@ -11,12 +11,14 @@
 
 {% block content %}
   {% if error %}<div class="notice" role="status">{{ error }}</div>{% endif %}
+  {% if firewall_result %}<div class="{{ 'success-notice' if firewall_result.success else 'notice' }}" role="status">{{ firewall_result.message }}</div>{% endif %}
   <section class="panel" aria-labelledby="rules-heading">
     <div class="panel-heading">
       <div><p class="eyebrow">LIVE RULESET</p><h2 id="rules-heading">Active rules</h2></div>
       <div class="rules-actions">
         <a class="text-button" href="{{ url_for('pages.export_rules') }}">Export portable rules</a>
-        <a class="refresh-button action-link" href="{{ url_for('pages.import_rules') }}">Import rules</a>
+        <a class="text-button" href="{{ url_for('pages.import_rules') }}">Import rules</a>
+        <a class="refresh-button action-link" href="{{ url_for('pages.new_rule') }}">Add rule</a>
       </div>
     </div>
     <form class="rules-filter" method="get" action="{{ url_for('pages.rules_page') }}">
@@ -45,7 +47,12 @@
             <td class="code-cell">{{ rule.get("chain", "—") }}</td>
             <td class="code-cell">{{ rule.get("handle", "—") }}</td>
             <td class="expression-cell" title="{{ expression|tojson|forceescape }}">{{ expression|tojson }}</td>
-            <td><button class="text-button edit-rule-button" type="button" disabled title="Rule editing is not available yet">Edit</button></td>
+            <td><div class="rule-actions"><button class="text-button edit-rule-button" type="button" disabled title="Rule editing is not available yet">Edit</button>{% if rule.get("handle") is number %}
+              <form action="{{ url_for('pages.delete_rule') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="family" value="{{ rule.get('family') }}"><input type="hidden" name="table" value="{{ rule.get('table') }}"><input type="hidden" name="chain" value="{{ rule.get('chain') }}"><input type="hidden" name="handle" value="{{ rule.get('handle') }}">
+                <button class="text-button" type="submit">Delete</button>
+              </form>{% endif %}</div></td>
           </tr>
         {% else %}
           <tr><td class="empty-cell" colspan="6">{{ "Rules could not be loaded." if error else ("No rules match this filter." if query else ("The backend returned no rules in the active nftables ruleset." if total_rules == 0 else "No rules match the selected view.")) }}</td></tr>

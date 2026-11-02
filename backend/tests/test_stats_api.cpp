@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace {
 class StatisticsFirewall final : public Firewall::Backend {
@@ -34,6 +35,12 @@ class StatisticsFirewall final : public Firewall::Backend {
 
 	void deleteRule(const std::string &, const std::string &,
 					const std::string &, std::uint64_t) override {}
+
+	std::vector<Firewall::ChainRevision> chainRevisions() override { return {}; }
+
+	void checkChanges(const Firewall::ChangeSet &) override {}
+
+	void applyChanges(const Firewall::ChangeSet &) override {}
 };
 
 void serializesStatisticsResponse() {

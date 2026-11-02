@@ -20,6 +20,9 @@ class TestFirewall final : public Firewall::Backend {
 	void				 addRule(const Firewall::RuleSpec &) override {}
 	void				 deleteRule(const std::string &, const std::string &,
 									const std::string &, std::uint64_t) override {}
+	std::vector<Firewall::ChainRevision> chainRevisions() override { return {}; }
+	void checkChanges(const Firewall::ChangeSet &) override {}
+	void applyChanges(const Firewall::ChangeSet &) override {}
 };
 
 class TemporaryDirectory {

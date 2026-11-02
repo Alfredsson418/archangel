@@ -1,3 +1,4 @@
+#include "config/app_config.hpp"
 #include "http/api/rules.hpp"
 #include "test_support.hpp"
 
@@ -5,6 +6,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -39,6 +41,42 @@ class MockFirewall final : public Firewall::Backend {
 		deleted_handle = handle;
 	}
 
+	std::vector<Firewall::ChainRevision> chainRevisions() override {
+		return {
+			{"inet", "filter", "input", "abc"}
+		};
+	}
+
+	void checkChanges(const Firewall::ChangeSet &changes) override {
+		++check_calls;
+		received_changes = changes;
+		throwConfiguredError();
+	}
+
+	void applyChanges(const Firewall::ChangeSet &changes) override {
+		++apply_calls;
+		received_changes = changes;
+		throwConfiguredError();
+	}
+
+	void throwConfiguredError() const {
+		if (conflict) {
+			throw Firewall::ChangeConflictError("A chain has changed");
+		}
+		if (reject_change) {
+			throw Firewall::ChangeRejectedError(2, "The firewall rejected this");
+		}
+		if (fail_apply) {
+			throw std::runtime_error("private backend detail");
+		}
+	}
+
+	int					check_calls	  = 0;
+	int					apply_calls	  = 0;
+	bool				conflict	  = false;
+	bool				reject_change = false;
+	bool				fail_apply	  = false;
+	Firewall::ChangeSet received_changes;
 	int				   add_calls	= 0;
 	int				   delete_calls = 0;
 	bool			   fail_list	= false;
@@ -210,6 +248,158 @@ void rejectsInvalidNewRuleFieldTypes() {
 	}
 }
 
+const char *const VALID_CHANGES = R"({
+	"expected_revisions":[{"family":"inet","table":"filter","chain":"input","revision":"abc"}],
+	"changes":[
+		{"type":"add_rule","rule":{"family":"inet","table":"filter","chain":"input","protocol":"tcp","destination_port":22,"action":"accept"}},
+		{"type":"delete_rule","family":"inet","table":"filter","chain":"input","handle":7}
+	]})";
+
+void appliesAndChecksAChangeList() {
+	MockFirewall	  firewall;
+	httplib::Response response;
+	Http::applyFirewallChanges(firewall, requestWithBody(VALID_CHANGES),
+							   response);
+
+	TestSupport::require(firewall.apply_calls == 1,
+						 "change list should reach the backend once");
+	TestSupport::require(response.body == R"({"changes":2,"status":"applied"})",
+						 "apply should report the applied count");
+	const Firewall::ChangeSet &changes = firewall.received_changes;
+	TestSupport::require(changes.expected.size() == 1 &&
+							 changes.expected[0].revision == "abc",
+						 "expected revisions should be forwarded");
+	TestSupport::require(changes.changes.size() == 2,
+						 "every change should be forwarded");
+	TestSupport::require(std::get<Firewall::AddRuleChange>(changes.changes[0])
+								 .rule.destination_port == 22,
+						 "add should carry its rule");
+	TestSupport::require(
+		std::get<Firewall::DeleteRuleChange>(changes.changes[1]).handle == 7,
+		"delete should carry its handle");
+
+	MockFirewall	  checking;
+	httplib::Response checked;
+	Http::checkFirewallChanges(checking, requestWithBody(VALID_CHANGES),
+							   checked);
+	TestSupport::require(checking.check_calls == 1 && checking.apply_calls == 0,
+						 "check must not apply");
+	TestSupport::require(checked.body == R"({"changes":2,"status":"valid"})",
+						 "check should report validity");
+}
+
+void mapsChangeListFailuresToSafeResponses() {
+	MockFirewall conflicted;
+	conflicted.conflict = true;
+	httplib::Response response;
+	Http::applyFirewallChanges(conflicted, requestWithBody(VALID_CHANGES),
+							   response);
+	TestSupport::require(response.status == 409,
+						 "a changed chain should return 409");
+	TestSupport::require(response.body.find("firewall_changed") !=
+							 std::string::npos,
+						 "conflict should use a stable code");
+
+	MockFirewall rejecting;
+	rejecting.reject_change = true;
+	response				= {};
+	Http::applyFirewallChanges(rejecting, requestWithBody(VALID_CHANGES),
+							   response);
+	TestSupport::require(response.status == 422,
+						 "a rejected change should return 422");
+	TestSupport::require(response.body.find("\"change_index\":2") !=
+							 std::string::npos,
+						 "rejection should identify the change");
+
+	MockFirewall failing;
+	failing.fail_apply = true;
+	response		   = {};
+	Http::applyFirewallChanges(failing, requestWithBody(VALID_CHANGES),
+							   response);
+	TestSupport::require(response.status == 500,
+						 "an unexpected failure should return 500");
+	TestSupport::require(response.body.find("private backend detail") ==
+							 std::string::npos,
+						 "failure detail must not be exposed");
+}
+
+void rejectsMalformedChangeListsBeforeBackendMutation() {
+	const std::string expected = R"("expected_revisions":[],)";
+	for (const std::string &body : std::vector<std::string>{
+			 "[]",
+			 "{invalid",
+			 "{}",
+			 R"({"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}]})",
+			 "{" + expected + R"("changes":[]})",
+			 "{" + expected + R"("changes":{}})",
+			 "{" + expected + R"("changes":[1]})",
+			 "{" + expected + R"("changes":[{"type":"flush_ruleset"}]})",
+			 "{" + expected + R"("changes":[{"type":"add_rule"}]})",
+			 "{" + expected +
+				 R"("changes":[{"type":"add_rule","rule":{"family":"inet","table":"f","chain":"c","action":"accept","raw":"x"}}]})",
+			 "{" + expected +
+				 R"("changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":0}]})",
+			 "{" + expected +
+				 R"("changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1,"extra":1}]})",
+			 R"({"expected_revisions":[1],"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}]})",
+			 R"({"expected_revisions":[],"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}],"dry_run":true})"}) {
+		MockFirewall	  firewall;
+		httplib::Response response;
+		Http::applyFirewallChanges(firewall, requestWithBody(body), response);
+		TestSupport::require(response.status == 400,
+							 "malformed change list should return 400: " + body);
+		TestSupport::require(firewall.apply_calls == 0,
+							 "malformed change list must not reach the backend");
+	}
+}
+
+void boundsChangeLists() {
+	const std::string change =
+		R"({"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1})";
+	const auto listOf = [&](std::size_t count) {
+		std::string body = R"({"expected_revisions":[],"changes":[)";
+		for (std::size_t index = 0; index < count; ++index) {
+			body += (index == 0 ? "" : ",") + change;
+		}
+		return body + "]}";
+	};
+
+	MockFirewall	  firewall;
+	httplib::Response response;
+	Http::applyFirewallChanges(
+		firewall, requestWithBody(listOf(Config::Limits::MAX_FIREWALL_CHANGES)),
+		response);
+	TestSupport::require(firewall.apply_calls == 1,
+						 "a list at the limit should be accepted");
+
+	response = {};
+	Http::applyFirewallChanges(
+		firewall,
+		requestWithBody(listOf(Config::Limits::MAX_FIREWALL_CHANGES + 1)),
+		response);
+	TestSupport::require(response.status == 400 && firewall.apply_calls == 1,
+						 "a list over the limit should be rejected");
+
+	response = {};
+	Http::applyFirewallChanges(
+		firewall,
+		requestWithBody(
+			std::string(Config::Limits::MAX_FIREWALL_CHANGES_BYTES + 1, ' ')),
+		response);
+	TestSupport::require(response.status == 400 && firewall.apply_calls == 1,
+						 "an oversized body should be rejected");
+}
+
+void reportsChainRevisions() {
+	MockFirewall	  firewall;
+	httplib::Response response;
+	Http::getChainRevisions(firewall, httplib::Request{}, response);
+	TestSupport::require(
+		response.body ==
+			R"({"chains":[{"chain":"input","family":"inet","revision":"abc","table":"filter"}]})",
+		"revisions should use the expected JSON shape");
+}
+
 void deletesRuleByPositiveHandle() {
 	MockFirewall	  firewall;
 	httplib::Response response;
@@ -319,6 +509,11 @@ void runRulesApiTests() {
 	rejectsInvalidNewRuleFieldTypes();
 	acceptsMaximumDestinationPortAndNullOptionalAddresses();
 	rejectsInvalidRuleRequestsBeforeBackendMutation();
+	appliesAndChecksAChangeList();
+	mapsChangeListFailuresToSafeResponses();
+	rejectsMalformedChangeListsBeforeBackendMutation();
+	boundsChangeLists();
+	reportsChainRevisions();
 	deletesRuleByPositiveHandle();
 	rejectsInvalidDeleteHandlesBeforeBackendMutation();
 	rejectsDeleteRequestsMissingRequiredFields();

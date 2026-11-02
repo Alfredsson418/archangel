@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% set page = "rules" %}
+
+{% block title %}Archangel | Add rule{% endblock %}
+{% block breadcrumb %}FIREWALL CONFIGURATION / ADD RULE{% endblock %}
+{% block heading_label %}STRUCTURED RULE{% endblock %}
+{% block page_heading %}Add rule{% endblock %}
+{% block page_subtitle %}Rules are collected as pending changes. Nothing changes until you review and apply them.{% endblock %}
+{% block status_class %}{% if not error %}connected{% endif %}{% endblock %}
+{% block page_status %}NOT APPLIED{% endblock %}
+
+{% block content %}
+  {% if error %}<div class="notice" role="alert">{{ error }}</div>{% endif %}
+  {% if message %}<div class="success-notice" role="status">{{ message }}</div>{% endif %}
+  <section class="panel" aria-labelledby="rule-heading">
+    <div class="panel-heading"><div><p class="eyebrow">RULE</p><h2 id="rule-heading">Match and action</h2></div></div>
+    {% if not chains %}
+      <p class="rule-preview">No chains exist in the <code>ip</code>, <code>ip6</code>, or <code>inet</code> families, so there's nowhere to add a rule yet.</p>
+    {% else %}
+    <form class="settings-form" action="{{ url_for('pages.new_rule') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="rule-form-grid">
+        <div>
+          <label for="rule-chain">Chain</label>
+          <select id="rule-chain" name="chain" required>
+            {% for chain in chains %}
+              {% set key = chain.family ~ " " ~ chain.table ~ " " ~ chain.name %}
+              <option value="{{ key }}" {% if values.get('chain') == key %}selected{% endif %}>{{ key }}{% if chain.hook %} ({{ chain.hook }} hook){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="rule-action">Action</label>
+          <select id="rule-action" name="action" required>
+            {% for action in actions %}<option value="{{ action }}" {% if values.get('action') == action %}selected{% endif %}>{{ action|capitalize }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="rule-protocol">Protocol</label>
+          <select id="rule-protocol" name="protocol">
+            <option value="">Any</option>
+            {% for protocol in protocols %}<option value="{{ protocol }}" {% if values.get('protocol') == protocol %}selected{% endif %}>{{ protocol|upper }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="rule-port">Destination port</label>
+          <input id="rule-port" name="destination_port" type="text" value="{{ values.get('destination_port', '') }}" placeholder="443 or 8000-8100" aria-describedby="rule-port-hint">
+          <p class="field-hint" id="rule-port-hint">Needs TCP or UDP.</p>
+        </div>
+        <div>
+          <label for="rule-source">Source address</label>
+          <input id="rule-source" name="source_address" type="text" value="{{ values.get('source_address', '') }}" placeholder="192.0.2.10 or 192.0.2.0/24">
+        </div>
+        <div>
+          <label for="rule-destination">Destination address</label>
+          <input id="rule-destination" name="destination_address" type="text" value="{{ values.get('destination_address', '') }}" placeholder="192.0.2.10 or 192.0.2.0/24">
+        </div>
+        <div>
+          <label for="rule-input-interface">Input interface</label>
+          <input id="rule-input-interface" name="input_interface" type="text" value="{{ values.get('input_interface', '') }}" placeholder="lo">
+        </div>
+        <div>
+          <label for="rule-output-interface">Output interface</label>
+          <input id="rule-output-interface" name="output_interface" type="text" value="{{ values.get('output_interface', '') }}" placeholder="eth0">
+        </div>
+        <fieldset>
+          <legend>Connection state</legend>
+          <div class="state-options">
+            {% for state in states %}<label><input type="checkbox" name="connection_states" value="{{ state }}" {% if state in values.get('connection_states', []) %}checked{% endif %}> {{ state }}</label>{% endfor %}
+          </div>
+        </fieldset>
+      </div>
+      <div class="settings-actions">
+        <button class="text-button" type="submit" name="form_action" value="preview">Preview rule</button>
+        <button class="refresh-button" type="submit" name="form_action" value="add">Add to pending changes</button>
+        <a class="text-button" href="{{ url_for('pages.rules_page') }}">Cancel</a>
+      </div>
+    </form>
+    {% endif %}
+    {% if preview %}<p class="rule-preview" role="status"><strong>This rule will:</strong> {{ preview }}. It goes at the end of its chain, and earlier rules take priority.</p>{% endif %}
+  </section>
+{% endblock %}

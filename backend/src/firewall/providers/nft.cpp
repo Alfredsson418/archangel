@@ -2,6 +2,7 @@
 #include "config/app_config.hpp"
 #include "firewall/bundle.hpp"
 #include "logs/logger.hpp"
+#include "nft_changes.hpp"
 #include "nft_import.hpp"
 #include "nft_rule.hpp"
 #include "nft_statistics.hpp"
@@ -179,6 +180,92 @@ void Nftables::addRule(const RuleSpec &rule) {
 	executeJson(ruleCommand("add", std::move(command)));
 	Logs::Logger::Firewall::log("Added a rule to " + rule.family + " " +
 								rule.table + " " + rule.chain);
+}
+
+std::string Nftables::listUnlocked() {
+	execute("list ruleset");
+	const char *output = nft_ctx_get_output_buffer(context_);
+	if (output == nullptr) {
+		throw std::runtime_error("nftables returned no ruleset output");
+	}
+	return output;
+}
+
+std::vector<ChainRevision> Nftables::chainRevisions() {
+	std::lock_guard<std::mutex> lock(mutex_);
+	return Detail::chainRevisions(listUnlocked());
+}
+
+namespace {
+/** @brief Makes libnftables validate transactions without committing them. */
+class DryRun {
+  public:
+	explicit DryRun(nft_ctx *context) : context_(context) {
+		nft_ctx_set_dry_run(context_, true);
+	}
+	~DryRun() { nft_ctx_set_dry_run(context_, false); }
+	DryRun(const DryRun &)			  = delete;
+	DryRun &operator=(const DryRun &) = delete;
+
+  private:
+	nft_ctx *context_;
+};
+} // namespace
+
+std::size_t Nftables::firstRejectedChange(const std::string &ruleset,
+										  const ChangeSet	&changes) {
+	DryRun		dryRun(context_);
+	std::size_t passing = 0;
+	std::size_t failing = changes.changes.size();
+	while (failing - passing > 1) {
+		const std::size_t middle = passing + (failing - passing) / 2;
+		try {
+			executeJson(Detail::buildTransaction(ruleset, changes, middle));
+			passing = middle;
+		} catch (const std::runtime_error &) {
+			failing = middle;
+		}
+	}
+	return failing - 1;
+}
+
+void Nftables::checkChanges(const ChangeSet &changes) {
+	std::lock_guard<std::mutex> lock(mutex_);
+	const std::string			ruleset = listUnlocked();
+	Detail::requireCurrentRevisions(ruleset, changes);
+	const std::string transaction =
+		Detail::buildTransaction(ruleset, changes, changes.changes.size());
+	bool rejected = false;
+	{
+		DryRun dryRun(context_);
+		try {
+			executeJson(transaction);
+		} catch (const std::runtime_error &) {
+			rejected = true;
+		}
+	}
+	if (rejected) {
+		throw ChangeRejectedError(firstRejectedChange(ruleset, changes),
+								  "The firewall rejected this change");
+	}
+}
+
+void Nftables::applyChanges(const ChangeSet &changes) {
+	// Hold the lock across the revision check and transaction so another
+	// operation on this backend cannot change a chain in between.
+	std::lock_guard<std::mutex> lock(mutex_);
+	const std::string			ruleset = listUnlocked();
+	Detail::requireCurrentRevisions(ruleset, changes);
+	const std::string transaction =
+		Detail::buildTransaction(ruleset, changes, changes.changes.size());
+	try {
+		executeJson(transaction);
+	} catch (const std::runtime_error &) {
+		throw ChangeRejectedError(firstRejectedChange(ruleset, changes),
+								  "The firewall rejected this change");
+	}
+	Logs::Logger::Firewall::log("Applied firewall changes count=" +
+								std::to_string(changes.changes.size()));
 }
 
 void Nftables::deleteRule(const std::string &family, const std::string &table,
