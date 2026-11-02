@@ -44,7 +44,7 @@ class MockFirewall final : public Firewall::Backend {
 	std::vector<Firewall::ChainRevision> chainRevisions() override {
 		return {
 			{"inet", "filter", "input", "abc"}
-		};
+		  };
 	}
 
 	void checkChanges(const Firewall::ChangeSet &changes) override {
@@ -64,7 +64,8 @@ class MockFirewall final : public Firewall::Backend {
 			throw Firewall::ChangeConflictError("A chain has changed");
 		}
 		if (reject_change) {
-			throw Firewall::ChangeRejectedError(2, "The firewall rejected this");
+			throw Firewall::ChangeRejectedError(2,
+												"The firewall rejected this");
 		}
 		if (fail_apply) {
 			throw std::runtime_error("private backend detail");
@@ -77,15 +78,15 @@ class MockFirewall final : public Firewall::Backend {
 	bool				reject_change = false;
 	bool				fail_apply	  = false;
 	Firewall::ChangeSet received_changes;
-	int				   add_calls	= 0;
-	int				   delete_calls = 0;
-	bool			   fail_list	= false;
-	bool			   reject_rules = false;
-	Firewall::RuleSpec added_rule;
-	std::string		   deleted_family;
-	std::string		   deleted_table;
-	std::string		   deleted_chain;
-	std::uint64_t	   deleted_handle = 0;
+	int					add_calls	 = 0;
+	int					delete_calls = 0;
+	bool				fail_list	 = false;
+	bool				reject_rules = false;
+	Firewall::RuleSpec	added_rule;
+	std::string			deleted_family;
+	std::string			deleted_table;
+	std::string			deleted_chain;
+	std::uint64_t		deleted_handle = 0;
 };
 
 httplib::Request requestWithBody(const std::string &body) {
@@ -303,17 +304,18 @@ void parsesReplacementChanges() {
 	TestSupport::require(change.handle == 9 && change.rule.action == "drop",
 						 "replacement should carry its handle and rule");
 
-	for (const std::string &body : std::vector<std::string>{
-			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})",
-			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":9}]})",
-			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":0,"rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})",
-			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":9,"extra":1,"rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})"}) {
+	for (
+		const std::string &body : std::vector<std::string>{
+			R"({"expected_revisions":[],"changes":[{"type":"replace_rule","rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})",
+			R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":9}]})",
+			R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":0,"rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})",
+			R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":9,"extra":1,"rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})"}) {
 		MockFirewall	  rejecting;
 		httplib::Response rejected;
 		Http::applyFirewallChanges(rejecting, requestWithBody(body), rejected);
-		TestSupport::require(rejected.status == 400 &&
-								 rejecting.apply_calls == 0,
-							 "malformed replacement should return 400: " + body);
+		TestSupport::require(
+			rejected.status == 400 && rejecting.apply_calls == 0,
+			"malformed replacement should return 400: " + body);
 	}
 }
 
@@ -354,31 +356,32 @@ void mapsChangeListFailuresToSafeResponses() {
 
 void rejectsMalformedChangeListsBeforeBackendMutation() {
 	const std::string expected = R"("expected_revisions":[],)";
-	for (const std::string &body : std::vector<std::string>{
-			 "[]",
-			 "{invalid",
-			 "{}",
-			 R"({"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}]})",
-			 "{" + expected + R"("changes":[]})",
-			 "{" + expected + R"("changes":{}})",
-			 "{" + expected + R"("changes":[1]})",
-			 "{" + expected + R"("changes":[{"type":"flush_ruleset"}]})",
-			 "{" + expected + R"("changes":[{"type":"add_rule"}]})",
-			 "{" + expected +
-				 R"("changes":[{"type":"add_rule","rule":{"family":"inet","table":"f","chain":"c","action":"accept","raw":"x"}}]})",
-			 "{" + expected +
-				 R"("changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":0}]})",
-			 "{" + expected +
-				 R"("changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1,"extra":1}]})",
-			 R"({"expected_revisions":[1],"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}]})",
-			 R"({"expected_revisions":[],"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}],"dry_run":true})"}) {
+	for (
+		const std::string &body : std::vector<std::string>{
+			"[]", "{invalid", "{}",
+			R"({"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}]})",
+			"{" + expected + R"("changes":[]})",
+			"{" + expected + R"("changes":{}})",
+			"{" + expected + R"("changes":[1]})",
+			"{" + expected + R"("changes":[{"type":"flush_ruleset"}]})",
+			"{" + expected + R"("changes":[{"type":"add_rule"}]})",
+			"{" + expected +
+				R"("changes":[{"type":"add_rule","rule":{"family":"inet","table":"f","chain":"c","action":"accept","raw":"x"}}]})",
+			"{" + expected +
+				R"("changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":0}]})",
+			"{" + expected +
+				R"("changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1,"extra":1}]})",
+			R"({"expected_revisions":[1],"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}]})",
+			R"({"expected_revisions":[],"changes":[{"type":"delete_rule","family":"inet","table":"f","chain":"c","handle":1}],"dry_run":true})"}) {
 		MockFirewall	  firewall;
 		httplib::Response response;
 		Http::applyFirewallChanges(firewall, requestWithBody(body), response);
 		TestSupport::require(response.status == 400,
-							 "malformed change list should return 400: " + body);
-		TestSupport::require(firewall.apply_calls == 0,
-							 "malformed change list must not reach the backend");
+							 "malformed change list should return 400: " +
+								 body);
+		TestSupport::require(
+			firewall.apply_calls == 0,
+			"malformed change list must not reach the backend");
 	}
 }
 

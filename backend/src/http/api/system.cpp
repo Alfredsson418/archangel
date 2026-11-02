@@ -42,9 +42,10 @@ Json collectSystemStatistics() {
 
 	// Lets the dashboard warn about a rule naming an interface that isn't here.
 	stats["network_interfaces"] = Json::array();
-	if (struct if_nameindex *interfaces = if_nameindex(); interfaces != nullptr) {
-		for (const struct if_nameindex *entry = interfaces; entry->if_index != 0;
-			 ++entry) {
+	if (struct if_nameindex *interfaces = if_nameindex();
+		interfaces != nullptr) {
+		for (const struct if_nameindex *entry = interfaces;
+			 entry->if_index != 0; ++entry) {
 			stats["network_interfaces"].push_back(entry->if_name);
 		}
 		if_freenameindex(interfaces);

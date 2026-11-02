@@ -51,7 +51,7 @@ Firewall::ChangeSet changeSet(std::vector<Firewall::Change> changes) {
 	Firewall::ChangeSet set;
 	set.expected = {
 		{"inet", "filter", "input", revisionOf(LISTING, "input")}
-	};
+	 };
 	set.changes = std::move(changes);
 	return set;
 }
@@ -69,19 +69,18 @@ void revisionsFollowRulesButNotTraffic() {
 		revisionOf(replaced(LISTING, R"({"drop":null})", R"({"accept":null})"),
 				   "input") != input,
 		"a changed rule must change the revision");
-	TestSupport::require(revisionOf(replaced(LISTING, R"("handle":4)",
-											 R"("handle":9)"),
+	TestSupport::require(
+		revisionOf(replaced(LISTING, R"("handle":4)", R"("handle":9)"),
+				   "input") != input,
+		"a changed handle must change the revision");
+	TestSupport::require(revisionOf(replaced(LISTING, R"("policy":"accept")",
+											 R"("policy":"drop")"),
 									"input") != input,
-						 "a changed handle must change the revision");
-	TestSupport::require(
-		revisionOf(
-			replaced(LISTING, R"("policy":"accept")", R"("policy":"drop")"),
-			"input") != input,
-		"a changed policy must change the revision");
-	TestSupport::require(
-		revisionOf(replaced(LISTING, R"("handle":3,)", R"("handle":3,"comment":"x",)"),
-				   "other") == revisionOf(LISTING, "other"),
-		"a change in one chain must not affect another");
+						 "a changed policy must change the revision");
+	TestSupport::require(revisionOf(replaced(LISTING, R"("handle":3,)",
+											 R"("handle":3,"comment":"x",)"),
+									"other") == revisionOf(LISTING, "other"),
+						 "a change in one chain must not affect another");
 }
 
 void refusesChainsThatChangedOrWereNotReviewed() {
@@ -91,7 +90,8 @@ void refusesChainsThatChangedOrWereNotReviewed() {
 	TestSupport::requireThrows<Firewall::ChangeConflictError>(
 		[&] {
 			Firewall::Detail::requireCurrentRevisions(
-				replaced(LISTING, R"({"drop":null})", R"({"accept":null})"), set);
+				replaced(LISTING, R"({"drop":null})", R"({"accept":null})"),
+				set);
 		},
 		"a changed chain should conflict");
 
@@ -101,21 +101,23 @@ void refusesChainsThatChangedOrWereNotReviewed() {
 		[&] { Firewall::Detail::requireCurrentRevisions(LISTING, missing); },
 		"an unreviewed chain should be refused");
 
-	auto otherChain							   = set;
-	std::get<Firewall::AddRuleChange>(otherChain.changes[0]).rule.chain = "gone";
+	auto otherChain = set;
+	std::get<Firewall::AddRuleChange>(otherChain.changes[0]).rule.chain =
+		"gone";
 	otherChain.expected = {
 		{"inet", "filter", "gone", "x"}
-	};
+	   };
 	TestSupport::requireThrows<Firewall::ChangeConflictError>(
 		[&] { Firewall::Detail::requireCurrentRevisions(LISTING, otherChain); },
 		"a chain that no longer exists should conflict");
 }
 
 void buildsOneTransactionInOrder() {
-	const auto set =
-		changeSet({Firewall::AddRuleChange{tcpRule(22)},
-				   Firewall::DeleteRuleChange{"inet", "filter", "input", 3},
-				   Firewall::AddRuleChange{tcpRule(23)}});
+	const auto set		= changeSet({
+		 Firewall::AddRuleChange{tcpRule(22)},
+		 Firewall::DeleteRuleChange{"inet", "filter", "input", 3},
+		 Firewall::AddRuleChange{tcpRule(23)}
+	 });
 	const json commands = json::parse(Firewall::Detail::buildTransaction(
 		LISTING, set, set.changes.size()))["nftables"];
 
@@ -125,9 +127,9 @@ void buildsOneTransactionInOrder() {
 						 "new rules should be marked as managed");
 	TestSupport::require(commands[1]["delete"]["rule"]["handle"] == 3,
 						 "delete should use the handle");
-	TestSupport::require(commands[2]["add"]["rule"]["expr"][1]["match"]
-							 ["right"] == 23,
-						 "changes should keep their order");
+	TestSupport::require(
+		commands[2]["add"]["rule"]["expr"][1]["match"]["right"] == 23,
+		"changes should keep their order");
 
 	const json firstOnly = json::parse(
 		Firewall::Detail::buildTransaction(LISTING, set, 1))["nftables"];
@@ -137,9 +139,11 @@ void buildsOneTransactionInOrder() {
 
 void replacesInPlaceKeepingTheComment() {
 	Firewall::RuleSpec rule = tcpRule(22);
-	const auto		   set	= changeSet({Firewall::ReplaceRuleChange{rule, 4},
-										 Firewall::ReplaceRuleChange{rule, 3}});
-	const json		   commands = json::parse(Firewall::Detail::buildTransaction(
+	const auto		   set	= changeSet({
+		 Firewall::ReplaceRuleChange{rule, 4},
+		 Firewall::ReplaceRuleChange{rule, 3}
+	 });
+	const json commands		= json::parse(Firewall::Detail::buildTransaction(
 		LISTING, set, set.changes.size()))["nftables"];
 
 	const json &managed = commands[0]["replace"]["rule"];
@@ -152,14 +156,18 @@ void replacesInPlaceKeepingTheComment() {
 	TestSupport::require(!commands[1]["replace"]["rule"].contains("comment"),
 						 "an unmanaged rule should stay unmanaged");
 
-	auto otherChain = changeSet({Firewall::ReplaceRuleChange{rule, 99}});
+	auto otherChain = changeSet({
+		Firewall::ReplaceRuleChange{rule, 99}
+	 });
 	TestSupport::requireThrows<Firewall::ChangeRejectedError>(
 		[&] { Firewall::Detail::buildTransaction(LISTING, otherChain, 1); },
 		"replacing a missing rule should be rejected");
 
 	Firewall::RuleSpec invalid = tcpRule(22);
 	invalid.source_address	   = "192.168.1.5/24";
-	auto badRule = changeSet({Firewall::ReplaceRuleChange{invalid, 3}});
+	auto badRule			   = changeSet({
+		  Firewall::ReplaceRuleChange{invalid, 3}
+	 });
 	TestSupport::requireThrows<Firewall::ChangeRejectedError>(
 		[&] { Firewall::Detail::buildTransaction(LISTING, badRule, 1); },
 		"an invalid replacement should be rejected");
@@ -170,14 +178,18 @@ void identifiesTheChangeItRejects() {
 	invalid.source_address	   = "192.168.1.5/24";
 	const auto invalidRule	   = changeSet({Firewall::AddRuleChange{tcpRule(1)},
 											Firewall::AddRuleChange{invalid}});
-	const auto missingRule	   = changeSet(
-		{Firewall::AddRuleChange{tcpRule(1)},
-			 Firewall::DeleteRuleChange{"inet", "filter", "input", 3},
-			 Firewall::DeleteRuleChange{"inet", "filter", "input", 99}});
-	for (const auto &[set, index] :
-		 {std::pair{invalidRule, std::size_t{1}}, std::pair{missingRule, std::size_t{2}}}) {
+	const auto missingRule	   = changeSet({
+		Firewall::AddRuleChange{tcpRule(1)},
+		Firewall::DeleteRuleChange{"inet", "filter", "input", 3},
+		Firewall::DeleteRuleChange{"inet", "filter", "input", 99}
+	 });
+	for (const auto &[set, index] : {
+			 std::pair{invalidRule, std::size_t{1}},
+			 std::pair{missingRule, std::size_t{2}}
+	   }) {
 		try {
-			Firewall::Detail::buildTransaction(LISTING, set, set.changes.size());
+			Firewall::Detail::buildTransaction(LISTING, set,
+											   set.changes.size());
 			throw std::logic_error("invalid change set should be rejected");
 		} catch (const Firewall::ChangeRejectedError &error) {
 			TestSupport::require(error.index() == index,

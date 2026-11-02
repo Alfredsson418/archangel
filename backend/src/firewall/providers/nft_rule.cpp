@@ -127,7 +127,7 @@ nlohmann::json payload(const std::string &protocol, const char *field) {
 nlohmann::json meta(const char *key) {
 	return nlohmann::json{
 		{"meta", nlohmann::json{{"key", key}}}
-	};
+	  };
 }
 
 /**
@@ -141,10 +141,9 @@ nlohmann::json addressMatch(const std::string &value, const char *direction) {
 	nlohmann::json		right  = parsed.address;
 	if (parsed.prefix_length) {
 		right = nlohmann::json{
-			{"prefix",
-			 nlohmann::json{{"addr", parsed.address},
-							{"len", *parsed.prefix_length}}}
-		   };
+			{"prefix", nlohmann::json{{"addr", parsed.address},
+									  {"len", *parsed.prefix_length}}}
+		  };
 	}
 	return match("==", payload(parsed.ipv4 ? "ip" : "ip6", direction),
 				 std::move(right));
@@ -158,19 +157,20 @@ nlohmann::json addressMatch(const std::string &value, const char *direction) {
  */
 void validateIpVersions(const RuleSpec &rule) {
 	std::optional<bool> ipv4;
-	for (const auto *value : {&rule.source_address, &rule.destination_address}) {
+	for (const auto *value :
+		 {&rule.source_address, &rule.destination_address}) {
 		if (!*value) {
 			continue;
 		}
 		const bool addressIpv4 = parseAddress(**value).ipv4;
 		if (ipv4 && *ipv4 != addressIpv4) {
-			throw InvalidRuleError(
-				"Source and destination addresses must use the same IP version");
+			throw InvalidRuleError("Source and destination addresses must use "
+								   "the same IP version");
 		}
 		ipv4 = addressIpv4;
 	}
-	if (ipv4 && ((rule.family == "ip" && !*ipv4) ||
-				 (rule.family == "ip6" && *ipv4))) {
+	if (ipv4 &&
+		((rule.family == "ip" && !*ipv4) || (rule.family == "ip6" && *ipv4))) {
 		throw InvalidRuleError("An address is invalid for the selected family");
 	}
 	const bool icmp	  = rule.protocol == "icmp";
@@ -277,11 +277,12 @@ nlohmann::json ruleExpressions(const RuleSpec &rule) {
 				states.push_back(state);
 			}
 		}
-		expressions.push_back(match("in",
-									nlohmann::json{
-										{"ct", nlohmann::json{{"key", "state"}}}
-		},
-									std::move(states)));
+		expressions.push_back(
+			match("in",
+				  nlohmann::json{
+					  {"ct", nlohmann::json{{"key", "state"}}}
+		  },
+				  std::move(states)));
 	}
 	if (rule.source_address) {
 		expressions.push_back(addressMatch(*rule.source_address, "saddr"));
@@ -302,10 +303,10 @@ nlohmann::json ruleExpressions(const RuleSpec &rule) {
 			port = nlohmann::json{
 				{"range", nlohmann::json::array({*rule.destination_port,
 												 *rule.destination_port_end})}
-			   };
+			  };
 		}
-		expressions.push_back(match("==", payload(*rule.protocol, "dport"),
-									std::move(port)));
+		expressions.push_back(
+			match("==", payload(*rule.protocol, "dport"), std::move(port)));
 	}
 	expressions.push_back(nlohmann::json{
 		{rule.action, nullptr}

@@ -2,9 +2,9 @@
 
 #include "firewall/firewall.hpp"
 #include "firewall/firewall_bundle_provider.hpp"
+#include <cstddef>
 #include <mutex>
 #include <nftables/libnftables.h>
-#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -120,8 +120,8 @@ class Nftables : public Backend, public BundleProvider {
 	 * @brief Finds the first change the firewall rejects. The caller must hold
 	 * mutex_.
 	 *
-	 * A longer list fails whenever a shorter one does, so this bisects using dry
-	 * runs. Nothing is applied.
+	 * A longer list fails whenever a shorter one does, so this bisects using
+	 * dry runs. Nothing is applied.
 	 *
 	 * @param ruleset Current ruleset listing.
 	 * @param changes Change set that the firewall rejected.

@@ -78,7 +78,7 @@ std::optional<std::string> optionalString(const Json &body, const char *field) {
  * @return No value.
  * @throws ValidationError If the body has any other property.
  */
-void rejectUnknownFields(const Json &body,
+void rejectUnknownFields(const Json								&body,
 						 std::initializer_list<std::string_view> allowed) {
 	for (const auto &item : body.items()) {
 		if (std::find(allowed.begin(), allowed.end(), item.key()) ==
@@ -126,10 +126,9 @@ std::vector<std::string> connectionStates(const Json &body) {
 	}
 	if (!states->is_array() ||
 		states->size() > Config::Limits::MAX_CONNECTION_STATES) {
-		throw ValidationError("connection_states must be a list of up to " +
-							  std::to_string(
-								  Config::Limits::MAX_CONNECTION_STATES) +
-							  " states");
+		throw ValidationError(
+			"connection_states must be a list of up to " +
+			std::to_string(Config::Limits::MAX_CONNECTION_STATES) + " states");
 	}
 	std::vector<std::string> result;
 	for (const Json &state : *states) {
@@ -218,10 +217,12 @@ Firewall::Change parseChange(const Json &entry) {
 		if (rule == entry.end() || !rule->is_object()) {
 			throw ValidationError("rule is required and must be an object");
 		}
-		return Firewall::ReplaceRuleChange{parseRule(*rule), parseHandle(entry)};
+		return Firewall::ReplaceRuleChange{parseRule(*rule),
+										   parseHandle(entry)};
 	}
 	if (type == "delete_rule") {
-		rejectUnknownFields(entry, {"type", "family", "table", "chain", "handle"});
+		rejectUnknownFields(entry,
+							{"type", "family", "table", "chain", "handle"});
 		return Firewall::DeleteRuleChange{
 			requiredString(entry, "family"), requiredString(entry, "table"),
 			requiredString(entry, "chain"), parseHandle(entry)};
@@ -260,9 +261,10 @@ Firewall::ChangeSet parseChangeSet(const httplib::Request &request) {
 			throw ValidationError("Each expected revision must be an object");
 		}
 		rejectUnknownFields(entry, {"family", "table", "chain", "revision"});
-		result.expected.push_back(
-			{requiredString(entry, "family"), requiredString(entry, "table"),
-			 requiredString(entry, "chain"), requiredString(entry, "revision")});
+		result.expected.push_back({requiredString(entry, "family"),
+								   requiredString(entry, "table"),
+								   requiredString(entry, "chain"),
+								   requiredString(entry, "revision")});
 	}
 	for (const Json &entry : *changes) {
 		result.changes.push_back(parseChange(entry));
@@ -305,9 +307,9 @@ void runChangeSet(const httplib::Request &request, httplib::Response &response,
 		response.status = 422;
 		response.set_content(
 			Json{
-				{		"error",   error.what()},
+				{		 "error",	  error.what()},
 				{		 "code", "change_rejected"},
-				{"change_index",	error.index()}
+				{"change_index",	 error.index()}
 		   }
 				.dump(),
 			"application/json");
@@ -382,9 +384,9 @@ void getChainRevisions(Firewall::Backend &firewall, const httplib::Request &,
 		Json chains = Json::array();
 		for (const Firewall::ChainRevision &chain : firewall.chainRevisions()) {
 			chains.push_back(Json{
-				{  "family",   chain.family},
-				{	"table",	chain.table},
-				{	"chain",	chain.chain},
+				{	 "family",   chain.family},
+				{	 "table",	  chain.table},
+				{	 "chain",	  chain.chain},
 				{"revision", chain.revision}
 			});
 		}

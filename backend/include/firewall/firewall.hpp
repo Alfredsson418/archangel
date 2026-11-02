@@ -37,8 +37,8 @@ struct RuleSpec {
 	// tcp, udp, icmp, or icmpv6. A destination port requires tcp or udp.
 	std::optional<std::string> protocol;
 	// One address, or one subnet in CIDR form with no host bits set.
-	std::optional<std::string> source_address;
-	std::optional<std::string> destination_address;
+	std::optional<std::string>	 source_address;
+	std::optional<std::string>	 destination_address;
 	std::optional<std::uint16_t> destination_port;
 	// Last port of a range starting at destination_port.
 	std::optional<std::uint16_t> destination_port_end;

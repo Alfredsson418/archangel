@@ -26,7 +26,8 @@ std::vector<ChainRevision> chainRevisions(const std::string &ruleset);
  * @param changes Change set with its expected revisions.
  * @return No value.
  * @throws InvalidRuleError If a touched chain has no expected revision.
- * @throws ChangeConflictError If a chain is missing or has a different revision.
+ * @throws ChangeConflictError If a chain is missing or has a different
+ * revision.
  * @throws std::runtime_error If the listing is malformed.
  */
 void requireCurrentRevisions(const std::string &ruleset,

@@ -46,9 +46,8 @@ void writeBundle(const std::string &path, const std::string &bundle) {
 			"Exported firewall config exceeds the 16 MiB limit");
 	}
 	std::ofstream output(path, std::ios::binary | std::ios::trunc);
-	if (!output ||
-		!output.write(bundle.data(),
-					  static_cast<std::streamsize>(bundle.size()))) {
+	if (!output || !output.write(bundle.data(),
+								 static_cast<std::streamsize>(bundle.size()))) {
 		throw std::runtime_error("Unable to write exported firewall config: " +
 								 path);
 	}

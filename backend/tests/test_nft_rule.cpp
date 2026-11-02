@@ -18,7 +18,7 @@ Firewall::RuleSpec baseRule() {
 }
 
 void requireInvalid(const std::function<void(Firewall::RuleSpec &)> &change,
-					const std::string							   &message) {
+					const std::string								&message) {
 	Firewall::RuleSpec rule = baseRule();
 	rule.protocol			= "tcp";
 	change(rule);
@@ -183,8 +183,8 @@ void normalizesValuesThatNftablesReadsBackSimplified() {
 
 	rule		  = baseRule();
 	rule.protocol = "icmpv6";
-	TestSupport::require(Firewall::Detail::ruleExpressions(rule)[0]["match"]
-							 ["right"] == "ipv6-icmp",
+	TestSupport::require(Firewall::Detail::ruleExpressions(
+							 rule)[0]["match"]["right"] == "ipv6-icmp",
 						 "ICMPv6 should use the nftables protocol name");
 }
 } // namespace

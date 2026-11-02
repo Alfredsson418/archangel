@@ -209,13 +209,13 @@ void rejectsDuplicateRoutePolicies() {
 
 void sourceRateLimitResponsesCarryTheSchemaVersion() {
 	// Otherwise a client reads a rate limit as a schema mismatch.
-	MockAuthProvider auth;
-	Http::RateLimiter				  source(1, std::chrono::minutes(1));
-	Http::RateLimiter				  identity(100, std::chrono::minutes(1));
-	Http::RateLimiter				  mutationSources(100, std::chrono::minutes(1));
-	Http::RateLimiter				  mutations(100, std::chrono::minutes(1));
-	auto request = requestWithSchema("GET", "/status/info");
-	request.remote_addr = "192.0.2.90";
+	MockAuthProvider  auth;
+	Http::RateLimiter source(1, std::chrono::minutes(1));
+	Http::RateLimiter identity(100, std::chrono::minutes(1));
+	Http::RateLimiter mutationSources(100, std::chrono::minutes(1));
+	Http::RateLimiter mutations(100, std::chrono::minutes(1));
+	auto			  request = requestWithSchema("GET", "/status/info");
+	request.remote_addr		  = "192.0.2.90";
 	httplib::Response first;
 	Http::authorizeApiRequest(auth, testRoutes(), request, first, source,
 							  identity, mutationSources, mutations);
@@ -224,9 +224,10 @@ void sourceRateLimitResponsesCarryTheSchemaVersion() {
 							  identity, mutationSources, mutations);
 	TestSupport::require(limited.status == 429,
 						 "the second request should hit the source limit");
-	TestSupport::require(limited.get_header_value(Http::SCHEMA_VERSION_HEADER) ==
-							 std::to_string(Http::SCHEMA_VERSION),
-						 "a rate limit should still report the schema version");
+	TestSupport::require(
+		limited.get_header_value(Http::SCHEMA_VERSION_HEADER) ==
+			std::to_string(Http::SCHEMA_VERSION),
+		"a rate limit should still report the schema version");
 }
 
 void boundsTrackedRateLimitKeys() {

@@ -120,8 +120,8 @@ listedRules(const Json &entries) {
 		}
 		const Json &rule = entry["rule"];
 		rules[{rule.value("family", ""), rule.value("table", ""),
-			   rule.value("chain", "")}][rule.value("handle", std::uint64_t{0})] =
-			rule;
+			   rule.value("chain", "")}]
+			 [rule.value("handle", std::uint64_t{0})] = rule;
 	}
 	return rules;
 }
@@ -215,8 +215,9 @@ std::string buildTransaction(const std::string &ruleset,
 		}
 		if (const auto *replace = std::get_if<ReplaceRuleChange>(&change)) {
 			validateChangeRule(replace->rule, index);
-			const auto chain = rules.find(
-				{replace->rule.family, replace->rule.table, replace->rule.chain});
+			const auto chain =
+				rules.find({replace->rule.family, replace->rule.table,
+							replace->rule.chain});
 			if (chain == rules.end() ||
 				chain->second.count(replace->handle) == 0) {
 				throw ChangeRejectedError(index, "This rule no longer exists");
@@ -236,7 +237,8 @@ std::string buildTransaction(const std::string &ruleset,
 			continue;
 		}
 		const auto &remove = std::get<DeleteRuleChange>(change);
-		const auto	chain  = rules.find({remove.family, remove.table, remove.chain});
+		const auto	chain =
+			rules.find({remove.family, remove.table, remove.chain});
 		if (chain == rules.end() || chain->second.count(remove.handle) == 0) {
 			throw ChangeRejectedError(index, "This rule no longer exists");
 		}
@@ -249,7 +251,8 @@ std::string buildTransaction(const std::string &ruleset,
 	}
 	return Json{
 		{"nftables", std::move(commands)}
-	 }.dump();
+	 }
+		.dump();
 }
 
 } // namespace Firewall::Detail

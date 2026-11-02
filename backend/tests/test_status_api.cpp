@@ -1,7 +1,7 @@
 #include "http/api/schema.hpp"
 #include "http/api/status.hpp"
-#include "json/json.hpp"
 #include "test_support.hpp"
+#include "json/json.hpp"
 
 namespace {
 void reportsTheConnectionAsTheBackendSeesIt() {
