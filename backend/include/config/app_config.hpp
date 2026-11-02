@@ -109,6 +109,10 @@ inline constexpr std::int64_t MAX_LOG_READ_BYTES = 512 * 1024;
 inline constexpr std::size_t  MAX_LOG_LINE_BYTES = 4096;
 
 inline constexpr std::size_t MAX_FIREWALL_IDENTIFIER_LENGTH = 64;
+// nftables itself accepts any priority, but standard ones fall well within
+// this.
+inline constexpr std::int32_t MAX_CHAIN_PRIORITY   = 1000;
+inline constexpr std::size_t  MAX_CHANGE_ID_LENGTH = 64;
 // Changes applied together, and the request carrying them.
 inline constexpr std::size_t MAX_FIREWALL_CHANGES		= 1000;
 inline constexpr std::size_t MAX_FIREWALL_CHANGES_BYTES = 2 * 1024 * 1024;

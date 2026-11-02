@@ -319,6 +319,85 @@ void parsesReplacementChanges() {
 	}
 }
 
+void parsesEveryStructuralChange() {
+	MockFirewall	  firewall;
+	httplib::Response response;
+	Http::applyFirewallChanges(
+		firewall, requestWithBody(R"({"expected_revisions":[],"changes":[
+		{"type":"add_rule","id":"n1","rule":{"family":"inet","table":"f","chain":"c","protocol":"tcp","action":"drop"}},
+		{"type":"set_rule_order","family":"inet","table":"f","chain":"c","order":[5,"n1"]},
+		{"type":"create_chain","family":"inet","table":"f","name":"r"},
+		{"type":"create_chain","family":"inet","table":"f","name":"b","base":{"type":"filter","hook":"input","priority":-5,"policy":"drop"}},
+		{"type":"rename_chain","family":"inet","table":"f","name":"r","new_name":"s"},
+		{"type":"set_chain_policy","family":"inet","table":"f","name":"b","policy":"accept"},
+		{"type":"delete_chain","family":"inet","table":"f","name":"d"},
+		{"type":"create_table","family":"ip","name":"t"},
+		{"type":"delete_table","family":"ip","name":"u"},
+		{"type":"set_table_enabled","family":"ip","name":"v","enabled":false}
+	]})"),
+		response);
+	TestSupport::require(firewall.apply_calls == 1,
+						 "every structural change should parse");
+	const auto &changes = firewall.received_changes.changes;
+	TestSupport::require(std::get<Firewall::AddRuleChange>(changes[0]).id ==
+							 "n1",
+						 "an added rule should keep its ID");
+	const auto &order =
+		std::get<Firewall::SetRuleOrderChange>(changes[1]).order;
+	TestSupport::require(std::get<std::uint64_t>(order[0]) == 5 &&
+							 std::get<std::string>(order[1]) == "n1",
+						 "an order should hold handles and IDs");
+	TestSupport::require(
+		!std::get<Firewall::CreateChainChange>(changes[2]).base,
+		"a regular chain has no base");
+	const auto &base = *std::get<Firewall::CreateChainChange>(changes[3]).base;
+	TestSupport::require(base.hook == "input" && base.priority == -5 &&
+							 base.policy == "drop",
+						 "a base chain should carry its definition");
+	TestSupport::require(
+		std::get<Firewall::RenameChainChange>(changes[4]).new_name == "s",
+		"a rename should carry the new name");
+	TestSupport::require(
+		!std::get<Firewall::SetTableEnabledChange>(changes[9]).enabled,
+		"enabled should be read");
+}
+
+void rejectsMalformedStructuralChanges() {
+	for (
+		const std::string &change : std::vector<std::string>{
+			R"({"type":"set_rule_order","family":"inet","table":"f","chain":"c"})",
+			R"({"type":"set_rule_order","family":"inet","table":"f","chain":"c","order":[0]})",
+			R"({"type":"set_rule_order","family":"inet","table":"f","chain":"c","order":[-1]})",
+			R"({"type":"set_rule_order","family":"inet","table":"f","chain":"c","order":[1.5]})",
+			R"({"type":"set_rule_order","family":"inet","table":"f","chain":"c","order":"x"})",
+			R"({"type":"create_chain","family":"inet","table":"f"})",
+			R"({"type":"create_chain","family":"inet","table":"f","name":"n","extra":1})",
+			R"({"type":"create_chain","family":"inet","table":"f","name":"n","base":1})",
+			R"({"type":"create_chain","family":"inet","table":"f","name":"n","base":{"type":"filter","hook":"input","policy":"drop"}})",
+			R"({"type":"create_chain","family":"inet","table":"f","name":"n","base":{"type":"filter","hook":"input","priority":99999,"policy":"drop"}})",
+			R"({"type":"create_chain","family":"inet","table":"f","name":"n","base":{"type":"filter","hook":"input","priority":"0","policy":"drop"}})",
+			R"({"type":"create_chain","family":"inet","table":"f","name":"n","base":{"type":"filter","hook":"input","priority":0,"policy":"drop","device":"eth0"}})",
+			R"({"type":"rename_chain","family":"inet","table":"f","name":"n"})",
+			R"({"type":"set_chain_policy","family":"inet","table":"f","name":"n"})",
+			R"({"type":"delete_chain","family":"inet","table":"f"})",
+			R"({"type":"create_table","family":"inet"})",
+			R"({"type":"delete_table","name":"n"})",
+			R"({"type":"set_table_enabled","family":"inet","name":"n"})",
+			R"({"type":"set_table_enabled","family":"inet","name":"n","enabled":"false"})",
+			R"({"type":"add_rule","id":7,"rule":{"family":"inet","table":"f","chain":"c","action":"drop"}})"}) {
+		MockFirewall	  firewall;
+		httplib::Response response;
+		Http::applyFirewallChanges(
+			firewall,
+			requestWithBody(R"({"expected_revisions":[],"changes":[)" + change +
+							"]}"),
+			response);
+		TestSupport::require(response.status == 400 &&
+								 firewall.apply_calls == 0,
+							 "malformed change should return 400: " + change);
+	}
+}
+
 void mapsChangeListFailuresToSafeResponses() {
 	MockFirewall conflicted;
 	conflicted.conflict = true;
@@ -543,6 +622,8 @@ void runRulesApiTests() {
 	rejectsInvalidRuleRequestsBeforeBackendMutation();
 	appliesAndChecksAChangeList();
 	parsesReplacementChanges();
+	parsesEveryStructuralChange();
+	rejectsMalformedStructuralChanges();
 	mapsChangeListFailuresToSafeResponses();
 	rejectsMalformedChangeListsBeforeBackendMutation();
 	boundsChangeLists();

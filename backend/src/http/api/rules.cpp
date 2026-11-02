@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace Http {
@@ -193,6 +194,76 @@ std::uint64_t parseHandle(const Json &body) {
 	throw ValidationError("handle is required and must be a positive integer");
 }
 /**
+ * @brief Reads the required rule object of a change.
+ * @param entry JSON object describing the change.
+ * @return The parsed rule.
+ * @throws ValidationError If the rule is absent or invalid.
+ */
+Firewall::RuleSpec changeRule(const Json &entry) {
+	const auto rule = entry.find("rule");
+	if (rule == entry.end() || !rule->is_object()) {
+		throw ValidationError("rule is required and must be an object");
+	}
+	return parseRule(*rule);
+}
+
+/**
+ * @brief Reads a rule order of handles and IDs of rules added in the same list.
+ * @param entry JSON object describing the change.
+ * @return The order.
+ * @throws ValidationError If the order is absent or has an invalid entry.
+ */
+std::vector<std::variant<std::uint64_t, std::string>>
+changeOrder(const Json &entry) {
+	const auto order = entry.find("order");
+	if (order == entry.end() || !order->is_array()) {
+		throw ValidationError("order is required and must be a list");
+	}
+	std::vector<std::variant<std::uint64_t, std::string>> result;
+	for (const Json &item : *order) {
+		if (item.is_string()) {
+			result.emplace_back(item.get<std::string>());
+		} else if (item.is_number_unsigned() && item.get<std::uint64_t>() > 0) {
+			result.emplace_back(item.get<std::uint64_t>());
+		} else {
+			throw ValidationError(
+				"order must contain positive handles or change IDs");
+		}
+	}
+	return result;
+}
+
+/**
+ * @brief Reads the optional base-chain definition of a new chain.
+ * @param entry JSON object describing the change.
+ * @return The definition, or std::nullopt for a regular chain.
+ * @throws ValidationError If the definition is malformed.
+ */
+std::optional<Firewall::BaseChain> changeBaseChain(const Json &entry) {
+	const auto base = entry.find("base");
+	if (base == entry.end() || base->is_null()) {
+		return std::nullopt;
+	}
+	if (!base->is_object()) {
+		throw ValidationError("base must be an object");
+	}
+	rejectUnknownFields(*base, {"type", "hook", "priority", "policy"});
+	const auto priority = base->find("priority");
+	if (priority == base->end() || !priority->is_number_integer() ||
+		priority->get<std::int64_t>() < -Config::Limits::MAX_CHAIN_PRIORITY ||
+		priority->get<std::int64_t>() > Config::Limits::MAX_CHAIN_PRIORITY) {
+		throw ValidationError(
+			"priority must be an integer between -" +
+			std::to_string(Config::Limits::MAX_CHAIN_PRIORITY) + " and " +
+			std::to_string(Config::Limits::MAX_CHAIN_PRIORITY));
+	}
+	return Firewall::BaseChain{
+		requiredString(*base, "type"), requiredString(*base, "hook"),
+		static_cast<std::int32_t>(priority->get<std::int64_t>()),
+		requiredString(*base, "policy")};
+}
+
+/**
  * @brief Parses one entry of a change list.
  * @param entry JSON object describing the change.
  * @return The structured change.
@@ -204,20 +275,16 @@ Firewall::Change parseChange(const Json &entry) {
 	}
 	const std::string type = requiredString(entry, "type");
 	if (type == "add_rule") {
-		rejectUnknownFields(entry, {"type", "rule"});
-		const auto rule = entry.find("rule");
-		if (rule == entry.end() || !rule->is_object()) {
-			throw ValidationError("rule is required and must be an object");
+		rejectUnknownFields(entry, {"type", "rule", "id"});
+		const std::string id = optionalString(entry, "id").value_or("");
+		if (id.size() > Config::Limits::MAX_CHANGE_ID_LENGTH) {
+			throw ValidationError("id is too long");
 		}
-		return Firewall::AddRuleChange{parseRule(*rule)};
+		return Firewall::AddRuleChange{changeRule(entry), id};
 	}
 	if (type == "replace_rule") {
 		rejectUnknownFields(entry, {"type", "handle", "rule"});
-		const auto rule = entry.find("rule");
-		if (rule == entry.end() || !rule->is_object()) {
-			throw ValidationError("rule is required and must be an object");
-		}
-		return Firewall::ReplaceRuleChange{parseRule(*rule),
+		return Firewall::ReplaceRuleChange{changeRule(entry),
 										   parseHandle(entry)};
 	}
 	if (type == "delete_rule") {
@@ -226,6 +293,59 @@ Firewall::Change parseChange(const Json &entry) {
 		return Firewall::DeleteRuleChange{
 			requiredString(entry, "family"), requiredString(entry, "table"),
 			requiredString(entry, "chain"), parseHandle(entry)};
+	}
+	if (type == "set_rule_order") {
+		rejectUnknownFields(entry,
+							{"type", "family", "table", "chain", "order"});
+		return Firewall::SetRuleOrderChange{
+			requiredString(entry, "family"), requiredString(entry, "table"),
+			requiredString(entry, "chain"), changeOrder(entry)};
+	}
+	if (type == "create_chain") {
+		rejectUnknownFields(entry, {"type", "family", "table", "name", "base"});
+		return Firewall::CreateChainChange{
+			requiredString(entry, "family"), requiredString(entry, "table"),
+			requiredString(entry, "name"), changeBaseChain(entry)};
+	}
+	if (type == "rename_chain") {
+		rejectUnknownFields(entry,
+							{"type", "family", "table", "name", "new_name"});
+		return Firewall::RenameChainChange{
+			requiredString(entry, "family"), requiredString(entry, "table"),
+			requiredString(entry, "name"), requiredString(entry, "new_name")};
+	}
+	if (type == "set_chain_policy") {
+		rejectUnknownFields(entry,
+							{"type", "family", "table", "name", "policy"});
+		return Firewall::SetChainPolicyChange{
+			requiredString(entry, "family"), requiredString(entry, "table"),
+			requiredString(entry, "name"), requiredString(entry, "policy")};
+	}
+	if (type == "delete_chain") {
+		rejectUnknownFields(entry, {"type", "family", "table", "name"});
+		return Firewall::DeleteChainChange{requiredString(entry, "family"),
+										   requiredString(entry, "table"),
+										   requiredString(entry, "name")};
+	}
+	if (type == "create_table" || type == "delete_table") {
+		rejectUnknownFields(entry, {"type", "family", "name"});
+		if (type == "create_table") {
+			return Firewall::CreateTableChange{requiredString(entry, "family"),
+											   requiredString(entry, "name")};
+		}
+		return Firewall::DeleteTableChange{requiredString(entry, "family"),
+										   requiredString(entry, "name")};
+	}
+	if (type == "set_table_enabled") {
+		rejectUnknownFields(entry, {"type", "family", "name", "enabled"});
+		const auto enabled = entry.find("enabled");
+		if (enabled == entry.end() || !enabled->is_boolean()) {
+			throw ValidationError(
+				"enabled is required and must be true or false");
+		}
+		return Firewall::SetTableEnabledChange{requiredString(entry, "family"),
+											   requiredString(entry, "name"),
+											   enabled->get<bool>()};
 	}
 	throw ValidationError("Change type is not supported");
 }

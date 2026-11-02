@@ -52,6 +52,9 @@ struct RuleSpec {
 /** @brief Adds a rule at the end of its chain, marked as Archangel-managed. */
 struct AddRuleChange {
 	RuleSpec rule;
+	// Lets a later SetRuleOrderChange in the same list place this rule, which
+	// has no handle yet. May be empty.
+	std::string id;
 };
 
 /** @brief Deletes a rule, identified by its chain and handle. */
@@ -72,7 +75,89 @@ struct ReplaceRuleChange {
 	std::uint64_t handle = 0;
 };
 
-using Change = std::variant<AddRuleChange, DeleteRuleChange, ReplaceRuleChange>;
+/**
+ * @brief Sets the complete order of a chain's rules.
+ *
+ * Entries are handles of existing rules or IDs of rules added earlier in the
+ * same list. They must list exactly the rules the chain has at that point.
+ * Rules that move get new handles, and a chain can't also be renamed or deleted
+ * in the same list.
+ */
+struct SetRuleOrderChange {
+	std::string											  family;
+	std::string											  table;
+	std::string											  chain;
+	std::vector<std::variant<std::uint64_t, std::string>> order;
+};
+
+/** @brief The hook a base chain attaches to. */
+struct BaseChain {
+	std::string	 type;
+	std::string	 hook;
+	std::int32_t priority = 0;
+	std::string	 policy;
+};
+
+/** @brief Creates a chain, which is a base chain if base is set. */
+struct CreateChainChange {
+	std::string				 family;
+	std::string				 table;
+	std::string				 name;
+	std::optional<BaseChain> base;
+};
+
+/**
+ * @brief Renames a chain. Rules that jump to it follow the new name.
+ *
+ * nftables applies a rename at the end of a transaction, so rules can't be
+ * changed under either name later in the same list.
+ */
+struct RenameChainChange {
+	std::string family;
+	std::string table;
+	std::string name;
+	std::string new_name;
+};
+
+/** @brief Changes a base chain's policy. */
+struct SetChainPolicyChange {
+	std::string family;
+	std::string table;
+	std::string name;
+	std::string policy;
+};
+
+/** @brief Deletes a chain and any rules in it. */
+struct DeleteChainChange {
+	std::string family;
+	std::string table;
+	std::string name;
+};
+
+/** @brief Creates a table. */
+struct CreateTableChange {
+	std::string family;
+	std::string name;
+};
+
+/** @brief Deletes a table and everything in it. */
+struct DeleteTableChange {
+	std::string family;
+	std::string name;
+};
+
+/** @brief Turns enforcement of a table's rules on or off. */
+struct SetTableEnabledChange {
+	std::string family;
+	std::string name;
+	bool		enabled = true;
+};
+
+using Change =
+	std::variant<AddRuleChange, DeleteRuleChange, ReplaceRuleChange,
+				 SetRuleOrderChange, CreateChainChange, RenameChainChange,
+				 SetChainPolicyChange, DeleteChainChange, CreateTableChange,
+				 DeleteTableChange, SetTableEnabledChange>;
 
 /**
  * @brief A chain's state when it was reviewed.
@@ -90,8 +175,9 @@ struct ChainRevision {
 /**
  * @brief Changes to apply together, all or none.
  *
- * Every chain a change touches must be listed in expected, so that a change is
- * refused if its chain has changed since it was reviewed.
+ * Every existing chain a change touches must be listed in expected, so that a
+ * change is refused if its chain has changed since it was reviewed. A change to
+ * a table touches all of its chains.
  */
 struct ChangeSet {
 	std::vector<ChainRevision> expected;
