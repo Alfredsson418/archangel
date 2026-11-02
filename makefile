@@ -40,6 +40,10 @@ LDFLAGS = -lnftables -lsqlite3 -largon2 -lssl -lcrypto -lrt -ldl -pthread
 # lm is used by argtable3
 
 
+# Records which headers each object includes, so that changing a header rebuilds
+# everything that uses it.
+DEPFLAGS = -MMD -MP
+
 # Get all the source files in the SRC directory and its subdirectories
 SRCFILES = $(shell find $(SRC) -name '*.cpp')
 LIB_SRCFILES = $(shell find $(LIB) -name '*.cpp')
@@ -51,6 +55,8 @@ DEBUG_LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/debug/$(LIB)/%.o, $(LIB_S
 RELEASE_OBJFILES = $(patsubst $(SRC)/%.cpp, $(BUILD)/release/$(SRC)/%.o, $(SRCFILES))
 RELEASE_LIB_OBJFILES = $(patsubst $(LIB)/%.cpp, $(BUILD)/release/$(LIB)/%.o, $(LIB_SRCFILES))
 TEST_SRCFILES = $(shell find $(BACKEND)/tests -name '*.cpp')
+# The test binary is built directly from sources, so it depends on every header.
+TEST_HEADERS = $(shell find $(SRC) $(BACKEND)/include $(BACKEND)/tests $(LIB) -name '*.hpp' -o -name '*.h')
 # The test binary links every backend source except the entry point and
 # composition root, the HTTP server (which needs the generated version header),
 # and the nftables provider (which needs libnftables and a live ruleset).
@@ -86,10 +92,10 @@ release: $(RELEASE_OBJFILES) $(RELEASE_LIB_OBJFILES)
 	@$(CC) $(RELEASE_CFLAGS) $(RELEASE_LDFLAGS) $^ -o $(TARGET) $(LDFLAGS)
 	@echo "Done!"
 
-$(TEST_BINARY): $(TEST_SRCFILES) $(TEST_APP_SRCFILES)
+$(TEST_BINARY): $(TEST_SRCFILES) $(TEST_APP_SRCFILES) $(TEST_HEADERS)
 	@mkdir -p $(@D)
 	@echo "Building backend tests"
-	@$(CC) $(TEST_CFLAGS) $(INCLUDE_FLAGS) $^ -o $@ -lsqlite3 -largon2 -lssl -lcrypto -lrt -ldl -pthread
+	@$(CC) $(TEST_CFLAGS) $(INCLUDE_FLAGS) $(filter %.cpp,$^) -o $@ -lsqlite3 -largon2 -lssl -lcrypto -lrt -ldl -pthread
 
 test: $(TEST_BINARY)
 	@$(TEST_BINARY)
@@ -100,22 +106,26 @@ test: $(TEST_BINARY)
 $(BUILD)/debug/$(SRC)/%.o: $(SRC)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD $(INCLUDE_FLAGS) -c -o $@ $<
+	@$(CC) $(DEBUG_CFLAGS) $(DEPFLAGS) -DARCHANGEL_DEV_BUILD $(INCLUDE_FLAGS) -c -o $@ $<
 
 $(BUILD)/debug/$(LIB)/%.o: $(LIB)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(DEBUG_CFLAGS) -DARCHANGEL_DEV_BUILD $(INCLUDE_FLAGS) -c -o $@ $<
+	@$(CC) $(DEBUG_CFLAGS) $(DEPFLAGS) -DARCHANGEL_DEV_BUILD $(INCLUDE_FLAGS) -c -o $@ $<
 
 $(BUILD)/release/$(SRC)/%.o: $(SRC)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(RELEASE_CFLAGS) $(INCLUDE_FLAGS) -c -o $@ $<
+	@$(CC) $(RELEASE_CFLAGS) $(DEPFLAGS) $(INCLUDE_FLAGS) -c -o $@ $<
 
 $(BUILD)/release/$(LIB)/%.o: $(LIB)/%.cpp
 	@mkdir -p $(@D)
 	@echo "Compiling $<"
-	@$(CC) $(RELEASE_CFLAGS) $(INCLUDE_FLAGS) -c -o $@ $<
+	@$(CC) $(RELEASE_CFLAGS) $(DEPFLAGS) $(INCLUDE_FLAGS) -c -o $@ $<
+
+
+-include $(DEBUG_OBJFILES:.o=.d) $(DEBUG_LIB_OBJFILES:.o=.d)
+-include $(RELEASE_OBJFILES:.o=.d) $(RELEASE_LIB_OBJFILES:.o=.d)
 
 
 # ------------------------------------------------------
