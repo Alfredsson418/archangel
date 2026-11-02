@@ -266,7 +266,7 @@ Every outcome is stated in text, and the page never implies success if the API r
 | **Manage tables and chains in the tree, and remove sorting** | One place to find everything. Sorting across a chain's rules suggests an order the firewall doesn't use. | A separate tables and chains page, and sortable columns. |
 | **Vendor SortableJS in `dashboard/static/`** | Handles touch and mouse dragging, and needs no build step. Isolated networks can't load it from a CDN. Keyboard buttons are added alongside it, since it doesn't provide them. | Hand-written dragging, which would be more code for touch support to maintain. The browser's native drag events, which don't work on touch screens. |
 | **Typed-name confirmation for destructive structure changes** | nftables deletes non-empty chains without warning, and a tick box is too easy for losing a whole table. | A tick box, or refusing to delete non-empty chains, which would make the operator delete each rule first. |
-| **Every rule, chain, and table can be managed, with extra confirmation for what isn't Archangel's** | Operators can manage the whole ruleset from one page, while changing another program's rules stays a deliberate act. | Limiting changes to managed rules. |
+| **Archangel manages its own table, and other tables are read-only** | The developer agreed this on 2026-11-02, replacing an earlier choice to manage every rule. Editing another program's table can break it, as described in [Next step](#next-step-table-ownership). | Managing every table with extra confirmation. Read-only only for `iptables-nft` tables, which wouldn't cover firewalld. |
 | **Duplicate rules get a warning only** | Duplicates are harmless. | Blocking duplicates. |
 | **A `before -> new` list with a MANAGEMENT RISK flag is the last step before confirming** | The user sees exactly what will change, with changes that could cut off management first. The flag comes from the connection check, not the kind of change, so it warns about what the developer cares about and isn't diluted by routine edits. Flags use text as well as color, as the [frontend guide](../frontend-design.md) requires. The second confirmation box covers both this and anything that isn't Archangel's, so a long list doesn't mean more boxes. | A "destructive" flag on every deletion or edit, which would be common enough to be ignored and would miss a harmless-looking rule that blocks access. Showing only the final ruleset, which makes the differences hard to see. |
 | **The check works from a list of management connections** | Phase 3 has one: dashboard to API. The mesh adds its own to the same list, so the check and flag don't need a redesign. | A check written only for the dashboard and API. |
@@ -316,9 +316,45 @@ Across this work:
 - [security-concerns.md](../security-concerns.md) records that the dashboard's store now holds pending firewall changes for up to 24 hours.
 - [endpoints.md](../endpoints.md), [security-concerns.md](../security-concerns.md), [frontend-design.md](../frontend-design.md), and the [roadmap](../roadmap.md) are updated as each piece lands.
 
+## Next step: table ownership
+
+The developer agreed this direction on 2026-11-02. **It isn't built yet, and it comes before Part 4**, because Part 4 adds rule types that can break another program's table. Until it's built, the dashboard can still change every table, as it does today.
+
+### Why
+
+Docker manages its `ip filter` table through `iptables`, and nftables labels such tables "do not touch". These were tested in a namespace with nftables 1.1.6:
+
+| Tested behavior | Consequence |
+| --- | --- |
+| A rule with `ct state`, `log`, and `counter` added to a chain `iptables` owns makes `iptables` refuse that chain: "incompatible, use 'nft' tool". | Editing another program's table can break that program, possibly much later. |
+| The same rule in a separate table leaves `iptables` working. | A separate table avoids the problem. |
+| A table comment set at creation appears in the JSON listing, and survives turning enforcement off and on. | A table can carry an ownership marker, as rules do. |
+| Adding a comment to an existing table reports success but does nothing. | Only tables Archangel creates can be marked. |
+| The "managed by iptables-nft" warning appears only in the text listing, not in JSON. | Detecting that label would be fragile, so ownership relies on Archangel's own marker instead. |
+
+### What to build
+
+1. **Archangel's own table.** New rules go in a table Archangel creates, marked with the `archangel-managed` comment. Rules and chains in it are managed as they are today.
+2. **Other tables are hidden and read-only.** A toggle on the Firewall Configuration page shows them. They can be viewed but not changed, and this covers `iptables-nft`, Docker, and firewalld tables alike. The C++ API enforces it, not only the dashboard.
+3. **Hidden tables stay visible as a fact.** The page always states something like "3 other tables are hidden and still affect traffic" beside the toggle, because a hidden table can explain why a rule seems to do nothing.
+4. **The connection check keeps looking at every table,** including hidden ones, so that its warnings stay accurate.
+5. **The page explains how tables interact.** Every packet passes through all tables on a hook, and a drop in any of them is final. Archangel's rules can add restrictions, but an accept can't override another table's drop, and its drops can break another program's traffic. This was shown by the [connection check against real connections](../test.md#connection-check-against-real-connections).
+
+### What this changes
+
+- [Managing chains and tables](#managing-chains-and-tables), and the warnings and confirmations for rules Archangel doesn't manage, apply only to Archangel's own table once this is built. Their tests need updating with it.
+- The API needs a way to refuse changes to tables without the marker, and every route that changes the firewall has to enforce it, including the older `POST` and `DELETE /api/v1/rules`. The CLI bundle import is a separate, explicit privileged operation.
+- Part 4's rule types can then be used without risk to other tables. They're still useful for reading other tables' rules in plain language.
+
 ## Open decisions
 
-None. The developer answered these on 2026-11-02, and their answers are in [Design choices](#design-choices).
+| # | Decision | Recommendation | Why it matters |
+| --- | --- | --- | --- |
+| 1 | **Can a table Archangel didn't create be adopted?** An existing table can't be marked, including tables already created from the dashboard. | Decide when building the [next step](#next-step-table-ownership). Without adoption, those tables become read-only, and their rules would have to be recreated in Archangel's table. | Adoption would need its own record of ownership, since the table itself can't hold the marker. |
+| 2 | **What is Archangel's table called, and in which family?** | `inet archangel`, so that one table handles IPv4 and IPv6. | The name becomes part of every deployment. |
+| 3 | **Which chains does Archangel's table start with?** | Base chains on the `input`, `forward`, and `output` hooks with an `accept` policy, so that creating the table changes no traffic. | A `drop` policy here would apply on top of other tables, and could cut off access or Docker's networking. |
+
+Earlier decisions were answered on 2026-11-02, and their answers are in [Design choices](#design-choices).
 
 ## Verification
 

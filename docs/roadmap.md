@@ -171,7 +171,8 @@ The API already supports structured rule creation and deletion. The dashboard ca
 4. Before applying, show a `before -> new` list of every change, and require a deliberate confirmation. Flag any change that could disrupt the dashboard's connection to the API as a management risk.
 5. Handle validation failures, unavailable backends, changed rules, and permission denials with clear non-color-only status messages.
 6. Keep API validation authoritative; the dashboard may improve usability but must not be treated as a security boundary.
-7. **Exit criteria:** tests cover successful and rejected changes, conflicts, and failures partway through a batch, and an authorized user can verify the target and result of each change. The UI never implies a change succeeded if the API rejected or failed it. Automatic rollback is not part of this phase, so any lockout may need console access to fix.
+7. **Next:** have Archangel manage its own table, and show other tables read-only behind a toggle, so that it can't break Docker, firewalld, or other programs. This comes before the remaining rule features. See [table ownership](phases/phase-3.md#next-step-table-ownership).
+8. **Exit criteria:** tests cover successful and rejected changes, conflicts, and failures partway through a batch, and an authorized user can verify the target and result of each change. The UI never implies a change succeeded if the API rejected or failed it. Automatic rollback is not part of this phase, so any lockout may need console access to fix.
 
 ## Mesh Network
 
