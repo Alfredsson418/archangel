@@ -176,12 +176,14 @@ authorizeApiRequest(Auth::AuthProvider &auth, const RoutePolicies &routes,
 	if (route != nullptr && route->access == RouteAccess::Liveness) {
 		return httplib::Server::HandlerResponse::Unhandled;
 	}
+	// Set before any rejection, so that a client can tell a rate limit from a
+	// schema mismatch.
+	const std::string supportedVersion = std::to_string(SCHEMA_VERSION);
+	response.set_header(SCHEMA_VERSION_HEADER, supportedVersion);
 	std::uint32_t retryAfterSeconds = 0;
 	if (!sourceRateLimiter.allow(request.remote_addr, retryAfterSeconds)) {
 		return rateLimitResponse(response, retryAfterSeconds);
 	}
-	const std::string supportedVersion = std::to_string(SCHEMA_VERSION);
-	response.set_header(SCHEMA_VERSION_HEADER, supportedVersion);
 	if (request.get_header_value(SCHEMA_VERSION_HEADER) != supportedVersion) {
 		reject(response, 400, "unsupported_schema_version",
 			   "Missing or unsupported API schema version");
