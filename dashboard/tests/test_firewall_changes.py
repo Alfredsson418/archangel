@@ -1547,8 +1547,8 @@ class RuleTreeTests(ChangeFlowTestCase):
 
     def test_selecting_a_table_opens_its_chains_in_the_tree_and_beside_it(self):
         text = self.page("/rules?family=ip&table=nat")
-        self.assertIn('data-nav="chain:ip nat post"', text)
-        self.assertNotIn('data-nav="chain:inet filter input"', text)
+        self.assertIn('data-branch="table:ip nat" data-selected open', text)
+        self.assertNotIn('data-branch="table:inet filter" data-selected', text)
         self.assertIn('data-chain="ip nat post"', text)
         self.assertNotIn('data-chain="inet filter input"', text)
         self.assertIn('aria-current="page"', text)
@@ -1589,10 +1589,45 @@ class RuleTreeTests(ChangeFlowTestCase):
         self.assertIn("This table has no chains", text)
         self.assertIn("Manage table", text)
 
-    def test_with_no_tables_the_page_offers_creating_one(self):
+    def test_with_no_tables_every_family_offers_creating_one(self):
         self.api.ruleset = {"nftables": []}
         text = self.page()
-        self.assertIn("Create a table", text)
+        for family in ("inet", "ip", "ip6"):
+            self.assertIn(f'data-new-table="{family}"', text)
+
+    def test_new_entries_come_last_in_their_lists(self):
+        text = self.page()
+        self.assertLess(text.index('data-nav="chain:inet filter empty"'), text.index('data-new-chain="inet filter"'))
+        self.assertLess(text.index('data-new-chain="inet filter"'), text.index('data-nav="table:inet other"'))
+        self.assertLess(text.index('data-new-chain="inet other"'), text.index('data-new-table="inet"'))
+        self.assertLess(text.index('data-new-table="inet"'), text.index('data-nav="family:ip"'))
+
+    def test_new_entries_create_in_the_right_place(self):
+        self.post("/firewall/structure", structure_action="create_chain", family="inet", table="other", name="fresh").close()
+        self.post("/firewall/structure", structure_action="create_table", family="ip", name="fresh").close()
+        changes = self.pending()
+        self.assertEqual((changes[0]["table"], changes[0]["name"]), ("other", "fresh"))
+        self.assertEqual((changes[1]["family"], changes[1]["name"]), ("ip", "fresh"))
+
+    def test_only_manageable_families_offer_new_entries(self):
+        text = self.page()
+        self.assertNotIn('data-new-table="bridge"', text)
+        self.assertNotIn('data-new-chain="bridge edge"', text)
+
+    def test_a_family_with_no_tables_can_get_its_first(self):
+        self.assertIn('data-new-table="ip6"', self.page())
+
+    def test_a_filter_hides_new_entries(self):
+        text = self.page("/rules?q=dport")
+        self.assertNotIn("data-new-table", text)
+        self.assertNotIn("data-new-chain", text)
+
+    def test_every_table_chains_are_in_the_tree_for_expanding(self):
+        text = self.page()
+        self.assertIn('data-nav="chain:ip nat post"', text)
+        self.assertIn('data-tree-all="open"', text)
+        self.assertIn('data-tree-all="close"', text)
+        self.assertIn("file_tree.js", text)
 
     def test_summaries_describe_each_chain(self):
         text = self.page()
@@ -1670,7 +1705,7 @@ class RuleTreeTests(ChangeFlowTestCase):
 
     def test_manage_controls_are_on_the_page(self):
         text = self.page()
-        for label in ("Manage chain", "Manage table", "Rename", "Set policy to drop", "Delete chain", "Add chain", "Turn enforcement off", "Delete table", "Create a table"):
+        for label in ("Manage chain", "Manage table", "Rename", "Set policy to drop", "Delete chain", "New chain", "Turn enforcement off", "Delete table", "New table"):
             self.assertIn(label, text)
         self.assertIn("can't be changed later", text)
 
@@ -1696,9 +1731,6 @@ class RuleTreeTests(ChangeFlowTestCase):
         self.add_rule(destination_port="8443")
         self.apply().close()
         self.assertIn('data-chain="inet filter input" open', self.page())
-
-    def test_the_tree_needs_no_javascript_of_its_own(self):
-        self.assertNotIn("rule_tree.js", self.page())
 
     def test_the_old_structure_page_is_gone(self):
         response = self.client.get("/firewall/structure")

@@ -350,8 +350,14 @@ tbody tr:last-child td { border-bottom: 0; }
 .file-tree { min-width: 0; padding: 12px 0; border-right: 1px solid var(--line); background: #f9fbfc; font-size: 12px; }
 .file-tree ul { margin: 0; padding: 0; list-style: none; }
 .file-tree ul ul { margin-left: 18px; border-left: 1px solid var(--line); }
-.file-tree summary { padding: 6px 14px; color: var(--muted); cursor: pointer; font: 500 11px var(--mono); }
+.file-tree-controls { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 14px 8px; }
 .file-tree summary:focus-visible, .file-tree-item:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+.file-tree-branch > summary { display: flex; align-items: center; cursor: pointer; list-style: none; }
+.file-tree-branch > summary::-webkit-details-marker { display: none; }
+.file-tree-branch > summary::before { content: "\25B8"; flex: none; width: 22px; padding-left: 8px; color: var(--muted); font-size: 11px; }
+.file-tree-branch[open] > summary::before { content: "\25BE"; }
+.file-tree-branch > summary .file-tree-item { flex: 1; min-width: 0; padding-left: 4px; }
+.file-tree-family-name { padding: 6px 0; color: var(--muted); font: 500 11px var(--mono); }
 .file-tree-item { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 26px; color: var(--ink); text-decoration: none; }
 .file-tree ul ul .file-tree-item { padding-left: 12px; }
 .file-tree-item:hover { background: #eef3f7; }
@@ -359,9 +365,12 @@ tbody tr:last-child td { border-bottom: 0; }
 .file-tree-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); }
 .file-tree-count { color: var(--muted); font: 10px var(--mono); }
 .file-tree-empty { padding: 6px 14px; color: var(--muted); font-size: 11px; }
-.file-tree-new { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
-.file-tree-new summary { color: var(--blue); font: 700 11px var(--sans); }
-.file-tree-new form { display: grid; gap: 6px; padding: 6px 14px 10px; }
+.file-tree-new > summary { padding: 6px 14px 6px 26px; color: var(--blue); cursor: pointer; font: 700 11px var(--sans); list-style: none; }
+.file-tree-new > summary::-webkit-details-marker { display: none; }
+.file-tree-new > summary:hover { background: #eef3f7; }
+.file-tree ul ul .file-tree-new > summary { padding-left: 12px; }
+.file-tree-new .field-hint { margin: 2px 0; font-size: 10px; }
+.file-tree-new form { display: grid; gap: 6px; padding: 6px 14px 10px 26px; background: #eef3f7; }
 .file-tree-new label { font-size: 11px; font-weight: 700; }
 .file-tree-new input, .file-tree-new select { width: 100%; min-height: 30px; border: 1px solid var(--line); padding: 0 7px; background: var(--white); color: var(--ink); font: 11px var(--sans); }
 .file-tree-new button { justify-self: start; }

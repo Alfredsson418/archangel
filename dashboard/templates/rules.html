@@ -124,18 +124,9 @@
 {% endmacro %}
 
 {% macro manage_table(table) %}
-  {% set table_id = table.family ~ "-" ~ table.name %}
   <details class="tree-manage">
     <summary>Manage table</summary>
     <div class="tree-manage-body">
-      <form action="{{ url_for('pages.firewall_structure') }}" method="post">
-        {{ structure_fields(table.family, table.name) }}
-        <div><label for="chain-name-{{ table_id }}">New chain name</label><input id="chain-name-{{ table_id }}" name="name" type="text" required></div>
-        <div><label for="chain-hook-{{ table_id }}">Hook</label><select id="chain-hook-{{ table_id }}" name="hook"><option value="">None: regular chain</option>{% for hook in hooks %}<option value="{{ hook }}">{{ hook }}</option>{% endfor %}</select></div>
-        <div><label for="chain-priority-{{ table_id }}">Priority</label><input id="chain-priority-{{ table_id }}" name="priority" type="text" value="0"></div>
-        <div><label for="chain-policy-{{ table_id }}">Policy</label><select id="chain-policy-{{ table_id }}" name="policy">{% for policy in policies %}<option value="{{ policy }}">{{ policy }}</option>{% endfor %}</select></div>
-        <button class="text-button" type="submit" name="structure_action" value="create_chain">Add chain</button>
-      </form>
       <form action="{{ url_for('pages.firewall_structure') }}" method="post">
         {{ structure_fields(table.family, name=table.name) }}
         {% if table.dormant %}
@@ -177,53 +168,92 @@
     </div>
 
     <div class="rules-browser">
-      <nav class="file-tree" aria-label="Firewall tables and chains">
+      <nav class="file-tree" aria-label="Firewall tables and chains" data-file-tree data-remember="{{ 'false' if query else 'true' }}">
+        <div class="file-tree-controls">
+          <button class="text-button" type="button" data-tree-all="open" hidden>Expand all</button>
+          <button class="text-button" type="button" data-tree-all="close" hidden>Minimize all</button>
+        </div>
         {% for family in tree.families %}
-          <details class="file-tree-family" data-nav="family:{{ family.name }}" open>
-            <summary>{{ family.name }}</summary>
+          {% set is_family = family.name == selected.family %}
+          <details class="file-tree-branch" data-nav="family:{{ family.name }}" data-branch="family:{{ family.name }}" {% if is_family %}data-selected{% endif %} open>
+            <summary><span class="file-tree-family-name">{{ family.name }}</span></summary>
             <ul>
               {% for table in family.tables %}
-                {% set is_table = family.name == selected.family and table.name == selected.table %}
+                {% set is_table = is_family and table.name == selected.table %}
                 <li>
-                  <a class="file-tree-item {% if is_table and not selected.chain %}is-selected{% endif %}" data-nav="table:{{ family.name }} {{ table.name }}"
-                     href="{{ url_for('pages.rules_page', family=family.name, table=table.name, q=query or none) }}"
-                     {% if is_table and not selected.chain %}aria-current="page"{% endif %}>
-                    <span class="file-tree-name">{{ table.name }}</span>
-                    {% if table.dormant %}<span class="tree-state">OFF</span>{% endif %}
-                  </a>
-                  {% if is_table %}
+                  <details class="file-tree-branch" data-branch="table:{{ family.name }} {{ table.name }}" {% if is_table %}data-selected open{% endif %}>
+                    <summary>
+                      <a class="file-tree-item {% if is_table and not selected.chain %}is-selected{% endif %}" data-nav="table:{{ family.name }} {{ table.name }}"
+                         href="{{ url_for('pages.rules_page', family=family.name, table=table.name, q=query or none) }}"
+                         {% if is_table and not selected.chain %}aria-current="page"{% endif %}>
+                        <span class="file-tree-name">{{ table.name }}</span>
+                        {% if table.dormant %}<span class="tree-state">OFF</span>{% endif %}
+                      </a>
+                    </summary>
                     <ul>
                       {% for chain in table.chains %}
-                        <li><a class="file-tree-item {% if selected.chain == chain.name %}is-selected{% endif %}" data-nav="chain:{{ chain.key }}"
+                        <li><a class="file-tree-item {% if is_table and selected.chain == chain.name %}is-selected{% endif %}" data-nav="chain:{{ chain.key }}"
                                href="{{ url_for('pages.rules_page', family=family.name, table=table.name, chain=chain.name, q=query or none) }}"
-                               {% if selected.chain == chain.name %}aria-current="page"{% endif %}>
+                               {% if is_table and selected.chain == chain.name %}aria-current="page"{% endif %}>
                           <span class="file-tree-name">{{ chain.name }}</span>
                           <span class="file-tree-count">{{ chain.rules|length }}</span>
                         </a></li>
-                      {% else %}
-                        <li class="file-tree-empty">No chains</li>
                       {% endfor %}
+                      {% if table.manageable and not query %}
+                        {% set new_id = "new-chain-" ~ family.name ~ "-" ~ table.name %}
+                        <li>
+                          <details class="file-tree-new" data-new-chain="{{ family.name }} {{ table.name }}">
+                            <summary>+ New chain</summary>
+                            <form action="{{ url_for('pages.firewall_structure') }}" method="post">
+                              {{ structure_fields(family.name, table.name) }}
+                              <label for="{{ new_id }}-name">Name</label><input id="{{ new_id }}-name" name="name" type="text" required>
+                              <label for="{{ new_id }}-hook">Hook</label><select id="{{ new_id }}-hook" name="hook"><option value="">None: regular chain</option>{% for hook in hooks %}<option value="{{ hook }}">{{ hook }}</option>{% endfor %}</select>
+                              <label for="{{ new_id }}-priority">Priority</label><input id="{{ new_id }}-priority" name="priority" type="text" value="0">
+                              <label for="{{ new_id }}-policy">Policy</label><select id="{{ new_id }}-policy" name="policy">{% for policy in policies %}<option value="{{ policy }}">{{ policy }}</option>{% endfor %}</select>
+                              <p class="field-hint">Hook, priority, and policy apply only to a base chain. The hook and priority can't be changed later.</p>
+                              <button class="text-button" type="submit" name="structure_action" value="create_chain">Add to pending changes</button>
+                            </form>
+                          </details>
+                        </li>
+                      {% endif %}
                     </ul>
-                  {% endif %}
+                  </details>
                 </li>
               {% endfor %}
+              {% if family.name in families and not query %}
+                <li>
+                  <details class="file-tree-new" data-new-table="{{ family.name }}">
+                    <summary>+ New table</summary>
+                    <form action="{{ url_for('pages.firewall_structure') }}" method="post">
+                      {{ structure_fields(family.name) }}
+                      <label for="new-table-{{ family.name }}">Name</label><input id="new-table-{{ family.name }}" name="name" type="text" required>
+                      <button class="text-button" type="submit" name="structure_action" value="create_table">Add to pending changes</button>
+                    </form>
+                  </details>
+                </li>
+              {% endif %}
             </ul>
           </details>
         {% else %}
           <p class="file-tree-empty">{{ "Rules could not be loaded." if api_unavailable else ("No rules match this filter." if query else "The active firewall has no tables yet.") }}</p>
         {% endfor %}
-        {% if not api_unavailable %}
-          <details class="file-tree-new">
-            <summary>+ Create a table</summary>
-            <form action="{{ url_for('pages.firewall_structure') }}" method="post">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <label for="new-table-family">Family</label>
-              <select id="new-table-family" name="family">{% for family in families %}<option value="{{ family }}" {% if family == "inet" %}selected{% endif %}>{{ family }}</option>{% endfor %}</select>
-              <label for="new-table-name">Name</label>
-              <input id="new-table-name" name="name" type="text" required>
-              <button class="text-button" type="submit" name="structure_action" value="create_table">Add to pending changes</button>
-            </form>
-          </details>
+        {% set shown_families = tree.families|map(attribute="name")|list %}
+        {% if not api_unavailable and not query %}
+          {% for family in families if family not in shown_families %}
+            <details class="file-tree-branch" data-nav="family:{{ family }}" data-branch="family:{{ family }}" open>
+              <summary><span class="file-tree-family-name">{{ family }}</span></summary>
+              <ul><li>
+                <details class="file-tree-new" data-new-table="{{ family }}">
+                  <summary>+ New table</summary>
+                  <form action="{{ url_for('pages.firewall_structure') }}" method="post">
+                    {{ structure_fields(family) }}
+                    <label for="new-table-{{ family }}">Name</label><input id="new-table-{{ family }}" name="name" type="text" required>
+                    <button class="text-button" type="submit" name="structure_action" value="create_table">Add to pending changes</button>
+                  </form>
+                </details>
+              </li></ul>
+            </details>
+          {% endfor %}
         {% endif %}
       </nav>
 
@@ -249,4 +279,5 @@
 {% block scripts %}
   <script src="{{ url_for('static', filename='vendor/sortable-1.15.6.min.js') }}"></script>
   <script src="{{ url_for('static', filename='rule_order.js') }}"></script>
+  <script src="{{ url_for('static', filename='file_tree.js') }}"></script>
 {% endblock %}
