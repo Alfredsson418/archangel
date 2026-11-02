@@ -288,6 +288,35 @@ void appliesAndChecksAChangeList() {
 						 "check should report validity");
 }
 
+void parsesReplacementChanges() {
+	MockFirewall	  firewall;
+	httplib::Response response;
+	Http::applyFirewallChanges(
+		firewall,
+		requestWithBody(
+			R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":9,"rule":{"family":"inet","table":"filter","chain":"input","protocol":"tcp","destination_port":22,"action":"drop"}}]})"),
+		response);
+	TestSupport::require(firewall.apply_calls == 1,
+						 "valid replacement should be accepted");
+	const auto &change = std::get<Firewall::ReplaceRuleChange>(
+		firewall.received_changes.changes[0]);
+	TestSupport::require(change.handle == 9 && change.rule.action == "drop",
+						 "replacement should carry its handle and rule");
+
+	for (const std::string &body : std::vector<std::string>{
+			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})",
+			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":9}]})",
+			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":0,"rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})",
+			 R"({"expected_revisions":[],"changes":[{"type":"replace_rule","handle":9,"extra":1,"rule":{"family":"inet","table":"f","chain":"c","action":"drop"}}]})"}) {
+		MockFirewall	  rejecting;
+		httplib::Response rejected;
+		Http::applyFirewallChanges(rejecting, requestWithBody(body), rejected);
+		TestSupport::require(rejected.status == 400 &&
+								 rejecting.apply_calls == 0,
+							 "malformed replacement should return 400: " + body);
+	}
+}
+
 void mapsChangeListFailuresToSafeResponses() {
 	MockFirewall conflicted;
 	conflicted.conflict = true;
@@ -510,6 +539,7 @@ void runRulesApiTests() {
 	acceptsMaximumDestinationPortAndNullOptionalAddresses();
 	rejectsInvalidRuleRequestsBeforeBackendMutation();
 	appliesAndChecksAChangeList();
+	parsesReplacementChanges();
 	mapsChangeListFailuresToSafeResponses();
 	rejectsMalformedChangeListsBeforeBackendMutation();
 	boundsChangeLists();

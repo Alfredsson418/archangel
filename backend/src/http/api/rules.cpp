@@ -212,6 +212,14 @@ Firewall::Change parseChange(const Json &entry) {
 		}
 		return Firewall::AddRuleChange{parseRule(*rule)};
 	}
+	if (type == "replace_rule") {
+		rejectUnknownFields(entry, {"type", "handle", "rule"});
+		const auto rule = entry.find("rule");
+		if (rule == entry.end() || !rule->is_object()) {
+			throw ValidationError("rule is required and must be an object");
+		}
+		return Firewall::ReplaceRuleChange{parseRule(*rule), parseHandle(entry)};
+	}
 	if (type == "delete_rule") {
 		rejectUnknownFields(entry, {"type", "family", "table", "chain", "handle"});
 		return Firewall::DeleteRuleChange{

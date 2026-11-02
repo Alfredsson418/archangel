@@ -14,6 +14,7 @@ from .firewall_rules import describe_rule, portable_rule, rules_from
 MANAGED_RULE_COMMENT = "archangel-managed"
 ADD_RULE = "add_rule"
 DELETE_RULE = "delete_rule"
+REPLACE_RULE = "replace_rule"
 # Leave-one-out analysis repeats the connection check for each candidate. Past
 # this many, every candidate is flagged rather than making the page slow.
 _MAX_FLAG_CANDIDATES = 64
@@ -36,7 +37,7 @@ def change_chain(change):
     Returns:
         A chain key.
     """
-    target = change["rule"] if change["type"] == ADD_RULE else change
+    target = change["rule"] if change["type"] in (ADD_RULE, REPLACE_RULE) else change
     return chain_key(target["family"], target["table"], target["chain"])
 
 
@@ -72,6 +73,20 @@ def find_rule(ruleset, family, table, chain, handle):
         ):
             return rule
     return None
+
+
+def pending_on_rule(changes, family, table, chain, handle):
+    """Report whether a pending change already targets an existing rule.
+
+    Returns:
+        True if a pending edit or deletion names this rule.
+    """
+    return any(
+        change["type"] != ADD_RULE
+        and change_chain(change) == chain_key(family, table, chain)
+        and change["handle"] == handle
+        for change in changes
+    )
 
 
 def rule_statements(rule):
@@ -159,6 +174,11 @@ def apply_to_ruleset(ruleset, changes):
                     }
                 }
             )
+        elif change["type"] == REPLACE_RULE:
+            rule = change["rule"]
+            target = find_rule(result, rule["family"], rule["table"], rule["chain"], change["handle"])
+            if target is not None:
+                target["expr"] = rule_statements(rule)
         elif change["type"] == DELETE_RULE:
             entries[:] = [
                 entry
@@ -199,8 +219,9 @@ def stale_changes(ruleset, changes):
     for change in changes:
         if change_chain(change) not in chains:
             stale.add(change["id"])
-        elif change["type"] == DELETE_RULE:
-            current = find_rule(ruleset, change["family"], change["table"], change["chain"], change["handle"])
+        elif change["type"] in (DELETE_RULE, REPLACE_RULE):
+            target = change["rule"] if change["type"] == REPLACE_RULE else change
+            current = find_rule(ruleset, target["family"], target["table"], target["chain"], change["handle"])
             if current is None or _without_counters(current) != _without_counters(change["before"]):
                 stale.add(change["id"])
     return stale
@@ -227,6 +248,13 @@ def describe_change(change):
             "kind": "New rule",
             "target": change_chain(change),
             "before": "(none)",
+            "new": describe_rule(change["rule"]),
+        }
+    if change["type"] == REPLACE_RULE:
+        return {
+            "kind": "Edited rule",
+            "target": f"{change_chain(change)}, handle {change['handle']}",
+            "before": describe_listed_rule(change["before"]),
             "new": describe_rule(change["rule"]),
         }
     return {
@@ -323,7 +351,7 @@ def change_warnings(ruleset, after, change, interfaces=None):
     hook = _hooks_by_chain(ruleset).get(change_chain(change))
     if change["type"] == ADD_RULE:
         return _rule_warnings(change["rule"], hook, after, interfaces)
-    warnings = []
+    warnings = _rule_warnings(change["rule"], hook, after, interfaces) if change["type"] == REPLACE_RULE else []
     if hook == "input" and portable_action(change["before"]) == "accept":
         warnings.append("This could remove access that's currently allowed.")
     if is_unmanaged(change):
@@ -388,8 +416,11 @@ def _could_affect_connection(change, connection):
     Returns:
         True unless the rule definitely never matches the connection.
     """
-    statements = rule_statements(change["rule"]) if change["type"] == ADD_RULE else change["before"].get("expr")
-    return rule_could_affect(statements, connection)
+    if change["type"] == ADD_RULE:
+        return rule_could_affect(rule_statements(change["rule"]), connection)
+    if change["type"] == REPLACE_RULE and rule_could_affect(rule_statements(change["rule"]), connection):
+        return True
+    return rule_could_affect(change["before"].get("expr"), connection)
 
 
 def api_payload(pending):
@@ -402,6 +433,8 @@ def api_payload(pending):
     for change in pending["changes"]:
         if change["type"] == ADD_RULE:
             changes.append({"type": ADD_RULE, "rule": change["rule"]})
+        elif change["type"] == REPLACE_RULE:
+            changes.append({"type": REPLACE_RULE, "handle": change["handle"], "rule": change["rule"]})
         else:
             changes.append(
                 {
@@ -430,6 +463,11 @@ def verify_applied(ruleset, changes):
     for change in changes:
         if change["type"] == ADD_RULE:
             if change["rule"] not in listed:
+                return False
+        elif change["type"] == REPLACE_RULE:
+            rule = change["rule"]
+            current = find_rule(ruleset, rule["family"], rule["table"], rule["chain"], change["handle"])
+            if current is None or portable_rule(current) != rule:
                 return False
         elif find_rule(ruleset, change["family"], change["table"], change["chain"], change["handle"]) is not None:
             return False

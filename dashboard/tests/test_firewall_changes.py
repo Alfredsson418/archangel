@@ -85,7 +85,7 @@ class FakeApi:
             if change["type"] == ADD_RULE:
                 self.ruleset = apply_to_ruleset(self.ruleset, [{"type": ADD_RULE, "rule": change["rule"]}])
             else:
-                self.ruleset = apply_to_ruleset(self.ruleset, [{**change}])
+                self.ruleset = apply_to_ruleset(self.ruleset, [change])
 
 
 class ChangeFlowTestCase(DashboardTestCase):
@@ -498,6 +498,131 @@ class ApplyTests(ChangeFlowTestCase):
         self.assertIn("firewall_changes_applied count=1", joined)
         self.assertNotIn("198.51.100.77", joined)
         self.assertNotIn("4471", joined)
+
+
+class EditTests(ChangeFlowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(7, port_match(22), {"accept": None})]}
+
+    TARGET = {"family": "inet", "table": "filter", "chain": "input", "handle": "7"}
+
+    def edit(self, **fields):
+        return self.post("/rules/edit", form_action="add", **self.TARGET, **{"protocol": "tcp", "destination_port": "2222", "action": "accept", **fields})
+
+    def test_edit_is_offered_only_for_rules_the_form_can_represent(self):
+        page = self.client.get("/rules")
+        self.assertIn(b"/rules/edit?", page.data)
+        page.close()
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(7, {"log": {"prefix": "x"}}, {"accept": None})]}
+        page = self.client.get("/rules")
+        self.assertNotIn(b"/rules/edit?", page.data)
+        self.assertIn(b"can't represent", page.data)
+        page.close()
+
+    def test_the_form_starts_with_the_current_values_and_a_fixed_chain(self):
+        response = self.client.get("/rules/edit?family=inet&table=filter&chain=input&handle=7")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'value="22"', response.data)
+        self.assertIn(b"Edit rule", response.data)
+        self.assertIn(b"keeps its position", response.data)
+        self.assertIn(b'id="rule-chain" disabled', response.data)
+        response.close()
+
+    def test_preview_shows_before_and_new_and_changes_nothing(self):
+        response = self.post("/rules/edit", form_action="preview", **self.TARGET, protocol="tcp", destination_port="2222", action="accept")
+        self.assertIn(b"to port 22.", response.data.replace(b"to port 22</", b"to port 22.</").replace(b"to port 22<", b"to port 22.<"))
+        self.assertIn(b"to port 2222", response.data)
+        self.assertEqual(self.pending(), [])
+        response.close()
+
+    def test_an_edit_is_collected_then_applied_in_place(self):
+        response = self.edit()
+        self.assertEqual(response.status_code, 302)
+        change = self.pending()[0]
+        self.assertEqual(change["type"], "replace_rule")
+        self.assertEqual(change["handle"], 7)
+        page = self.client.get("/changes")
+        self.assertIn(b"Edited rule", page.data)
+        self.assertIn(b"inet filter input, handle 7", page.data)
+        self.assertIn(b"Accept TCP traffic to port 22 ", page.data)
+        self.assertIn(b"Accept TCP traffic to port 2222", page.data)
+        page.close()
+        self.apply().close()
+        self.assertEqual(
+            self.api.applied[0]["changes"],
+            [{"type": "replace_rule", "handle": 7, "rule": {"family": "inet", "table": "filter", "chain": "input", "protocol": "tcp", "destination_port": 2222, "action": "accept"}}],
+        )
+
+    def test_an_edit_cannot_move_a_rule_to_another_chain(self):
+        response = self.post("/rules/edit", form_action="add", family="inet", table="filter", chain="input", handle="7", protocol="tcp", destination_port="2222", action="accept")
+        self.assertEqual(self.pending()[0]["rule"]["chain"], "input")
+        response.close()
+
+    def test_invalid_edits_are_rejected(self):
+        response = self.edit(source_address="192.168.1.5/24")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"host bits", response.data)
+        self.assertEqual(self.pending(), [])
+        response.close()
+
+    def test_a_missing_or_unrepresentable_rule_cannot_be_edited(self):
+        for target in ({**self.TARGET, "handle": "99"}, {**self.TARGET, "handle": "x"}):
+            response = self.post("/rules/edit", form_action="add", **target, protocol="tcp", action="accept")
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(self.pending(), [])
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(7, {"log": {"prefix": "x"}}, {"accept": None})]}
+        response = self.edit()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.pending(), [])
+        page = self.client.get("/rules")
+        self.assertIn(b"can&#39;t be edited here", page.data)
+        page.close()
+
+    def test_a_rule_can_have_only_one_pending_change(self):
+        self.edit()
+        self.edit(destination_port="3333")
+        self.delete_rule()
+        self.assertEqual(len(self.pending()), 1)
+        page = self.client.get("/rules")
+        self.assertIn(b"already has a pending change", page.data)
+        page.close()
+
+    def test_an_edit_that_blocks_the_api_is_flagged(self):
+        self.edit(destination_port="8080", action="drop")
+        page = self.client.get("/changes")
+        self.assertIn(b"1 MANAGEMENT RISK", page.data)
+        page.close()
+
+    def test_an_edit_that_removes_api_access_is_flagged(self):
+        self.api.ruleset = {"nftables": [input_chain("drop"), listed_rule(7, port_match(8080), {"accept": None})]}
+        self.edit(destination_port="8081")
+        page = self.client.get("/changes")
+        self.assertIn(b"1 MANAGEMENT RISK", page.data)
+        page.close()
+
+    def test_editing_an_unmanaged_rule_needs_the_second_confirmation(self):
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(7, port_match(22), {"accept": None}, comment=None)]}
+        self.edit()
+        response = self.apply()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.api.applied, [])
+        response.close()
+        self.apply(confirm_risk="yes").close()
+        self.assertEqual(len(self.api.applied), 1)
+
+    def test_an_edit_goes_stale_if_the_rule_changed(self):
+        self.edit()
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(7, port_match(23), {"drop": None})]}
+        self.api.revision = "rev2"
+        self.post("/changes/refresh").close()
+        page = self.client.get("/changes")
+        self.assertIn(b"changed or no longer exists", page.data)
+        page.close()
+        response = self.apply()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.api.applied, [])
+        response.close()
 
 
 class BulkInputTests(ChangeFlowTestCase):

@@ -62,7 +62,17 @@ struct DeleteRuleChange {
 	std::uint64_t handle = 0;
 };
 
-using Change = std::variant<AddRuleChange, DeleteRuleChange>;
+/**
+ * @brief Replaces a rule in place, keeping its position, handle, and comment.
+ *
+ * rule.family, rule.table, and rule.chain identify the existing rule's chain.
+ */
+struct ReplaceRuleChange {
+	RuleSpec	  rule;
+	std::uint64_t handle = 0;
+};
+
+using Change = std::variant<AddRuleChange, DeleteRuleChange, ReplaceRuleChange>;
 
 /**
  * @brief A chain's state when it was reviewed.

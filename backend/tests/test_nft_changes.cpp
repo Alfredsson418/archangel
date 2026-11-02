@@ -135,6 +135,36 @@ void buildsOneTransactionInOrder() {
 						 "a partial build should stop at the count");
 }
 
+void replacesInPlaceKeepingTheComment() {
+	Firewall::RuleSpec rule = tcpRule(22);
+	const auto		   set	= changeSet({Firewall::ReplaceRuleChange{rule, 4},
+										 Firewall::ReplaceRuleChange{rule, 3}});
+	const json		   commands = json::parse(Firewall::Detail::buildTransaction(
+		LISTING, set, set.changes.size()))["nftables"];
+
+	const json &managed = commands[0]["replace"]["rule"];
+	TestSupport::require(managed["handle"] == 4,
+						 "replace should target the handle");
+	TestSupport::require(managed["comment"] == Firewall::ARCHANGEL_RULE_COMMENT,
+						 "a managed rule should stay managed");
+	TestSupport::require(managed["expr"][1]["match"]["right"] == 22,
+						 "replace should carry the new statements");
+	TestSupport::require(!commands[1]["replace"]["rule"].contains("comment"),
+						 "an unmanaged rule should stay unmanaged");
+
+	auto otherChain = changeSet({Firewall::ReplaceRuleChange{rule, 99}});
+	TestSupport::requireThrows<Firewall::ChangeRejectedError>(
+		[&] { Firewall::Detail::buildTransaction(LISTING, otherChain, 1); },
+		"replacing a missing rule should be rejected");
+
+	Firewall::RuleSpec invalid = tcpRule(22);
+	invalid.source_address	   = "192.168.1.5/24";
+	auto badRule = changeSet({Firewall::ReplaceRuleChange{invalid, 3}});
+	TestSupport::requireThrows<Firewall::ChangeRejectedError>(
+		[&] { Firewall::Detail::buildTransaction(LISTING, badRule, 1); },
+		"an invalid replacement should be rejected");
+}
+
 void identifiesTheChangeItRejects() {
 	Firewall::RuleSpec invalid = tcpRule(22);
 	invalid.source_address	   = "192.168.1.5/24";
@@ -169,6 +199,7 @@ void runNftChangesTests() {
 	revisionsFollowRulesButNotTraffic();
 	refusesChainsThatChangedOrWereNotReviewed();
 	buildsOneTransactionInOrder();
+	replacesInPlaceKeepingTheComment();
 	identifiesTheChangeItRejects();
 	rejectsMalformedListings();
 }

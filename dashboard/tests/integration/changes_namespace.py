@@ -86,8 +86,9 @@ def start_backend(directory):
     settings["logging"]["path"] = str(logs / "backend.jsonl")
     settings["auth"]["database_path"] = str(data / "auth.db")
     settings["server"].update(port=PORT, bind_address="127.0.0.1")
-    # Bulk checks and rejected passwords shouldn't trip limits in this script.
-    settings["rate_limits"]["firewall_mutations_per_minute"] = 1000
+    # This script makes far more requests than a person would.
+    settings["rate_limits"]["firewall_mutations_per_minute"] = 10000
+    settings["rate_limits"]["api_requests_per_minute"] = 100000
     config.write_text(json.dumps(settings))
     config.chmod(0o600)
     bootstrap(config)
@@ -284,6 +285,33 @@ def main():
         failures.check(status == 200 and body.get("changes") == 1000, f"1,000 changes applied in {time.time() - started:.2f}s")
         failures.check(listed().count("tcp dport 1") >= 1000, "all 1,000 are in nftables")
 
+        print("-- editing keeps the position, handle, and comment")
+        nft("add chain inet filter editing", "add rule inet filter editing tcp dport 1 drop", 'add rule inet filter editing tcp dport 2 drop', "add rule inet filter editing tcp dport 3 drop")
+        def editing_rules():
+            listing = api.fetch_json("/api/v1/rules", bearer_token=access_token)
+            return [entry["rule"] for entry in listing["nftables"] if "rule" in entry and entry["rule"]["chain"] == "editing"]
+
+        before = editing_rules()
+        result = dashboard.post("/rules/edit", form_action="add", family="inet", table="filter", chain="editing", handle=str(before[1]["handle"]), protocol="tcp", destination_port="2222", action="accept")
+        failures.check(result.status_code == 302 and "dport 2222" not in listed(), "an edit is collected without changing the firewall")
+        review = dashboard.page("/changes")
+        failures.check("Edited rule" in review and "Drop TCP traffic to port 2" in review and "Accept TCP traffic to port 2222" in review, "the review shows before and new")
+        result = dashboard.apply(confirm_risk="yes")
+        after = editing_rules()
+        failures.check(result.status_code == 302, "the edit applies")
+        failures.check([rule["handle"] for rule in after] == [rule["handle"] for rule in before], "every handle and position is unchanged")
+        failures.check(json.dumps(after[1]["expr"]) != json.dumps(before[1]["expr"]) and "accept" in json.dumps(after[1]["expr"]), "the rule has its new match and action")
+        failures.check("comment" not in after[1], "an unmanaged rule stays unmanaged")
+        failures.check(after[0]["expr"] == before[0]["expr"] and after[2]["expr"] == before[2]["expr"], "its neighbors are untouched")
+
+        dashboard.add(chain=BASE + "editing", protocol="tcp", destination_port="4000", action="accept")
+        dashboard.apply()
+        managed = next(rule for rule in editing_rules() if "4000" in json.dumps(rule["expr"]))
+        dashboard.post("/rules/edit", form_action="add", family="inet", table="filter", chain="editing", handle=str(managed["handle"]), protocol="tcp", destination_port="4001", action="accept")
+        dashboard.apply()
+        edited = next(rule for rule in editing_rules() if rule["handle"] == managed["handle"])
+        failures.check(edited.get("comment") == "archangel-managed" and "4001" in json.dumps(edited["expr"]), "a managed rule stays managed")
+
         print("-- deleting through the dashboard")
         rules = api.fetch_json("/api/v1/rules", bearer_token=access_token)
         target = next(entry["rule"] for entry in rules["nftables"] if "rule" in entry and "7777" in json.dumps(entry["rule"]["expr"]))
@@ -294,6 +322,32 @@ def main():
         failures.check(result.status_code == 400 and "dport 7777" in listed(), "it needs the second confirmation")
         result = dashboard.apply(confirm_risk="yes")
         failures.check(result.status_code == 302 and "dport 7777" not in listed(), "it deletes after the second confirmation")
+
+        print("-- a mixed list applies together: add, edit, and delete")
+        targets = editing_rules()
+        first, second = targets[0], targets[1]
+        dashboard.add(chain=BASE + "editing", protocol="udp", destination_port="5000", action="accept")
+        dashboard.post("/rules/edit", form_action="add", family="inet", table="filter", chain="editing", handle=str(first["handle"]), protocol="tcp", destination_port="5001", action="accept")
+        dashboard.post("/rules/delete", family="inet", table="filter", chain="editing", handle=str(second["handle"]))
+        failures.check("3 changes" in dashboard.page("/changes"), "all three are reviewed together")
+        result = dashboard.apply(confirm_risk="yes")
+        rules = listed()
+        failures.check(result.status_code == 302 and "udp dport 5000" in rules and "tcp dport 5001" in rules, "the addition and edit both applied")
+        failures.check(not any(rule["handle"] == second["handle"] for rule in editing_rules()), "the deletion applied")
+
+        print("-- importing a bundle applies all or none")
+        bundle = {"format": "archangel-firewall-rules", "version": 2, "rules": [{"family": "inet", "table": "filter", "chain": "editing", "protocol": "tcp", "destination_port": 6000 + index, "action": "accept"} for index in range(50)]}
+        result = dashboard.post("/rules/import", action="add", bundle=json.dumps(bundle))
+        failures.check(result.status_code == 302 and "dport 6000" not in listed(), "an import is collected without changing the firewall")
+        result = dashboard.apply()
+        failures.check(result.status_code == 302 and all(f"dport {6000 + index}" in listed() for index in (0, 25, 49)), "all 50 imported rules applied")
+
+        print("-- exporting and reimporting what the dashboard reads")
+        exported = client.get("/rules/export")
+        exported_bundle = json.loads(exported.get_data(as_text=True))
+        exported.close()
+        failures.check(exported_bundle["version"] == 2 and any(rule.get("connection_states") == ["established", "related"] for rule in exported_bundle["rules"]), "exports include the new rule fields")
+        failures.check(any(rule.get("action") == "reject" for rule in exported_bundle["rules"]), "exports include reject rules")
 
         print("-- the connection warning, through the real API")
         nft("add chain inet filter input { type filter hook input priority 0 ; }")

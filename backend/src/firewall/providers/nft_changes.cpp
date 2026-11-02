@@ -7,7 +7,6 @@
 
 #include <array>
 #include <map>
-#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -88,6 +87,9 @@ ChainKey touchedChain(const Change &change) {
 	if (const auto *add = std::get_if<AddRuleChange>(&change)) {
 		return {add->rule.family, add->rule.table, add->rule.chain};
 	}
+	if (const auto *replace = std::get_if<ReplaceRuleChange>(&change)) {
+		return {replace->rule.family, replace->rule.table, replace->rule.chain};
+	}
 	const auto &remove = std::get<DeleteRuleChange>(change);
 	return {remove.family, remove.table, remove.chain};
 }
@@ -105,22 +107,38 @@ Json ruleCommand(const char *verb, Json rule) {
 }
 
 /**
- * @brief Finds the rule handles present in each chain.
+ * @brief Finds the rules present in each chain.
  * @param entries Listing entries.
- * @return Handles keyed by chain.
+ * @return Rule objects by handle, keyed by chain.
  */
-std::map<ChainKey, std::set<std::uint64_t>> listedHandles(const Json &entries) {
-	std::map<ChainKey, std::set<std::uint64_t>> handles;
+std::map<ChainKey, std::map<std::uint64_t, Json>>
+listedRules(const Json &entries) {
+	std::map<ChainKey, std::map<std::uint64_t, Json>> rules;
 	for (const Json &entry : entries) {
 		if (!entry.is_object() || !entry.contains("rule")) {
 			continue;
 		}
 		const Json &rule = entry["rule"];
-		handles[{rule.value("family", ""), rule.value("table", ""),
-				 rule.value("chain", "")}]
-			.insert(rule.value("handle", std::uint64_t{0}));
+		rules[{rule.value("family", ""), rule.value("table", ""),
+			   rule.value("chain", "")}][rule.value("handle", std::uint64_t{0})] =
+			rule;
 	}
-	return handles;
+	return rules;
+}
+
+/**
+ * @brief Validates a rule, reporting a problem against its change.
+ * @param rule Rule to validate.
+ * @param index Position of the change in its change set.
+ * @return No value.
+ * @throws ChangeRejectedError If the rule is invalid.
+ */
+void validateChangeRule(const RuleSpec &rule, std::size_t index) {
+	try {
+		validateRule(rule);
+	} catch (const InvalidRuleError &error) {
+		throw ChangeRejectedError(index, error.what());
+	}
 }
 } // namespace
 
@@ -180,16 +198,12 @@ void requireCurrentRevisions(const std::string &ruleset,
 
 std::string buildTransaction(const std::string &ruleset,
 							 const ChangeSet &changes, std::size_t count) {
-	const auto handles	= listedHandles(listedEntries(ruleset));
+	const auto rules	= listedRules(listedEntries(ruleset));
 	Json	   commands = Json::array();
 	for (std::size_t index = 0; index < count; ++index) {
 		const Change &change = changes.changes.at(index);
 		if (const auto *add = std::get_if<AddRuleChange>(&change)) {
-			try {
-				validateRule(add->rule);
-			} catch (const InvalidRuleError &error) {
-				throw ChangeRejectedError(index, error.what());
-			}
+			validateChangeRule(add->rule, index);
 			Json rule;
 			rule["family"]	= add->rule.family;
 			rule["table"]	= add->rule.table;
@@ -199,10 +213,31 @@ std::string buildTransaction(const std::string &ruleset,
 			commands.push_back(ruleCommand("add", std::move(rule)));
 			continue;
 		}
+		if (const auto *replace = std::get_if<ReplaceRuleChange>(&change)) {
+			validateChangeRule(replace->rule, index);
+			const auto chain = rules.find(
+				{replace->rule.family, replace->rule.table, replace->rule.chain});
+			if (chain == rules.end() ||
+				chain->second.count(replace->handle) == 0) {
+				throw ChangeRejectedError(index, "This rule no longer exists");
+			}
+			Json rule;
+			rule["family"] = replace->rule.family;
+			rule["table"]  = replace->rule.table;
+			rule["chain"]  = replace->rule.chain;
+			rule["handle"] = replace->handle;
+			rule["expr"]   = ruleExpressions(replace->rule);
+			// Keeps a managed rule managed, and an unmanaged one unmanaged.
+			const Json &existing = chain->second.at(replace->handle);
+			if (existing.contains("comment")) {
+				rule["comment"] = existing["comment"];
+			}
+			commands.push_back(ruleCommand("replace", std::move(rule)));
+			continue;
+		}
 		const auto &remove = std::get<DeleteRuleChange>(change);
-		const auto	chain  = handles.find({remove.family, remove.table,
-											  remove.chain});
-		if (chain == handles.end() || chain->second.count(remove.handle) == 0) {
+		const auto	chain  = rules.find({remove.family, remove.table, remove.chain});
+		if (chain == rules.end() || chain->second.count(remove.handle) == 0) {
 			throw ChangeRejectedError(index, "This rule no longer exists");
 		}
 		Json rule;

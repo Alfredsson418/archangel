@@ -13,7 +13,7 @@ Renders the server overview with nftables enforcement status, backend version/co
 
 Fetches the C++ ruleset in Flask and renders individual firewall rules on the Firewall Configuration page with the `rules.html` template.
 
-Rules can be filtered across family, table, chain, handle, and expression, and sorted by family, table, chain, handle, or expression in ascending or descending order. Each row has a disabled Edit button; rule editing is not currently available.
+Rules can be filtered across family, table, chain, handle, and expression, and sorted by family, table, chain, handle, or expression in ascending or descending order. Each rule offers Edit and Duplicate if the rule form can represent it, and Delete. None of these change the firewall until the resulting pending changes are applied.
 
 ### `GET /rules/export`
 
@@ -48,6 +48,10 @@ Import is additive: it adds rules and does not delete or replace existing ones. 
 ### `GET, POST /rules/new`
 
 `GET` renders the rule form, which offers the chains in the active ruleset. With `family`, `table`, `chain`, and `handle` in the query string, it starts from that rule's values, for duplicating it. `POST` validates the submitted fields and either previews the rule in plain language or adds it to the signed-in user's pending changes. `form_action=add_another` returns to the form with the same values, to make adding many similar rules quick. None of these change the firewall.
+
+### `GET, POST /rules/edit`
+
+`GET` renders the rule form with an existing rule's values, identified by `family`, `table`, `chain`, and `handle`. `POST` previews the edit as before and new, or adds it to pending changes. An edit keeps the rule's position, handle, and comment, and can't move it to another chain. A rule that uses features the form can't represent can't be edited here, but can still be deleted. A rule can have only one pending change at a time.
 
 ### `POST /rules/delete`
 
@@ -286,6 +290,8 @@ Returns the gateway hostname, online CPU core count, 1/5/15-minute load averages
 
 The dashboard determines whether nftables has base chains attached to packet-processing hooks from the chain metadata in the ruleset response. This reports whether hooked chains exist; it does not assess whether their policies are restrictive or effective. The overview displays only the summarized status; individual rules are shown on the Firewall Configuration page.
 
+`network_interfaces` lists the host's interface names, so that the dashboard can warn about a rule naming an interface that doesn't exist.
+
 ### `GET /api/v1/logs`
 
 Returns a `sources` array. Each source has a stable `id`, display `label`, boolean `available`, explanatory `detail`, and an `entries` array containing recent log lines, newest first. Current sources are:
@@ -337,12 +343,13 @@ Applies an ordered list of up to 1,000 changes in one transaction, so that eithe
 	],
 	"changes": [
 		{ "type": "add_rule", "rule": { "family": "inet", "table": "filter", "chain": "input", "protocol": "tcp", "destination_port": 443, "action": "accept" } },
+		{ "type": "replace_rule", "handle": 9, "rule": { "family": "inet", "table": "filter", "chain": "input", "protocol": "tcp", "destination_port": 22, "action": "drop" } },
 		{ "type": "delete_rule", "family": "inet", "table": "filter", "chain": "input", "handle": 12 }
 	]
 }
 ```
 
-`add_rule` takes the same fields as `POST /api/v1/rules` and adds the rule at the end of its chain. `expected_revisions` must include every chain a change touches.
+`add_rule` takes the same fields as `POST /api/v1/rules` and adds the rule at the end of its chain. `replace_rule` takes `handle` and `rule`, and replaces that rule in place, keeping its position, handle, and comment. `rule`'s family, table, and chain identify the existing rule's chain. `expected_revisions` must include every chain a change touches.
 
 | Status | Code | Meaning |
 | --- | --- | --- |

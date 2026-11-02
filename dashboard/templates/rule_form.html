@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% set page = "rules" %}
 
-{% block title %}Archangel | Add rule{% endblock %}
-{% block breadcrumb %}FIREWALL CONFIGURATION / ADD RULE{% endblock %}
+{% block title %}Archangel | {{ "Edit rule" if editing else "Add rule" }}{% endblock %}
+{% block breadcrumb %}FIREWALL CONFIGURATION / {{ "EDIT RULE" if editing else "ADD RULE" }}{% endblock %}
 {% block heading_label %}STRUCTURED RULE{% endblock %}
-{% block page_heading %}Add rule{% endblock %}
+{% block page_heading %}{{ "Edit rule" if editing else "Add rule" }}{% endblock %}
 {% block page_subtitle %}Rules are collected as pending changes. Nothing changes until you review and apply them.{% endblock %}
 {% block status_class %}{% if not error %}connected{% endif %}{% endblock %}
 {% block page_status %}NOT APPLIED{% endblock %}
@@ -17,12 +17,16 @@
     {% if not chains %}
       <p class="rule-preview">No chains exist in the <code>ip</code>, <code>ip6</code>, or <code>inet</code> families, so there's nowhere to add a rule yet.</p>
     {% else %}
-    <form class="settings-form" action="{{ url_for('pages.new_rule') }}" method="post">
+    <form class="settings-form" action="{{ url_for('pages.edit_rule') if editing else url_for('pages.new_rule') }}" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if editing %}
+        <input type="hidden" name="family" value="{{ editing.family }}"><input type="hidden" name="table" value="{{ editing.table }}"><input type="hidden" name="chain" value="{{ editing.chain }}"><input type="hidden" name="handle" value="{{ editing.handle }}">
+        <p class="field-hint">Currently: {{ original }}. The rule keeps its position in the chain, and its handle.</p>
+      {% endif %}
       <div class="rule-form-grid">
         <div>
           <label for="rule-chain">Chain</label>
-          <select id="rule-chain" name="chain" required>
+          <select id="rule-chain" {% if editing %}disabled{% else %}name="chain" required{% endif %}>
             {% for chain in chains %}
               {% set key = chain.family ~ " " ~ chain.table ~ " " ~ chain.name %}
               <option value="{{ key }}" {% if values.get('chain') == key %}selected{% endif %}>{{ key }}{% if chain.hook %} ({{ chain.hook }} hook){% endif %}</option>
@@ -72,12 +76,12 @@
       </div>
       <div class="settings-actions">
         <button class="text-button" type="submit" name="form_action" value="preview">Preview rule</button>
-        <button class="text-button" type="submit" name="form_action" value="add_another">Add and create another</button>
+        {% if not editing %}<button class="text-button" type="submit" name="form_action" value="add_another">Add and create another</button>{% endif %}
         <button class="refresh-button" type="submit" name="form_action" value="add">Add to pending changes</button>
         <a class="text-button" href="{{ url_for('pages.rules_page') }}">Cancel</a>
       </div>
     </form>
     {% endif %}
-    {% if preview %}<p class="rule-preview" role="status"><strong>This rule will:</strong> {{ preview }}. It goes at the end of its chain, and earlier rules take priority.</p>{% endif %}
+    {% if preview %}<p class="rule-preview" role="status">{% if editing %}<strong>Before:</strong> {{ original }}<br><strong>New:</strong> {{ preview }}{% else %}<strong>This rule will:</strong> {{ preview }}. It goes at the end of its chain, and earlier rules take priority.{% endif %}</p>{% endif %}
   </section>
 {% endblock %}

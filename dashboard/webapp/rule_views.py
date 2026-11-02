@@ -16,6 +16,7 @@ from .connection_check import (
 from .firewall_changes import (
     ADD_RULE,
     DELETE_RULE,
+    REPLACE_RULE,
     affects_incoming_traffic,
     api_payload,
     apply_to_ruleset,
@@ -24,9 +25,11 @@ from .firewall_changes import (
     change_warnings,
     chains_from,
     describe_change,
+    describe_listed_rule,
     find_rule,
     is_unmanaged,
     management_risk,
+    pending_on_rule,
     stale_changes,
     verify_applied,
 )
@@ -48,6 +51,7 @@ from .views import pages
 
 
 _APPLY_FAILED_UNKNOWN = "The change may or may not have been applied. Check the rules before trying again."
+_ALREADY_PENDING = "This rule already has a pending change. Remove that change first."
 _FORM_FIELDS = (
     "chain",
     "protocol",
@@ -138,8 +142,12 @@ def _revision_map(revisions):
     }
 
 
-def _rule_from_form(form):
+def _rule_from_form(form, states):
     """Build a structured rule from submitted form fields.
+
+    Args:
+        form: Mapping of the single-value form fields.
+        states: List of selected connection states.
 
     Returns:
         A pair of (rule dictionary, error message or None). The rule is
@@ -166,7 +174,6 @@ def _rule_from_form(form):
         rule["destination_port"] = int(start)
         if separator:
             rule["destination_port_end"] = int(end)
-    states = form.getlist("connection_states")
     if states:
         rule["connection_states"] = states
     try:
@@ -196,7 +203,7 @@ def _values_from_rule(rule):
     }
 
 
-def _render_rule_form(*, chains, values, error=None, preview=None, message=None, status=200):
+def _render_rule_form(*, chains, values, error=None, preview=None, message=None, editing=None, original=None, status=200):
     """Render the rule form.
 
     Returns:
@@ -210,6 +217,8 @@ def _render_rule_form(*, chains, values, error=None, preview=None, message=None,
             error=error,
             preview=preview,
             message=message,
+            editing=editing,
+            original=original,
             protocols=RULE_PROTOCOLS,
             actions=RULE_ACTIONS,
             states=CONNECTION_STATES,
@@ -246,7 +255,7 @@ def new_rule():
 
     values = {field: request.form.get(field, "") for field in _FORM_FIELDS}
     values["connection_states"] = request.form.getlist("connection_states")
-    rule, form_error = _rule_from_form(request.form)
+    rule, form_error = _rule_from_form(request.form, request.form.getlist("connection_states"))
     if form_error:
         return _render_rule_form(chains=chains, values=values, error=form_error, status=400)
     action = request.form.get("form_action", "preview")
@@ -264,6 +273,72 @@ def new_rule():
             values=values,
             message=f"Added to pending changes: {describe_rule(rule)}. Change what differs for the next rule.",
         )
+    return redirect(url_for("pages.review_changes"))
+
+
+def _rule_to_edit(values):
+    """Find the existing rule an edit targets, and check that it can be edited.
+
+    Args:
+        values: Mapping with "family", "table", "chain", and "handle".
+
+    Returns:
+        A pair of (listed rule, error message). Exactly one of them is None.
+
+    Raises:
+        BackendSessionExpired: If the backend rejects the session.
+    """
+    handle_text = values.get("handle", "")
+    ruleset, error = load("/api/v1/rules")
+    if error is None:
+        error = ruleset_shape_error(ruleset)
+    if error is not None:
+        return None, error
+    family, table, chain = values.get("family", ""), values.get("table", ""), values.get("chain", "")
+    rule = find_rule(ruleset, family, table, chain, int(handle_text)) if handle_text.isdecimal() else None
+    if rule is None:
+        return None, "This rule has changed or no longer exists."
+    if portable_rule(rule) is None:
+        return None, "This rule uses features the form can't represent, so it can't be edited here."
+    if pending_on_rule(pending_changes.load(_actor_id())["changes"], family, table, chain, rule["handle"]):
+        return None, _ALREADY_PENDING
+    return rule, None
+
+
+@pages.route("/rules/edit", methods=["GET", "POST"])
+def edit_rule():
+    """Show the rule form for an existing rule, or add the edit to pending changes.
+
+    An edit keeps the rule's position, handle, and comment.
+
+    Returns:
+        The rendered form with an HTTP status, or a redirect.
+    """
+    source = request.form if request.method == "POST" else request.args
+    rule, error = _rule_to_edit(source)
+    if error:
+        return _rules_redirect(False, error)
+    original = describe_listed_rule(rule)
+    target = {field: rule[field] for field in ("family", "table", "chain", "handle")}
+    key = chain_key(rule["family"], rule["table"], rule["chain"])
+    chain_option = {"family": rule["family"], "table": rule["table"], "name": rule["chain"]}
+    if request.method == "GET":
+        return _render_rule_form(chains=[chain_option], values=_values_from_rule(portable_rule(rule)), editing=target, original=original)
+
+    values = {field: request.form.get(field, "") for field in _FORM_FIELDS}
+    values["connection_states"] = request.form.getlist("connection_states")
+    values["chain"] = key
+    # The chain is fixed: an edit can't move a rule, whatever the form submits.
+    edited, form_error = _rule_from_form(values, request.form.getlist("connection_states"))
+    render = lambda **kwargs: _render_rule_form(chains=[chain_option], values=values, editing=target, original=original, **kwargs)
+    if form_error:
+        return render(error=form_error, status=400)
+    if request.form.get("form_action", "preview") == "preview":
+        return render(preview=describe_rule(edited))
+    store_error = _store_changes([{"type": REPLACE_RULE, "handle": rule["handle"], "rule": edited, "before": rule}])
+    if store_error:
+        return render(error=store_error, status=409)
+    current_app.logger.info("firewall_change_added type=%s", REPLACE_RULE)
     return redirect(url_for("pages.review_changes"))
 
 
@@ -311,6 +386,8 @@ def delete_rule():
     rule = find_rule(ruleset, family, table, chain, handle) if error is None else None
     if rule is None:
         return _rules_redirect(False, error or "This rule has changed or no longer exists, so nothing was added.")
+    if pending_on_rule(pending_changes.load(_actor_id())["changes"], family, table, chain, handle):
+        return _rules_redirect(False, _ALREADY_PENDING)
     store_error = _store_changes(
         [{"type": DELETE_RULE, "family": family, "table": table, "chain": chain, "handle": handle, "before": rule}]
     )
