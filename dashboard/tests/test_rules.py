@@ -2,7 +2,7 @@ import io
 import json
 from unittest.mock import patch
 
-from webapp.api_client import API_SCHEMA_VERSION_HEADER
+from webapp.api_client import API_SCHEMA_VERSION, API_SCHEMA_VERSION_HEADER
 from webapp.firewall_rules import firewall_status
 
 from .helpers import DashboardTestCase, UpstreamResponse
@@ -140,7 +140,7 @@ class RulePageTests(DashboardTestCase):
         self.assertEqual(response.headers["X-Archangel-Skipped-Rules"], "1")
         bundle = json.loads(response.data)
         self.assertEqual(bundle["format"], "archangel-firewall-rules")
-        self.assertEqual(bundle["version"], 1)
+        self.assertEqual(bundle["version"], 2)
         self.assertEqual(bundle["omitted_unsupported_rules"], 1)
         self.assertEqual(
             bundle["rules"],
@@ -260,7 +260,7 @@ class RulePageTests(DashboardTestCase):
         self.assertEqual(api_request.full_url, "http://127.0.0.1:8080/api/v1/rules")
         self.assertEqual(json.loads(api_request.data), bundle["rules"][0])
         headers = {name.lower(): value for name, value in api_request.headers.items()}
-        self.assertEqual(headers[API_SCHEMA_VERSION_HEADER.lower()], "1")
+        self.assertEqual(headers[API_SCHEMA_VERSION_HEADER.lower()], API_SCHEMA_VERSION)
         self.assertEqual(
             headers["authorization"], "Bearer test-api-access-token"
         )

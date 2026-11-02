@@ -3,9 +3,9 @@
 #include "firewall/bundle.hpp"
 #include "logs/logger.hpp"
 #include "nft_import.hpp"
+#include "nft_rule.hpp"
 #include "nft_statistics.hpp"
 #include "json/json.hpp"
-#include <arpa/inet.h>
 #include <cstdint>
 #include <set>
 #include <utility>
@@ -13,148 +13,6 @@
 namespace Firewall {
 
 namespace {
-
-/**
- * @brief Checks that a value is safe to use as an nftables table or chain name.
- * @param value Candidate identifier.
- * @return True if it uses the accepted ASCII identifier syntax.
- */
-bool isIdentifier(const std::string &value) {
-	const auto isAlpha = [](unsigned char character) {
-		return (character >= 'a' && character <= 'z') ||
-			   (character >= 'A' && character <= 'Z');
-	};
-	const auto isDigit = [](unsigned char character) {
-		return character >= '0' && character <= '9';
-	};
-
-	if (value.empty() ||
-		value.size() > Config::Limits::MAX_FIREWALL_IDENTIFIER_LENGTH ||
-		!(isAlpha(static_cast<unsigned char>(value.front())) ||
-		  value.front() == '_')) {
-		return false;
-	}
-
-	for (const unsigned char character : value) {
-		if (!(isAlpha(character) || isDigit(character) || character == '_' ||
-			  character == '-')) {
-			return false;
-		}
-	}
-	return true;
-}
-
-/**
- * @brief Tests whether a string is a valid IPv4 address.
- * @param address Address text to parse.
- * @return True if inet_pton accepts it as IPv4.
- */
-bool isIpv4Address(const std::string &address) {
-	in_addr parsed{};
-	return inet_pton(AF_INET, address.c_str(), &parsed) == 1;
-}
-
-/**
- * @brief Tests whether a string is a valid IPv6 address.
- * @param address Address text to parse.
- * @return True if inet_pton accepts it as IPv6.
- */
-bool isIpv6Address(const std::string &address) {
-	in6_addr parsed{};
-	return inet_pton(AF_INET6, address.c_str(), &parsed) == 1;
-}
-
-/**
- * @brief Validates an address and its compatibility with the nftables family.
- * @param family Requested nftables family.
- * @param address Address text supplied by the caller.
- * @return No value.
- * @throws InvalidRuleError If the address is invalid or incompatible.
- */
-void validateAddress(const std::string &family, const std::string &address) {
-	const bool ipv4 = isIpv4Address(address);
-	const bool ipv6 = isIpv6Address(address);
-	if ((!ipv4 && !ipv6) || (family == "ip" && !ipv4) ||
-		(family == "ip6" && !ipv6)) {
-		throw InvalidRuleError("An address is invalid for the selected family");
-	}
-}
-
-/**
- * @brief Validates every supported field and required match in a rule.
- * @param rule Backend-neutral rule description.
- * @return No value.
- * @throws InvalidRuleError If a field is unsupported or invalid.
- */
-void validateRule(const RuleSpec &rule) {
-	if (rule.family != "ip" && rule.family != "ip6" && rule.family != "inet") {
-		throw InvalidRuleError("family must be ip, ip6, or inet");
-	}
-	if (!isIdentifier(rule.table) || !isIdentifier(rule.chain)) {
-		throw InvalidRuleError(
-			"table and chain must be valid nftables identifiers");
-	}
-	if (rule.protocol != "tcp" && rule.protocol != "udp") {
-		throw InvalidRuleError("protocol must be tcp or udp");
-	}
-	if (rule.action != "accept" && rule.action != "drop" &&
-		rule.action != "reject") {
-		throw InvalidRuleError("action must be accept, drop, or reject");
-	}
-	if (!rule.source_address && !rule.destination_address &&
-		!rule.destination_port) {
-		throw InvalidRuleError(
-			"at least one address or destination port match is required");
-	}
-	if (rule.source_address) {
-		validateAddress(rule.family, *rule.source_address);
-	}
-	if (rule.destination_address) {
-		validateAddress(rule.family, *rule.destination_address);
-	}
-}
-
-/**
- * @brief Builds an nftables JSON equality match statement.
- * @param left Expression to compare, such as a payload or meta selector.
- * @param right Value the expression must equal.
- * @return A JSON match statement.
- */
-nlohmann::json equalityMatch(nlohmann::json left, nlohmann::json right) {
-	nlohmann::json match;
-	match["op"]	   = "==";
-	match["left"]  = std::move(left);
-	match["right"] = std::move(right);
-	return nlohmann::json{
-		{"match", std::move(match)}
-	   };
-}
-
-/**
- * @brief Builds a payload selector expression, such as ip saddr.
- * @param protocol Payload protocol, such as ip, ip6, or tcp.
- * @param field Payload field, such as saddr or dport.
- * @return A JSON payload expression.
- */
-nlohmann::json payload(const std::string &protocol, const char *field) {
-	nlohmann::json selector;
-	selector["protocol"] = protocol;
-	selector["field"]	 = field;
-	return nlohmann::json{
-		{"payload", std::move(selector)}
-	};
-}
-
-/**
- * @brief Builds an address match using the correct nftables IP protocol.
- * @param address Validated IPv4 or IPv6 address.
- * @param direction nftables direction field, such as saddr or daddr.
- * @return A JSON match statement for the address.
- */
-nlohmann::json addressMatch(const std::string &address, const char *direction) {
-	return equalityMatch(
-		payload(isIpv4Address(address) ? "ip" : "ip6", direction), address);
-}
 
 /**
  * @brief Wraps one nftables JSON command in a command document.
@@ -308,48 +166,26 @@ Statistics Nftables::getStatistics() {
 }
 
 void Nftables::addRule(const RuleSpec &rule) {
-	validateRule(rule);
-
-	// Build JSON commands rather than command text so request values can only
-	// ever be data, never nftables syntax.
-	nlohmann::json expressions = nlohmann::json::array();
-	if (rule.source_address) {
-		expressions.push_back(addressMatch(*rule.source_address, "saddr"));
-	}
-	if (rule.destination_address) {
-		expressions.push_back(addressMatch(*rule.destination_address, "daddr"));
-	}
-	expressions.push_back(equalityMatch(
-		nlohmann::json{
-			{"meta", nlohmann::json{{"key", "l4proto"}}}
-	},
-		rule.protocol));
-	if (rule.destination_port) {
-		expressions.push_back(equalityMatch(payload(rule.protocol, "dport"),
-											*rule.destination_port));
-	}
-	expressions.push_back(nlohmann::json{
-		{rule.action, nullptr}
-	  });
+	Detail::validateRule(rule);
 
 	nlohmann::json command;
 	command["family"]  = rule.family;
 	command["table"]   = rule.table;
 	command["chain"]   = rule.chain;
 	command["comment"] = ARCHANGEL_RULE_COMMENT;
-	command["expr"]	   = std::move(expressions);
+	command["expr"]	   = Detail::ruleExpressions(rule);
 
 	std::lock_guard<std::mutex> lock(mutex_);
 	executeJson(ruleCommand("add", std::move(command)));
-	Logs::Logger::Firewall::log("Added a " + rule.protocol + " rule to " +
-								rule.family + " " + rule.table + " " +
-								rule.chain);
+	Logs::Logger::Firewall::log("Added a rule to " + rule.family + " " +
+								rule.table + " " + rule.chain);
 }
 
 void Nftables::deleteRule(const std::string &family, const std::string &table,
 						  const std::string &chain, std::uint64_t handle) {
 	if ((family != "ip" && family != "ip6" && family != "inet") ||
-		!isIdentifier(table) || !isIdentifier(chain) || handle == 0) {
+		!Detail::isIdentifier(table) || !Detail::isIdentifier(chain) ||
+		handle == 0) {
 		throw InvalidRuleError(
 			"family, table, chain, or rule handle is invalid");
 	}

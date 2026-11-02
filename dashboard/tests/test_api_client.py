@@ -50,7 +50,7 @@ class ApiClientContractTests(unittest.TestCase):
         self.assertEqual(headers["Authorization"], "Bearer token")
 
     def test_rejects_mismatched_schema_version(self):
-        client = ApiClient("http://127.0.0.1:8080", FakeTransport(json_response(schema_version="2")))
+        client = ApiClient("http://127.0.0.1:8080", FakeTransport(json_response(schema_version="1")))
         with self.assertRaisesRegex(ApiResponseError, "unsupported schema version"):
             client.fetch_json("/api/v1/test")
 

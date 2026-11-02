@@ -5,6 +5,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace Firewall {
 
@@ -20,15 +21,30 @@ class InvalidRuleError : public std::invalid_argument {
 	using std::invalid_argument::invalid_argument;
 };
 
+/**
+ * @brief Backend-neutral description of a rule to add.
+ *
+ * Optional fields left unset do not constrain the rule. At least one match is
+ * required: a protocol, address, destination port, interface, or connection
+ * state.
+ */
 struct RuleSpec {
-	std::string					 family;
-	std::string					 table;
-	std::string					 chain;
-	std::string					 protocol;
-	std::optional<std::string>	 source_address;
-	std::optional<std::string>	 destination_address;
+	std::string family;
+	std::string table;
+	std::string chain;
+	// tcp, udp, icmp, or icmpv6. A destination port requires tcp or udp.
+	std::optional<std::string> protocol;
+	// One address, or one subnet in CIDR form with no host bits set.
+	std::optional<std::string> source_address;
+	std::optional<std::string> destination_address;
 	std::optional<std::uint16_t> destination_port;
-	std::string					 action;
+	// Last port of a range starting at destination_port.
+	std::optional<std::uint16_t> destination_port_end;
+	std::optional<std::string>	 input_interface;
+	std::optional<std::string>	 output_interface;
+	// Any of new, established, related, and invalid.
+	std::vector<std::string> connection_states;
+	std::string				 action;
 };
 
 struct Statistics {

@@ -57,6 +57,7 @@ These nftables behaviors were tested in an isolated network namespace with nftab
 | **Deleting a non-empty chain succeeds and removes its rules without warning.** Deleting a chain that another rule jumps to fails. | Nothing in nftables protects against this, so the design has to. |
 | A dormant table stops enforcing all of its rules. | Turning a table off needs the strongest warning. |
 | A subnet with host bits, such as `192.168.1.5/24`, is accepted and silently stored as `192.168.1.0/24`. | The API has to reject these, or a rule could cover different addresses than the user typed. |
+| In an `inet` table, a plain `reject` reads back as `icmpx`, but as `icmp` or `icmpv6` when the rule also matches an IPv4 or IPv6 address. | Reading a default `reject` has to take the rule's addresses into account. |
 | A `/32` subnet reads back as a plain address, and the range `80-80` as a plain port. A reversed range is rejected. | Input is normalized, so that a rule matches what's read back. |
 | Subnets read back as `prefix` objects and ranges as `range` objects. Connection state reads back as a string for one state and a list for several, using the `in` operator. A protocol match is left out when a port implies it. | The code that reads rules has to accept each of these shapes. |
 | `iif` fails if the interface doesn't exist, while `iifname` and `oifname` accept any name. | The form uses names, so rules survive interfaces that appear later, such as VPN tunnels. A mistyped name is accepted, so the preview warns when the interface doesn't exist on the host. |
@@ -277,6 +278,8 @@ Every outcome is stated in text, and the page never implies success if the API r
 ## Code changes
 
 Each row is a separate piece of work, tested and committed on its own, in this order.
+
+The work is grouped into four parts, each reported to the developer when finished: Part 1 is pieces 1 and 2, Part 2 is pieces 3 to 5, Part 3 is pieces 6 to 8, and Part 4 is pieces 9 to 12.
 
 | Work | Backend | Dashboard |
 | --- | --- | --- |

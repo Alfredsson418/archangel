@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 
 logger = logging.getLogger(__name__)
-API_SCHEMA_VERSION = "1"
+API_SCHEMA_VERSION = "2"
 API_SCHEMA_VERSION_HEADER = "X-Archangel-Schema-Version"
 REQUEST_ID_HEADER = "X-Request-ID"
 

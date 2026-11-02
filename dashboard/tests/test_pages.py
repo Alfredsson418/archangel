@@ -1,6 +1,8 @@
 from urllib.parse import urlsplit
 from unittest.mock import patch
 
+from webapp.api_client import API_SCHEMA_VERSION
+
 from .helpers import DashboardTestCase, UpstreamResponse
 
 
@@ -63,7 +65,7 @@ class DashboardPageTests(DashboardTestCase):
                     name.lower(): value
                     for name, value in call.args[0].headers.items()
                 }.get("x-archangel-schema-version")
-                == "1"
+                == API_SCHEMA_VERSION
                 for call in urlopen.call_args_list
             )
         )

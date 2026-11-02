@@ -35,9 +35,10 @@ The test modules are organized by responsibility:
 | `dashboard/tests/test_pages.py` | Server-rendered overview and system pages, log-source rendering and escaping, static assets, backend-unavailable messaging, stopping after the backend is unreachable, redirecting to login when the backend rejects the session, and the unauthenticated `/healthz` probe. |
 | `dashboard/tests/test_logging.py` | Stdout and backend request logging without query-string values, owner-only JSONL records with request IDs, reopen after rotation, rejection of shared log files, message structuring, actor ID and outcome fields, `unregistered` in place of unknown paths, and fail-closed `503` for every request except health when the audit log is unavailable. |
 | `dashboard/tests/test_rules.py` | Firewall status summary, rule rendering/filtering/sorting, structured export (including the rule shapes nftables actually lists), and preview/confirmed import behavior. |
+| `dashboard/tests/test_rule_model.py` | Reading every structured rule shape from nftables listings, including default `reject` options, using shapes taken from real output; rejecting what the form can't represent; rule validation and normalization; bundle versions 1 and 2; plain-language rule descriptions. |
 | `dashboard/tests/test_settings.py` | Read-only API URL display, API URL validation, deployment-fixed API settings and CA bundle checks, plaintext-remote warnings, and absence of API passthrough routes. |
 
-Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 28 tests. The exact count and incidental application log lines may change as coverage grows.
+Expected result: unittest prints a summary ending in `OK` and exits with status 0. At the time of writing, the suite runs 64 tests. The exact count and incidental application log lines may change as coverage grows.
 
 ## Backend tests
 
@@ -61,8 +62,9 @@ The test executable is built at `build/backend/tests/backend_tests`. The target 
 | `backend/tests/auth_test_support.hpp` | Shared mock `AuthProvider` and schema-header request helper for the three authentication test modules. |
 | `backend/tests/test_firewall_bundle.cpp` | Firewall bundle v1 parsing and serialization, ownership-section classification, listener-setting exclusion, round-trip behavior, import-mode semantics, and rejection of invalid ownership/version data. |
 | `backend/tests/test_nft_import.cpp` | Builds managed-only replacement transactions from fixtures and verifies unmarked rules are not deleted or added. |
+| `backend/tests/test_nft_rule.cpp` | Validates structured rules, including subnets with host bits and fields that could never match together, and builds their exact nftables statements without calling nftables. |
 | `backend/tests/test_nft_statistics.cpp` | Counts nftables tables, chains, rules, families, protocols, and verdicts; rejects malformed or incorrectly shaped rulesets. |
-| `backend/tests/test_rules_api.cpp` | Structured rule creation and deletion, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
+| `backend/tests/test_rules_api.cpp` | Structured rule creation and deletion, the full rule model, rejection of unknown fields, boundary and invalid-input validation, response codes, prevention of backend mutation for invalid requests, and safe handling of backend errors. |
 | `backend/tests/test_stats_api.cpp` | JSON response shape and content type for firewall statistics. |
 
 Authentication tests use isolated temporary SQLite files. Rule-handler tests use a mock `Firewall::Backend`; parser tests use controlled JSON fixtures. They do not start the API server or run nftables commands, and they are not integration tests of the live firewall backend.

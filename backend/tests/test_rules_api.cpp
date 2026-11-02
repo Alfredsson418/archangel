@@ -5,6 +5,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 class MockFirewall final : public Firewall::Backend {
@@ -123,6 +124,92 @@ void rejectsInvalidRuleRequestsBeforeBackendMutation() {
 	}
 }
 
+void forwardsTheFullRuleModel() {
+	MockFirewall		   firewall;
+	const httplib::Request request = requestWithBody(
+		R"({"family":"inet","table":"filter","chain":"input","protocol":"udp","source_address":"192.0.2.0/24","destination_port":53,"destination_port_end":60,"input_interface":"eth0","output_interface":"lo","connection_states":["new","established"],"action":"reject"})");
+	httplib::Response response;
+
+	Http::createRule(firewall, request, response);
+
+	TestSupport::require(response.status == 201,
+						 "valid full rule should return 201");
+	const Firewall::RuleSpec &rule = firewall.added_rule;
+	TestSupport::require(rule.source_address ==
+							 std::optional<std::string>("192.0.2.0/24"),
+						 "subnet should be forwarded");
+	TestSupport::require(rule.destination_port == 53 &&
+							 rule.destination_port_end == 60,
+						 "port range should be forwarded");
+	TestSupport::require(
+		rule.input_interface == std::optional<std::string>("eth0") &&
+			rule.output_interface == std::optional<std::string>("lo"),
+		"interfaces should be forwarded");
+	TestSupport::require(rule.connection_states ==
+							 std::vector<std::string>{"new", "established"},
+						 "connection states should be forwarded");
+}
+
+void acceptsARuleWithoutAProtocol() {
+	MockFirewall	  firewall;
+	httplib::Response response;
+	Http::createRule(
+		firewall,
+		requestWithBody(
+			R"({"family":"inet","table":"filter","chain":"input","connection_states":["established","related"],"action":"accept"})"),
+		response);
+
+	TestSupport::require(response.status == 201,
+						 "a rule without a protocol should be accepted");
+	TestSupport::require(!firewall.added_rule.protocol,
+						 "an absent protocol should stay absent");
+}
+
+void rejectsUnknownFieldsBeforeBackendMutation() {
+	// A field the API ignored could leave a broader rule than was requested.
+	MockFirewall	  firewall;
+	httplib::Response response;
+	Http::createRule(
+		firewall,
+		requestWithBody(
+			R"({"family":"inet","table":"filter","chain":"input","protocol":"tcp","destination_port":22,"action":"accept","source_ports":[1]})"),
+		response);
+	TestSupport::require(response.status == 400,
+						 "unknown rule field should return 400");
+	TestSupport::require(firewall.add_calls == 0,
+						 "unknown rule field must not reach the backend");
+
+	response = {};
+	Http::deleteRule(
+		firewall,
+		requestWithBody(
+			R"({"family":"inet","table":"filter","chain":"input","handle":1,"expected":{}})"),
+		response);
+	TestSupport::require(response.status == 400,
+						 "unknown delete field should return 400");
+	TestSupport::require(firewall.delete_calls == 0,
+						 "unknown delete field must not reach the backend");
+}
+
+void rejectsInvalidNewRuleFieldTypes() {
+	for (
+		const std::string body :
+		{R"({"family":"inet","table":"t","chain":"c","action":"accept","connection_states":"new"})",
+		 R"({"family":"inet","table":"t","chain":"c","action":"accept","connection_states":[1]})",
+		 R"({"family":"inet","table":"t","chain":"c","action":"accept","connection_states":["new","new","new","new","new"]})",
+		 R"({"family":"inet","table":"t","chain":"c","action":"accept","input_interface":1})",
+		 R"({"family":"inet","table":"t","chain":"c","action":"accept","protocol":"tcp","destination_port":1,"destination_port_end":70000})",
+		 R"({"family":"inet","table":"t","chain":"c","action":"accept","protocol":7})"}) {
+		MockFirewall	  firewall;
+		httplib::Response response;
+		Http::createRule(firewall, requestWithBody(body), response);
+		TestSupport::require(response.status == 400,
+							 "invalid new field should return 400");
+		TestSupport::require(firewall.add_calls == 0,
+							 "invalid new field must not reach the backend");
+	}
+}
+
 void deletesRuleByPositiveHandle() {
 	MockFirewall	  firewall;
 	httplib::Response response;
@@ -226,6 +313,10 @@ void reportsBackendRuleRejectionsAsClientErrors() {
 void runRulesApiTests() {
 	reportsBackendRuleRejectionsAsClientErrors();
 	createsStructuredRule();
+	forwardsTheFullRuleModel();
+	acceptsARuleWithoutAProtocol();
+	rejectsUnknownFieldsBeforeBackendMutation();
+	rejectsInvalidNewRuleFieldTypes();
 	acceptsMaximumDestinationPortAndNullOptionalAddresses();
 	rejectsInvalidRuleRequestsBeforeBackendMutation();
 	deletesRuleByPositiveHandle();

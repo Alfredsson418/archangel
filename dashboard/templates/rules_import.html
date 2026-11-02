@@ -28,12 +28,11 @@
       {% if omitted_unsupported_rules %}<div class="notice" role="status">{{ omitted_unsupported_rules }} unsupported rule(s) were omitted when this bundle was exported. They cannot be recreated by the current structured-rule API.</div>{% endif %}
       <div class="panel-heading"><div><p class="eyebrow">REVIEW BEFORE APPLYING</p><h2 id="preview-heading">{{ preview_rules|length }} rules will be added</h2></div><span class="table-summary">EXISTING RULES WILL REMAIN</span></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>FAMILY</th><th>TABLE</th><th>CHAIN</th><th>PROTOCOL</th><th>ACTION</th><th>MATCHES</th></tr></thead>
+        <thead><tr><th>FAMILY</th><th>TABLE</th><th>CHAIN</th><th>RULE</th></tr></thead>
         <tbody>{% for rule in preview_rules %}
           <tr>
             <td class="code-cell">{{ rule.family }}</td><td class="code-cell">{{ rule.table }}</td><td class="code-cell">{{ rule.chain }}</td>
-            <td class="code-cell">{{ rule.protocol }}</td><td class="code-cell">{{ rule.action }}</td>
-            <td class="expression-cell">{{ rule.get("source_address", "") }} {{ rule.get("destination_address", "") }} {{ rule.get("destination_port", "") }}</td>
+            <td class="expression-cell">{{ rule.description }}</td>
           </tr>
         {% endfor %}</tbody>
       </table></div>

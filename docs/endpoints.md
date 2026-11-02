@@ -22,7 +22,7 @@ Downloads `archangel-firewall-rules.json`, a versioned JSON snapshot containing 
 ```json
 {
   "format": "archangel-firewall-rules",
-  "version": 1,
+  "version": 2,
   "rules": [
     {
       "family": "inet",
@@ -37,11 +37,11 @@ Downloads `archangel-firewall-rules.json`, a versioned JSON snapshot containing 
 }
 ```
 
-The `omitted_unsupported_rules` count indicates rules from the active ruleset that cannot be represented by the structured API. Unsupported nftables expressions are omitted, not translated or preserved. Exported bundles do not include API URLs, service settings, or arbitrary nftables commands. The `X-Archangel-Skipped-Rules` response header provides the same count when nonzero.
+The `omitted_unsupported_rules` count indicates rules from the active ruleset that cannot be represented by the structured API. Unsupported nftables expressions are omitted, not translated or preserved. Rule fields are the same as for [`POST /api/v1/rules`](#post-apiv1rules). Exported bundles do not include API URLs, service settings, or arbitrary nftables commands. The `X-Archangel-Skipped-Rules` response header provides the same count when nonzero.
 
 ### `GET, POST /rules/import`
 
-`GET` renders the import page. `POST` with multipart form field `bundle_file` validates a JSON bundle and shows a preview; a separate confirmation submission is required before applying it. The importer accepts only the bundle format and version above, up to 512 KiB and 1,000 rules, and validates all rules before making backend requests. Bundles may contain zero rules, which is a no-op.
+`GET` renders the import page. `POST` with multipart form field `bundle_file` validates a JSON bundle and shows a preview; a separate confirmation submission is required before applying it. The importer accepts the bundle format above in version 2, or in version 1, which predates subnets, port ranges, interfaces, connection state, ICMP, and rules without a protocol. It accepts up to 512 KiB and 1,000 rules, and validates all rules before making backend requests. Bundles may contain zero rules, which is a no-op.
 
 Import is additive: it calls `POST /api/v1/rules` once per rule and does not delete or replace existing rules. Each change takes effect immediately. These calls are not atomic; if a later API call fails, earlier rules remain applied and the page reports the partial count. A preview warns about rules omitted during export. The bundle is a portable snapshot only; it is not loaded automatically on backend startup and does not make nftables rules persistent across restarts. The preview/apply form uses a session-bound CSRF token and explicit confirmation; this is not backend authentication or authorization.
 
@@ -287,7 +287,20 @@ Adds one rule to an existing family/table/chain. The request is JSON; raw nftabl
 }
 ```
 
-`source_address`, `destination_address`, and `destination_port` are optional, but at least one match is required. Supported families are `ip`, `ip6`, and `inet`; protocols are `tcp` and `udp`; verdicts are `accept`, `drop`, and `reject`. Success returns HTTP `201`.
+Every field except `family`, `table`, `chain`, and `action` is optional, but at least one match is required.
+
+| Field | Accepted values |
+| --- | --- |
+| `family` | `ip`, `ip6`, or `inet` |
+| `protocol` | `tcp`, `udp`, `icmp`, or `icmpv6`. `icmp` needs the `ip` or `inet` family, and `icmpv6` needs `ip6` or `inet`. |
+| `source_address`, `destination_address` | One address, or one subnet in CIDR form. A subnet with host bits set, such as `192.168.1.5/24`, is rejected, because nftables would otherwise store a different subnet. Both must use the same IP version, matching the family and protocol. |
+| `destination_port` | A port from 1 to 65535. Requires `protocol` to be `tcp` or `udp`. |
+| `destination_port_end` | The last port of a range starting at `destination_port`. |
+| `input_interface`, `output_interface` | One interface name, of up to 15 letters, digits, `.`, `_`, or `-`. The interface doesn't have to exist yet, so a mistyped name is accepted. |
+| `connection_states` | A list of `new`, `established`, `related`, and `invalid`. |
+| `action` | `accept`, `drop`, or `reject` |
+
+Unknown fields are rejected, so that a backend that doesn't understand a field can't create a broader rule than requested. Success returns HTTP `201`.
 
 ### `DELETE /api/v1/rules`
 

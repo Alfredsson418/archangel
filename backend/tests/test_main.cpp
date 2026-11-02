@@ -6,6 +6,7 @@ void runAuthProviderTests();
 void runRuntimeConfigTests();
 void runNftStatisticsTests();
 void runNftImportTests();
+void runNftRuleTests();
 void runRulesApiTests();
 void runStatsApiTests();
 void runFirewallBundleCommandTests();
@@ -23,6 +24,7 @@ int main() {
 		runFirewallBundleTests();
 		runNftStatisticsTests();
 		runNftImportTests();
+		runNftRuleTests();
 		runRulesApiTests();
 		runStatsApiTests();
 		runFirewallBundleCommandTests();

@@ -24,6 +24,7 @@ from .firewall_rules import (
     MAX_IMPORTED_RULES,
     MAX_RULE_BUNDLE_BYTES,
     MAX_RULE_BUNDLE_SIZE_TEXT,
+    describe_rule,
     firewall_status,
     portable_bundle,
     rules_from,
@@ -384,7 +385,7 @@ def import_rules():
         return render_template("rules_import.html", error=f"Invalid firewall bundle: {error}"), 400
     return render_template(
         "rules_import.html",
-        preview_rules=rules,
+        preview_rules=[dict(rule, description=describe_rule(rule)) for rule in rules],
         bundle_json=json.dumps(bundle, separators=(",", ":")),
         omitted_unsupported_rules=bundle.get("omitted_unsupported_rules", 0),
     )

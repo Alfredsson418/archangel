@@ -1,8 +1,13 @@
 #include "http/api/rules.hpp"
 #include "api_common.hpp"
+#include "config/app_config.hpp"
+#include <algorithm>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace Http {
 
@@ -63,42 +68,105 @@ std::optional<std::string> optionalString(const Json &body, const char *field) {
 }
 
 /**
+ * @brief Rejects properties the API does not recognize.
+ *
+ * Without this, a backend that predates a field would ignore it and could
+ * create a broader rule than the caller asked for.
+ *
+ * @param body JSON request object.
+ * @param allowed Every property the operation accepts.
+ * @return No value.
+ * @throws ValidationError If the body has any other property.
+ */
+void rejectUnknownFields(const Json &body,
+						 std::initializer_list<std::string_view> allowed) {
+	for (const auto &item : body.items()) {
+		if (std::find(allowed.begin(), allowed.end(), item.key()) ==
+			allowed.end()) {
+			throw ValidationError("Request contains an unsupported field");
+		}
+	}
+}
+
+/**
+ * @brief Reads an optional port property.
+ * @param body JSON object containing the property.
+ * @param field Name of the optional property.
+ * @return The port, or std::nullopt if absent or null.
+ * @throws ValidationError If the value is not an integer from 1 to 65535.
+ */
+std::optional<std::uint16_t> optionalPort(const Json &body, const char *field) {
+	const auto port = body.find(field);
+	if (port == body.end() || port->is_null()) {
+		return std::nullopt;
+	}
+	if (!port->is_number_integer()) {
+		throw ValidationError(std::string(field) + " must be an integer");
+	}
+	if (port->is_number_unsigned() ? port->get<std::uint64_t>() == 0 ||
+										 port->get<std::uint64_t>() > 65535
+								   : port->get<std::int64_t>() < 1 ||
+										 port->get<std::int64_t>() > 65535) {
+		throw ValidationError(std::string(field) +
+							  " must be between 1 and 65535");
+	}
+	return static_cast<std::uint16_t>(port->get<std::uint64_t>());
+}
+
+/**
+ * @brief Reads the optional list of connection states.
+ * @param body JSON object containing the property.
+ * @return The listed states, or an empty list if absent or null.
+ * @throws ValidationError If the value is not a bounded list of strings.
+ */
+std::vector<std::string> connectionStates(const Json &body) {
+	const auto states = body.find("connection_states");
+	if (states == body.end() || states->is_null()) {
+		return {};
+	}
+	if (!states->is_array() ||
+		states->size() > Config::Limits::MAX_CONNECTION_STATES) {
+		throw ValidationError("connection_states must be a list of up to " +
+							  std::to_string(
+								  Config::Limits::MAX_CONNECTION_STATES) +
+							  " states");
+	}
+	std::vector<std::string> result;
+	for (const Json &state : *states) {
+		if (!state.is_string()) {
+			throw ValidationError("connection_states must contain strings");
+		}
+		result.push_back(state.get<std::string>());
+	}
+	return result;
+}
+
+/**
  * @brief Converts and validates rule fields into the backend-neutral model.
  * @param body JSON request object.
  * @return Structured rule ready to pass to the firewall backend.
- * @throws ValidationError If a required field or destination port is invalid.
+ * @throws ValidationError If a field is unknown, or a required field or port
+ * is invalid.
  */
 Firewall::RuleSpec parseRule(const Json &body) {
+	rejectUnknownFields(body, {"family", "table", "chain", "protocol",
+							   "source_address", "destination_address",
+							   "destination_port", "destination_port_end",
+							   "input_interface", "output_interface",
+							   "connection_states", "action"});
 	Firewall::RuleSpec rule;
-	rule.family				 = requiredString(body, "family");
-	rule.table				 = requiredString(body, "table");
-	rule.chain				 = requiredString(body, "chain");
-	rule.protocol			 = requiredString(body, "protocol");
-	rule.action				 = requiredString(body, "action");
-	rule.source_address		 = optionalString(body, "source_address");
-	rule.destination_address = optionalString(body, "destination_address");
-
-	const auto port = body.find("destination_port");
-	if (port != body.end() && !port->is_null()) {
-		std::uint64_t value = 0;
-		if (port->is_number_unsigned()) {
-			value = port->get<std::uint64_t>();
-		} else if (port->is_number_integer()) {
-			const auto signedValue = port->get<std::int64_t>();
-			if (signedValue < 0) {
-				throw ValidationError(
-					"destination_port must be between 1 and 65535");
-			}
-			value = static_cast<std::uint64_t>(signedValue);
-		} else {
-			throw ValidationError("destination_port must be an integer");
-		}
-		if (value == 0 || value > 65535) {
-			throw ValidationError(
-				"destination_port must be between 1 and 65535");
-		}
-		rule.destination_port = static_cast<std::uint16_t>(value);
-	}
+	rule.family				  = requiredString(body, "family");
+	rule.table				  = requiredString(body, "table");
+	rule.chain				  = requiredString(body, "chain");
+	rule.protocol			  = optionalString(body, "protocol");
+	rule.action				  = requiredString(body, "action");
+	rule.source_address		  = optionalString(body, "source_address");
+	rule.destination_address  = optionalString(body, "destination_address");
+	rule.destination_port	  = optionalPort(body, "destination_port");
+	rule.destination_port_end = optionalPort(body, "destination_port_end");
+	rule.input_interface	  = optionalString(body, "input_interface");
+	rule.output_interface	  = optionalString(body, "output_interface");
+	rule.connection_states	  = connectionStates(body);
 	return rule;
 }
 
@@ -164,6 +232,7 @@ void deleteRule(Firewall::Backend &firewall, const httplib::Request &request,
 				httplib::Response &response) {
 	try {
 		const Json body = parseObject(request);
+		rejectUnknownFields(body, {"family", "table", "chain", "handle"});
 		firewall.deleteRule(requiredString(body, "family"),
 							requiredString(body, "table"),
 							requiredString(body, "chain"), parseHandle(body));

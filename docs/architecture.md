@@ -36,6 +36,7 @@ Peer enrollment is intended to begin with an enrollment token that bootstraps a 
 | `backend/include/firewall/bundle.hpp` | Portable versioned firewall-bundle schema, parser, and serializer. |
 | `backend/include/firewall/firewall_bundle_provider.hpp` | Optional capability for native firewall bundle import/export. |
 | `backend/include/firewall/providers/`, `backend/src/firewall/providers/` | Firewall implementations, currently nftables, with their private parsing and import helpers. |
+| `backend/src/firewall/providers/nft_rule.cpp` | Private validation of structured rules and construction of their nftables statements, kept separate from `nft.cpp` so that it can be tested without libnftables. |
 | `backend/src/firewall/bundle.cpp` | Firewall-bundle schema validation, parsing, and serialization. |
 | `backend/include/auth/auth_provider.hpp` | Backend-owned authentication contract and identity, session, and account types. |
 | `backend/include/auth/providers/`, `backend/src/auth/providers/` | Authentication implementations, currently SQLite/Argon2id, with its private storage and migration code. |
