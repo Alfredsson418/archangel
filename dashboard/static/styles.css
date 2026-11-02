@@ -1,3 +1,10 @@
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 400; font-display: swap; src: url("vendor/fonts/manrope-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 500; font-display: swap; src: url("vendor/fonts/manrope-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 700; font-display: swap; src: url("vendor/fonts/manrope-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 800; font-display: swap; src: url("vendor/fonts/manrope-latin-800-normal.woff2") format("woff2"); }
+@font-face { font-family: "DM Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("vendor/fonts/dm-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "DM Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("vendor/fonts/dm-mono-latin-500-normal.woff2") format("woff2"); }
+
 :root {
   color-scheme: light;
   --paper: #f3f6f8;

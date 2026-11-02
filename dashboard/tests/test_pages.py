@@ -7,6 +7,26 @@ from .helpers import DashboardTestCase, UpstreamResponse
 
 
 class DashboardPageTests(DashboardTestCase):
+    def test_pages_load_nothing_from_other_sites(self):
+        # Isolated networks can't reach them.
+        response = self.client.get("/login")
+        with self.client.session_transaction() as browser_session:
+            browser_session.clear()
+        response.close()
+        response = self.client.get("/login")
+        self.assertNotIn(b"https://", response.data)
+        self.assertNotIn(b"http://", response.data)
+        response.close()
+
+    def test_bundled_fonts_are_served(self):
+        response = self.client.get("/static/styles.css")
+        self.assertIn(b"vendor/fonts/manrope-latin-400-normal.woff2", response.data)
+        response.close()
+        for font in ("manrope-latin-400-normal.woff2", "dm-mono-latin-400-normal.woff2"):
+            response = self.client.get(f"/static/vendor/fonts/{font}")
+            self.assertEqual(response.status_code, 200)
+            response.close()
+
     @patch("webapp.api_client.urlopen")
     def test_dashboard_renders_server_health_and_summary(self, urlopen):
         responses = {
