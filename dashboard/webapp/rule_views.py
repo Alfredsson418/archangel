@@ -17,10 +17,13 @@ from .firewall_changes import (
     ADD_RULE,
     DELETE_RULE,
     REPLACE_RULE,
+    SET_RULE_ORDER,
+    MANAGED_RULE_COMMENT,
     affects_incoming_traffic,
     api_payload,
     apply_to_ruleset,
     chain_key,
+    chain_rules,
     change_chain,
     change_warnings,
     chains_from,
@@ -29,6 +32,7 @@ from .firewall_changes import (
     find_rule,
     highlight_entries,
     is_unmanaged,
+    rule_key,
     management_risk,
     pending_on_rule,
     stale_changes,
@@ -443,6 +447,105 @@ def import_rules():
     )
 
 
+def _order_row(rule):
+    """Describe one rule on the organize page.
+
+    Returns:
+        A dictionary with the rule's form value, its key, its description, and
+        whether Archangel manages it.
+    """
+    key = rule_key(rule)
+    return {
+        "key": key,
+        "value": f"new:{key}" if rule.get("handle") == "new" else f"handle:{key}",
+        "text": describe_listed_rule(rule),
+        "is_new": rule.get("handle") == "new",
+        "unmanaged": rule.get("comment") != MANAGED_RULE_COMMENT,
+    }
+
+
+def _submitted_order(values, rows):
+    """Convert submitted order values into rows, requiring every rule once.
+
+    Returns:
+        A list of rows in the submitted order, or None if it isn't complete.
+    """
+    by_value = {row["value"]: row for row in rows}
+    if sorted(values) != sorted(by_value):
+        return None
+    return [by_value[value] for value in values]
+
+
+@pages.route("/rules/organize", methods=["GET", "POST"])
+def organize_rules():
+    """Show a chain's rules in true order, or add a new order to pending changes.
+
+    Returns:
+        The rendered page with an HTTP status, or a redirect.
+    """
+    source = request.form if request.method == "POST" else request.args
+    parts = source.get("chain", "").split(" ")
+    ruleset, error = load("/api/v1/rules")
+    if error is None:
+        error = ruleset_shape_error(ruleset)
+    if error:
+        return _rules_redirect(False, error)
+    if len(parts) != 3 or chain_key(*parts) not in {
+        chain_key(chain.get("family"), chain.get("table"), chain.get("name")) for chain in chains_from(ruleset)
+    }:
+        return _rules_redirect(False, "This chain no longer exists.")
+    family, table, chain = parts
+
+    actor = _actor_id()
+    pending = pending_changes.load(actor)
+    is_this_order = lambda change: change["type"] == SET_RULE_ORDER and change_chain(change) == chain_key(*parts)
+    others = [change for change in pending["changes"] if not is_this_order(change)]
+    base_rows = [_order_row(rule) for rule in chain_rules(apply_to_ruleset(ruleset, others), family, table, chain)]
+    shown = apply_to_ruleset(ruleset, pending["changes"])
+    current_rows = [_order_row(rule) for rule in chain_rules(shown, family, table, chain)]
+    render = lambda rows, **kwargs: render_template("organize.html", chain=chain_key(*parts), rows=rows, **kwargs)
+    if request.method == "GET":
+        return render(current_rows)
+
+    values = request.form.getlist("order")
+    if request.form.get("form_action") == "move":
+        moving = request.form.get("move_rule", "")
+        position = request.form.get("move_position", "")
+        remaining = [row["value"] for row in current_rows if row["value"] != moving]
+        if len(remaining) == len(current_rows) or not position.isdecimal() or not 1 <= int(position) <= len(current_rows):
+            return render(current_rows, error=f"Choose a rule and a position from 1 to {len(current_rows)}."), 400
+        remaining.insert(int(position) - 1, moving)
+        values = remaining
+    rows = _submitted_order(values, base_rows)
+    if rows is None:
+        return render(current_rows, error="This chain has changed since the page loaded. Review the current order. Nothing was added."), 409
+    if [row["value"] for row in rows] == [row["value"] for row in base_rows]:
+        if len(others) != len(pending["changes"]):
+            pending["changes"] = others
+            pending_changes.save(actor, pending)
+        return redirect(url_for("pages.review_changes"))
+    if len(others) != len(pending["changes"]):
+        pending["changes"] = others
+        pending_changes.save(actor, pending)
+    store_error = _store_changes(
+        [
+            {
+                "type": SET_RULE_ORDER,
+                "family": family,
+                "table": table,
+                "chain": chain,
+                "order": [row["key"] for row in rows],
+                "old_order": [{"key": row["key"], "text": row["text"], "unmanaged": row["unmanaged"]} for row in base_rows],
+                "new_order": [{"key": row["key"], "text": row["text"]} for row in rows],
+            }
+        ]
+    )
+    if store_error:
+        return render(current_rows, error=store_error), 409
+    current_app.logger.info("firewall_change_added type=%s", SET_RULE_ORDER)
+    return redirect(url_for("pages.review_changes"))
+
+
 def _rules_redirect(success, message, applied=()):
     """Return to the rules page, which shows the result once.
 
@@ -638,7 +741,11 @@ def _review_context(pending, *, error=None, rejected_index=None):
     for index, change in enumerate(changes):
         problem = None
         if change["id"] in stale:
-            problem = "This rule has changed or no longer exists. Remove this change."
+            problem = (
+                "This chain's rules have changed. Remove this change and organize them again."
+                if change["type"] == SET_RULE_ORDER
+                else "This rule has changed or no longer exists. Remove this change."
+            )
         elif change["id"] in conflicting:
             problem = "This chain has changed since you added this. Review it against the current firewall."
         elif index == rejected_index:
@@ -711,7 +818,13 @@ def remove_change():
     """
     actor = _actor_id()
     pending = pending_changes.load(actor)
-    pending["changes"] = [change for change in pending["changes"] if change["id"] != request.form.get("id")]
+    removed = request.form.get("id")
+    pending["changes"] = [change for change in pending["changes"] if change["id"] != removed]
+    # A rule that's no longer being added can't have a place in a pending order.
+    for change in pending["changes"]:
+        if change["type"] == SET_RULE_ORDER:
+            change["order"] = [key for key in change["order"] if key != removed]
+            change["new_order"] = [row for row in change["new_order"] if row["key"] != removed]
     pending_changes.save(actor, pending)
     return redirect(url_for("pages.review_changes"))
 

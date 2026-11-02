@@ -53,6 +53,10 @@ Import is additive: it adds rules and does not delete or replace existing ones. 
 
 `GET` renders the rule form with an existing rule's values, identified by `family`, `table`, `chain`, and `handle`. `POST` previews the edit as before and new, or adds it to pending changes. An edit keeps the rule's position, handle, and comment, and can't move it to another chain. A rule that uses features the form can't represent can't be edited here, but can still be deleted. A rule can have only one pending change at a time.
 
+### `GET, POST /rules/organize`
+
+`GET` shows the rules of the chain named by `chain` in true order, including pending new rules. `POST` adds a new order to pending changes, replacing any pending order for that chain. The `order` fields list every rule once, as `handle:N` or `new:ID`; a list that no longer matches the chain is refused. With `form_action=move`, `move_rule` and `move_position` move one rule instead. This form doesn't need JavaScript. With JavaScript, rules can also be dragged, or moved with buttons.
+
 ### `POST /rules/delete`
 
 Adds a rule's deletion to pending changes, without changing the firewall. The fields are `family`, `table`, `chain`, and `handle`.

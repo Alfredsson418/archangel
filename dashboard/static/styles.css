@@ -257,3 +257,21 @@ tbody tr:last-child td { border-bottom: 0; }
 .review-confirm { display: grid; gap: 12px; }
 .rule-just-applied td { background: #e6f7f6; }
 .applied-flag { display: inline-block; margin-bottom: 4px; border: 1px solid var(--teal); padding: 1px 6px; color: #075f63; font: 700 10px var(--mono); }
+.change-moves { margin: 8px 0 0; padding-left: 18px; font-family: var(--mono); font-size: 11px; }
+.change-order { margin-top: 6px; font-size: 11px; }
+.change-order summary { cursor: pointer; color: var(--blue); font-weight: 700; }
+.change-order summary:focus-visible { outline: 2px solid var(--teal); }
+.rule-order-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.rule-order-row { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--white); font-size: 12px; }
+.rule-order-row.sortable-ghost { background: #e6f7f6; }
+.rule-order-position { min-width: 28px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.rule-order-text { flex: 1; min-width: 0; font-family: var(--mono); font-size: 11px; word-break: break-word; }
+.rule-order-tag { border: 1px solid var(--line); padding: 1px 6px; color: var(--muted); font: 700 10px var(--mono); white-space: nowrap; }
+.drag-handle { border: 1px solid var(--line); padding: 4px 8px; background: #f9fbfc; color: var(--muted); cursor: grab; font: 700 12px var(--mono); touch-action: none; }
+.rule-order-move { display: flex; gap: 6px; }
+.rule-order-move button { min-height: 28px; border: 1px solid var(--line); padding: 0 8px; background: #f9fbfc; color: var(--blue); cursor: pointer; font-size: 11px; font-weight: 700; }
+.rule-order-move button:focus-visible, .drag-handle:focus-visible { outline: 2px solid var(--teal); }
+.organize-fallback { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 18px 20px; font-size: 12px; }
+.organize-fallback label { display: block; margin-bottom: 6px; font-weight: 700; }
+.organize-fallback select, .organize-fallback input { min-height: 34px; max-width: 100%; border: 1px solid var(--line); padding: 0 8px; background: #f9fbfc; color: var(--ink); font: 12px var(--sans); }
+@media (max-width: 640px) { .rule-order-row { flex-wrap: wrap; } .rule-order-text { flex-basis: 100%; order: 3; } }

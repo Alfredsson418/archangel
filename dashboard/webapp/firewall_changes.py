@@ -15,6 +15,7 @@ MANAGED_RULE_COMMENT = "archangel-managed"
 ADD_RULE = "add_rule"
 DELETE_RULE = "delete_rule"
 REPLACE_RULE = "replace_rule"
+SET_RULE_ORDER = "set_rule_order"
 # Leave-one-out analysis repeats the connection check for each candidate. Past
 # this many, every candidate is flagged rather than making the page slow.
 _MAX_FLAG_CANDIDATES = 64
@@ -83,7 +84,7 @@ def pending_on_rule(changes, family, table, chain, handle):
         True if a pending edit or deletion names this rule.
     """
     return any(
-        change["type"] != ADD_RULE
+        change["type"] in (DELETE_RULE, REPLACE_RULE)
         and change_chain(change) == chain_key(family, table, chain)
         and change["handle"] == handle
         for change in changes
@@ -172,9 +173,12 @@ def apply_to_ruleset(ruleset, changes):
                         "handle": "new",
                         "comment": MANAGED_RULE_COMMENT,
                         "expr": rule_statements(rule),
+                        "pending_id": change.get("id"),
                     }
                 }
             )
+        elif change["type"] == SET_RULE_ORDER:
+            _reorder_entries(entries, change)
         elif change["type"] == REPLACE_RULE:
             rule = change["rule"]
             target = find_rule(result, rule["family"], rule["table"], rule["chain"], change["handle"])
@@ -194,6 +198,53 @@ def apply_to_ruleset(ruleset, changes):
                 )
             ]
     return result
+
+
+def rule_key(rule):
+    """Identify a rule within a chain's order.
+
+    Returns:
+        The handle of an existing rule, or the pending ID of a new one.
+    """
+    return rule["pending_id"] if rule.get("handle") == "new" else rule.get("handle")
+
+
+def chain_rules(ruleset, family, table, chain):
+    """List a chain's rules in order.
+
+    Returns:
+        A list of rule dictionaries.
+    """
+    return [
+        rule
+        for rule in rules_from(ruleset)
+        if rule.get("family") == family and rule.get("table") == table and rule.get("chain") == chain
+    ]
+
+
+def _reorder_entries(entries, change):
+    """Put a chain's rule entries into a change's order, in place.
+
+    Returns:
+        None. Entries the order doesn't mention stay at the end, and are
+        reported separately by stale_changes.
+    """
+    positions = {key: index for index, key in enumerate(change["order"])}
+    indexes = [
+        index
+        for index, entry in enumerate(entries)
+        if isinstance(entry, dict)
+        and isinstance(entry.get("rule"), dict)
+        and entry["rule"].get("family") == change["family"]
+        and entry["rule"].get("table") == change["table"]
+        and entry["rule"].get("chain") == change["chain"]
+    ]
+    ordered = sorted(
+        (entries[index] for index in indexes),
+        key=lambda entry: positions.get(rule_key(entry["rule"]), len(positions)),
+    )
+    for index, entry in zip(indexes, ordered):
+        entries[index] = entry
 
 
 def _without_counters(rule):
@@ -217,9 +268,14 @@ def stale_changes(ruleset, changes):
     """
     chains = {chain_key(chain.get("family"), chain.get("table"), chain.get("name")) for chain in chains_from(ruleset)}
     stale = set()
-    for change in changes:
+    for index, change in enumerate(changes):
         if change_chain(change) not in chains:
             stale.add(change["id"])
+        elif change["type"] == SET_RULE_ORDER:
+            earlier = apply_to_ruleset(ruleset, changes[:index])
+            current = chain_rules(earlier, change["family"], change["table"], change["chain"])
+            if sorted(map(str, change["order"])) != sorted(str(rule_key(rule)) for rule in current):
+                stale.add(change["id"])
         elif change["type"] in (DELETE_RULE, REPLACE_RULE):
             target = change["rule"] if change["type"] == REPLACE_RULE else change
             current = find_rule(ruleset, target["family"], target["table"], target["chain"], change["handle"])
@@ -235,7 +291,8 @@ def describe_listed_rule(rule):
         A description, or the rule's JSON statements if it can't be represented.
     """
     portable = portable_rule(rule)
-    return describe_rule(portable) if portable else json.dumps(rule.get("expr", []))
+    # Without counter values, so that traffic doesn't change the description.
+    return describe_rule(portable) if portable else json.dumps(_without_counters(rule))
 
 
 def describe_change(change):
@@ -250,6 +307,19 @@ def describe_change(change):
             "target": change_chain(change),
             "before": "(none)",
             "new": describe_rule(change["rule"]),
+        }
+    if change["type"] == SET_RULE_ORDER:
+        moved = moved_rules(change)
+        return {
+            "kind": "Rule order",
+            "target": change_chain(change),
+            "before": f"{len(change['old_order'])} rules in the current order",
+            "new": f"{len(moved)} moved",
+            "moves": [
+                f"{move['text']}: position {move['old']} -> position {move['new']}" if move["old"] else f"{move['text']}: new -> position {move['new']}"
+                for move in moved
+            ],
+            "new_order": [row["text"] for row in change["new_order"]],
         }
     if change["type"] == REPLACE_RULE:
         return {
@@ -266,13 +336,34 @@ def describe_change(change):
     }
 
 
+def moved_rules(change):
+    """List the rules whose position an order change alters.
+
+    Returns:
+        A list of dictionaries with "key", "text", "old", and "new". Positions
+        count from 1, and "old" is None for a rule that's new to the chain.
+    """
+    old_positions = {row["key"]: index for index, row in enumerate(change["old_order"], start=1)}
+    moves = []
+    for index, row in enumerate(change["new_order"], start=1):
+        old = old_positions.get(row["key"])
+        if old != index:
+            moves.append({"key": row["key"], "text": row["text"], "old": old, "new": index})
+    return moves
+
+
 def is_unmanaged(change):
     """Report whether a change affects a rule Archangel doesn't manage.
 
     Returns:
-        True if it changes an existing rule without the managed marker.
+        True if it changes or moves an existing rule without the managed marker.
     """
-    return change["type"] != ADD_RULE and change["before"].get("comment") != MANAGED_RULE_COMMENT
+    if change["type"] == ADD_RULE:
+        return False
+    if change["type"] == SET_RULE_ORDER:
+        unmanaged = {row["key"] for row in change["old_order"] if row.get("unmanaged")}
+        return any(move["key"] in unmanaged for move in moved_rules(change))
+    return change["before"].get("comment") != MANAGED_RULE_COMMENT
 
 
 def _hooks_by_chain(ruleset):
@@ -352,11 +443,33 @@ def change_warnings(ruleset, after, change, interfaces=None):
     hook = _hooks_by_chain(ruleset).get(change_chain(change))
     if change["type"] == ADD_RULE:
         return _rule_warnings(change["rule"], hook, after, interfaces)
+    if change["type"] == SET_RULE_ORDER:
+        return _order_warnings(ruleset, after, change, hook)
     warnings = _rule_warnings(change["rule"], hook, after, interfaces) if change["type"] == REPLACE_RULE else []
     if hook == "input" and portable_action(change["before"]) == "accept":
         warnings.append("This could remove access that's currently allowed.")
     if is_unmanaged(change):
         warnings.append("Archangel doesn't manage this rule. Another program or administrator may depend on it.")
+    return warnings
+
+
+def _order_warnings(ruleset, after, change, hook):
+    """List warnings about a new rule order.
+
+    Returns:
+        A list of warning messages.
+    """
+    warnings = []
+    moved = {move["key"] for move in moved_rules(change)}
+    current = chain_rules(ruleset, change["family"], change["table"], change["chain"])
+    if hook == "input" and any(rule.get("handle") in moved and portable_action(rule) == "accept" for rule in current):
+        warnings.append("This could remove access that's currently allowed.")
+    if is_unmanaged(change):
+        warnings.append("This moves rules Archangel doesn't manage. Another program or administrator may depend on them.")
+    rules = chain_rules(after, change["family"], change["table"], change["chain"])
+    ends = next((index for index, rule in enumerate(rules) if _ends_chain(rule)), None)
+    if ends is not None and ends < len(rules) - 1:
+        warnings.append("A rule in this order always applies, so the rules below it may never take effect.")
     return warnings
 
 
@@ -419,6 +532,8 @@ def _could_affect_connection(change, connection):
     """
     if change["type"] == ADD_RULE:
         return rule_could_affect(rule_statements(change["rule"]), connection)
+    if change["type"] == SET_RULE_ORDER:
+        return True
     if change["type"] == REPLACE_RULE and rule_could_affect(rule_statements(change["rule"]), connection):
         return True
     return rule_could_affect(change["before"].get("expr"), connection)
@@ -431,9 +546,24 @@ def api_payload(pending):
         A JSON-compatible dictionary with the expected revisions and changes.
     """
     changes = []
+    # Only rules an order refers to need an ID in the request.
+    placed = {key for change in pending["changes"] if change["type"] == SET_RULE_ORDER for key in change["order"]}
     for change in pending["changes"]:
         if change["type"] == ADD_RULE:
-            changes.append({"type": ADD_RULE, "rule": change["rule"]})
+            entry = {"type": ADD_RULE, "rule": change["rule"]}
+            if change["id"] in placed:
+                entry["id"] = change["id"]
+            changes.append(entry)
+        elif change["type"] == SET_RULE_ORDER:
+            changes.append(
+                {
+                    "type": SET_RULE_ORDER,
+                    "family": change["family"],
+                    "table": change["table"],
+                    "chain": change["chain"],
+                    "order": change["order"],
+                }
+            )
         elif change["type"] == REPLACE_RULE:
             changes.append({"type": REPLACE_RULE, "handle": change["handle"], "rule": change["rule"]})
         else:
@@ -474,9 +604,16 @@ def verify_applied(ruleset, changes):
         True if every change is visible in the ruleset.
     """
     listed = [portable_rule(rule) for rule in rules_from(ruleset)]
-    for change in changes:
+    for index, change in enumerate(changes):
         if change["type"] == ADD_RULE:
             if change["rule"] not in listed:
+                return False
+        elif change["type"] == SET_RULE_ORDER:
+            # A later change to this chain alters its rules after the order.
+            if any(change_chain(later) == change_chain(change) for later in changes[index + 1 :]):
+                continue
+            rules = chain_rules(ruleset, change["family"], change["table"], change["chain"])
+            if [describe_listed_rule(rule) for rule in rules] != [row["text"] for row in change["new_order"]]:
                 return False
         elif change["type"] == REPLACE_RULE:
             rule = change["rule"]

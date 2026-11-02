@@ -17,6 +17,10 @@
         <td class="code-cell">{{ entry.summary.target }}</td>
         <td>
           <div class="change-transition">{{ entry.summary.before }} <span class="change-arrow">-&gt;</span> {{ entry.summary.new }}</div>
+          {% if entry.summary.moves %}
+            <ul class="change-moves">{% for move in entry.summary.moves %}<li>{{ move }}</li>{% endfor %}</ul>
+            <details class="change-order"><summary>Full new order</summary><ol>{% for rule in entry.summary.new_order %}<li>{{ rule }}</li>{% endfor %}</ol></details>
+          {% endif %}
           {% if entry.problem %}<p class="change-problem">Problem: {{ entry.problem }}</p>{% endif %}
           {% for warning in entry.warnings %}<p class="change-warning">Warning: {{ warning }}</p>{% endfor %}
         </td>

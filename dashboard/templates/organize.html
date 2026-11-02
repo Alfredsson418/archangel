@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% set page = "rules" %}
+
+{% block title %}Archangel | Organize rules{% endblock %}
+{% block breadcrumb %}FIREWALL CONFIGURATION / ORGANIZE RULES{% endblock %}
+{% block heading_label %}RULE ORDER{% endblock %}
+{% block page_heading %}Organize rules{% endblock %}
+{% block page_subtitle %}The first matching verdict wins, so order decides what the firewall does. A new order is a pending change: nothing changes until you review and apply it.{% endblock %}
+{% block page_status %}NOT APPLIED{% endblock %}
+
+{% block content %}
+  {% if error %}<div class="notice" role="alert">{{ error }}</div>{% endif %}
+  <section class="panel" aria-labelledby="order-heading">
+    <div class="panel-heading">
+      <div><p class="eyebrow">TRUE ORDER</p><h2 id="order-heading">{{ chain }}</h2></div>
+      <div class="rules-actions"><a class="text-button" href="{{ url_for('pages.rules_page') }}">Back to rules</a></div>
+    </div>
+    {% if not rows %}
+      <p class="rule-preview">This chain has no rules to organize.</p>
+    {% else %}
+      <form action="{{ url_for('pages.organize_rules') }}" method="post" id="order-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="chain" value="{{ chain }}">
+        <ol class="rule-order-list" id="rule-order-list">
+          {% for row in rows %}
+            <li class="rule-order-row">
+              <input type="hidden" name="order" value="{{ row.value }}">
+              <span class="drag-handle" hidden aria-hidden="true" title="Drag to move">::</span>
+              <span class="rule-order-position">{{ loop.index }}</span>
+              <span class="rule-order-text">{{ row.text }}</span>
+              {% if row.is_new %}<span class="rule-order-tag">PENDING NEW RULE</span>{% endif %}
+              <span class="rule-order-move" hidden>
+                <button type="button" data-move="up" aria-label="Move up: {{ row.text }}">Move up</button>
+                <button type="button" data-move="down" aria-label="Move down: {{ row.text }}">Move down</button>
+              </span>
+            </li>
+          {% endfor %}
+        </ol>
+        <p class="change-summary" id="order-status" role="status" hidden></p>
+        <div class="settings-form"><div class="settings-actions" style="margin-top:0;border-top:0;padding-top:0">
+          <button class="refresh-button" type="submit" hidden id="order-save">Add new order to pending changes</button>
+          <a class="text-button" href="{{ url_for('pages.rules_page') }}">Cancel</a>
+        </div></div>
+      </form>
+      <form class="organize-fallback" action="{{ url_for('pages.organize_rules') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="chain" value="{{ chain }}">
+        <div><label for="move-rule">Move this rule</label>
+          <select id="move-rule" name="move_rule" required>
+            {% for row in rows %}<option value="{{ row.value }}">{{ loop.index }}: {{ row.text|truncate(70) }}</option>{% endfor %}
+          </select></div>
+        <div><label for="move-position">To position</label>
+          <input id="move-position" name="move_position" type="number" min="1" max="{{ rows|length }}" required></div>
+        <button class="text-button" type="submit" name="form_action" value="move">Move and add to pending changes</button>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {% if rows|length > 1 %}
+    <script src="{{ url_for('static', filename='vendor/sortable-1.15.6.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='rule_order.js') }}"></script>
+  {% endif %}
+{% endblock %}

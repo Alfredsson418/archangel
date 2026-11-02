@@ -29,6 +29,7 @@ from .firewall_rules import (
     rules_from,
     ruleset_shape_error,
 )
+from .firewall_changes import chains_from
 from .formatting import host_context
 
 
@@ -267,6 +268,7 @@ def rules_page():
     return render_template(
         "rules.html",
         firewall_result=firewall_result,
+        chains=chains_from(ruleset) if error is None else [],
         rules=rules,
         total_rules=total_rules,
         error=error,

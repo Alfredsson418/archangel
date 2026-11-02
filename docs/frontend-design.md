@@ -15,4 +15,6 @@ The dashboard visual identity follows [the Archangel poster](../assets/archangel
 - Use semantic HTML and associated form labels. Support keyboard navigation and visible focus indicators.
 - Provide meaningful status and error text. Do not communicate errors or state using color alone.
 
+JavaScript is a progressive enhancement. Every workflow must work through server-rendered forms without it, and a script only rearranges a form that the server validates; it never calls the C++ API. Keep third-party libraries in `dashboard/static/vendor/` with their licenses, because isolated networks can't load them from a CDN.
+
 Build pages from the shared `base.html` layout and its Jinja blocks. Put page-specific content in the relevant template instead of duplicating the shell or navigation.

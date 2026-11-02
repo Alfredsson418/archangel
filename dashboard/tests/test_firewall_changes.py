@@ -979,3 +979,226 @@ class ChangeLogicTests(DashboardTestCase):
         self.assertFalse(verify_applied(before, [added]))
         self.assertFalse(verify_applied(before, [deleted]))
         self.assertTrue(verify_applied(apply_to_ruleset(before, [added, deleted]), [added, deleted]))
+
+
+class OrganizeTests(ChangeFlowTestCase):
+    CHAIN = "inet filter input"
+
+    def setUp(self):
+        super().setUp()
+        self.api.ruleset = {
+            "nftables": [
+                input_chain(),
+                listed_rule(1, port_match(1), {"accept": None}),
+                listed_rule(2, port_match(2), {"accept": None}),
+                listed_rule(3, port_match(3), {"drop": None}, comment=None),
+            ]
+        }
+
+    def organize(self, *order):
+        return self.client.post(
+            "/rules/organize",
+            data={"csrf_token": self.csrf_token(), "chain": self.CHAIN, "order": list(order)},
+        )
+
+    def page(self):
+        response = self.client.get("/rules/organize", query_string={"chain": self.CHAIN})
+        self.addCleanup(response.close)
+        return response
+
+    def test_lists_rules_in_true_order_without_changing_anything(self):
+        data = self.page().data
+        self.assertLess(data.index(b"to port 1"), data.index(b"to port 2"))
+        self.assertLess(data.index(b"to port 2"), data.index(b"to port 3"))
+        self.assertIn(b'value="handle:2"', data)
+        self.assertEqual(self.pending(), [])
+
+    def test_the_page_offers_the_script_and_a_form_that_works_without_it(self):
+        data = self.page().data
+        self.assertIn(b"rule_order.js", data)
+        self.assertIn(b"sortable-1.15.6.min.js", data)
+        self.assertIn(b'name="move_position"', data)
+        self.assertNotIn(b"cdn", data)
+
+    def test_the_script_and_library_are_served_locally(self):
+        for path in ("/static/rule_order.js", "/static/vendor/sortable-1.15.6.min.js"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            response.close()
+
+    def test_a_missing_chain_returns_to_the_rules_page(self):
+        response = self.client.get("/rules/organize", query_string={"chain": "inet filter gone"})
+        self.assertEqual(response.status_code, 302)
+        response.close()
+
+    def test_a_chain_without_rules_says_so(self):
+        self.api.ruleset = {"nftables": [input_chain()]}
+        self.assertIn(b"no rules to organize", self.page().data)
+
+    def test_saving_an_order_adds_a_pending_change(self):
+        response = self.organize("handle:2", "handle:1", "handle:3")
+        self.assertEqual(response.status_code, 302)
+        change = self.pending()[0]
+        self.assertEqual(change["type"], "set_rule_order")
+        self.assertEqual(change["order"], [2, 1, 3])
+
+    def test_the_review_shows_old_and_new_positions(self):
+        self.organize("handle:2", "handle:1", "handle:3").close()
+        response = self.client.get("/changes")
+        self.assertIn(b"Rule order", response.data)
+        self.assertIn(b"to port 2: position 2 -&gt; position 1", response.data)
+        self.assertIn(b"to port 1: position 1 -&gt; position 2", response.data)
+        self.assertNotIn(b"to port 3: position", response.data)
+        self.assertIn(b"Full new order", response.data)
+        response.close()
+
+    def test_applying_sends_one_order_change(self):
+        self.organize("handle:2", "handle:1", "handle:3").close()
+        self.apply().close()
+        self.assertEqual(
+            self.api.applied[0]["changes"],
+            [{"type": "set_rule_order", "family": "inet", "table": "filter", "chain": "input", "order": [2, 1, 3]}],
+        )
+
+    def test_a_tampered_or_outdated_order_is_refused(self):
+        for order in (("handle:1", "handle:2"), ("handle:1", "handle:2", "handle:3", "handle:9"), ("handle:1", "handle:1", "handle:2"), ("nope",)):
+            response = self.organize(*order)
+            self.assertEqual(response.status_code, 409, order)
+            self.assertEqual(self.pending(), [], order)
+            response.close()
+
+    def test_the_same_order_adds_nothing(self):
+        response = self.organize("handle:1", "handle:2", "handle:3")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.pending(), [])
+
+    def test_saving_again_replaces_the_pending_order(self):
+        self.organize("handle:2", "handle:1", "handle:3").close()
+        self.organize("handle:3", "handle:1", "handle:2").close()
+        changes = self.pending()
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["order"], [3, 1, 2])
+        self.assertLess(self.page().data.index(b"to port 3"), self.page().data.index(b"to port 1"))
+
+    def test_returning_to_the_original_order_removes_the_pending_order(self):
+        self.organize("handle:2", "handle:1", "handle:3").close()
+        self.organize("handle:1", "handle:2", "handle:3").close()
+        self.assertEqual(self.pending(), [])
+
+    def test_the_form_without_javascript_moves_one_rule(self):
+        response = self.client.post(
+            "/rules/organize",
+            data={"csrf_token": self.csrf_token(), "chain": self.CHAIN, "form_action": "move", "move_rule": "handle:3", "move_position": "1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response.close()
+        self.assertEqual(self.pending()[0]["order"], [3, 1, 2])
+
+    def test_the_form_without_javascript_rejects_bad_positions(self):
+        for position in ("0", "4", "x", ""):
+            response = self.client.post(
+                "/rules/organize",
+                data={"csrf_token": self.csrf_token(), "chain": self.CHAIN, "form_action": "move", "move_rule": "handle:3", "move_position": position},
+            )
+            self.assertEqual(response.status_code, 400, position)
+            response.close()
+        self.assertEqual(self.pending(), [])
+
+    def test_pending_new_rules_can_be_placed_among_existing_ones(self):
+        self.add_rule(destination_port="99")
+        new_id = self.pending()[0]["id"]
+        data = self.page().data
+        self.assertIn(b"PENDING NEW RULE", data)
+        self.organize(f"new:{new_id}", "handle:1", "handle:2", "handle:3").close()
+        changes = self.pending()
+        self.assertEqual(changes[1]["order"], [new_id, 1, 2, 3])
+        self.client.get("/changes").close()
+        body = self.api.checked[-1]
+        self.assertEqual(body["changes"][0]["id"], new_id)
+        self.assertEqual(body["changes"][1]["order"], [new_id, 1, 2, 3])
+
+    def test_rules_added_without_an_order_send_no_id(self):
+        self.add_rule(destination_port="99")
+        self.client.get("/changes").close()
+        self.assertNotIn("id", self.api.checked[-1]["changes"][0])
+
+    def test_pending_deletions_are_reflected_in_the_order(self):
+        self.delete_rule(1)
+        data = self.page().data
+        self.assertNotIn(b'value="handle:1"', data)
+        self.organize("handle:3", "handle:2").close()
+        self.assertEqual(self.pending()[1]["order"], [3, 2])
+
+    def test_removing_a_new_rule_also_removes_it_from_the_order(self):
+        self.add_rule(destination_port="99")
+        new_id = self.pending()[0]["id"]
+        self.organize(f"new:{new_id}", "handle:1", "handle:2", "handle:3").close()
+        self.post("/changes/remove", id=new_id).close()
+        changes = self.pending()
+        self.assertEqual(changes[0]["order"], [1, 2, 3])
+        self.assertEqual([row["key"] for row in changes[0]["new_order"]], [1, 2, 3])
+
+    def test_removing_a_deletion_makes_the_order_stale(self):
+        self.delete_rule(1)
+        deletion = self.pending()[0]["id"]
+        self.organize("handle:3", "handle:2").close()
+        self.post("/changes/remove", id=deletion).close()
+        response = self.client.get("/changes")
+        self.assertIn(b"organize them again", response.data)
+        self.assertIn(b"disabled", response.data)
+        response.close()
+
+    def test_a_move_that_blocks_the_api_is_flagged(self):
+        self.api.ruleset = {
+            "nftables": [
+                input_chain(),
+                listed_rule(1, port_match(8080), {"accept": None}),
+                listed_rule(2, port_match(8080), {"drop": None}),
+            ]
+        }
+        self.organize("handle:2", "handle:1").close()
+        response = self.client.get("/changes")
+        self.assertIn(b"1 MANAGEMENT RISK", response.data)
+        response.close()
+
+    def test_a_harmless_move_is_not_flagged(self):
+        self.organize("handle:2", "handle:1", "handle:3").close()
+        response = self.client.get("/changes")
+        self.assertIn(b"0 MANAGEMENT RISK", response.data)
+        response.close()
+
+    def test_moving_an_unmanaged_rule_needs_the_second_confirmation(self):
+        self.organize("handle:3", "handle:1", "handle:2").close()
+        response = self.client.get("/changes")
+        self.assertIn(b"moves rules Archangel doesn&#39;t manage", response.data)
+        response.close()
+        response = self.apply()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.api.applied, [])
+        response.close()
+        self.apply(confirm_risk="yes").close()
+        self.assertEqual(len(self.api.applied), 1)
+
+    def test_moving_only_managed_rules_needs_the_normal_confirmation(self):
+        self.organize("handle:2", "handle:1", "handle:3").close()
+        self.apply().close()
+        self.assertEqual(len(self.api.applied), 1)
+
+    def test_warns_when_rules_are_placed_below_one_that_always_applies(self):
+        self.api.ruleset = {
+            "nftables": [
+                input_chain(),
+                listed_rule(1, port_match(1), {"accept": None}),
+                listed_rule(2, {"accept": None}),
+            ]
+        }
+        self.organize("handle:2", "handle:1").close()
+        response = self.client.get("/changes")
+        self.assertIn(b"may never take effect", response.data)
+        response.close()
+
+    def test_rendering_escapes_rule_content(self):
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(1, {"log": {"prefix": "<script>x</script>"}}, {"accept": None})]}
+        data = self.page().data
+        self.assertNotIn(b"<script>x", data)
+        self.assertIn(b"&lt;script&gt;x", data)

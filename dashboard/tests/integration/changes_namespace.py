@@ -349,6 +349,40 @@ def main():
         failures.check(exported_bundle["version"] == 2 and any(rule.get("connection_states") == ["established", "related"] for rule in exported_bundle["rules"]), "exports include the new rule fields")
         failures.check(any(rule.get("action") == "reject" for rule in exported_bundle["rules"]), "exports include reject rules")
 
+        print("-- ordering rules, including rules the form can't represent")
+        nft(
+            "add chain inet filter ordered",
+            "add rule inet filter ordered tcp dport 7001 accept",
+            "add rule inet filter ordered tcp dport { 7002, 7003 } counter log prefix ordered accept",
+            "add rule inet filter ordered ct state established accept",
+        )
+        def ordered_rules():
+            listing = api.fetch_json("/api/v1/rules", bearer_token=access_token)
+            return [entry["rule"] for entry in listing["nftables"] if "rule" in entry and entry["rule"]["chain"] == "ordered"]
+
+        first, second, third = ordered_rules()
+        order = lambda *values: client.post("/rules/organize", data={"csrf_token": dashboard.token(), "chain": BASE + "ordered", "order": list(values)})
+        dashboard.add(chain=BASE + "ordered", protocol="tcp", destination_port="7004", action="drop")
+        with client.session_transaction() as session:
+            actor = session["actor_id"]
+        with client.application.app_context():
+            from webapp import pending_changes
+
+            new_id = pending_changes.load(actor)["changes"][0]["id"]
+        order(f"new:{new_id}", f"handle:{third['handle']}", f"handle:{first['handle']}", f"handle:{second['handle']}").close()
+        review = dashboard.page("/changes")
+        failures.check("Rule order" in review and "position" in review, "the review shows the new positions")
+        failures.check("dport 7004" not in listed(), "nothing changes before applying")
+        result = dashboard.apply(confirm_risk="yes")
+        failures.check(result.status_code == 302, f"the new order applies: {result.status_code}")
+        after = ordered_rules()
+        ports = lambda rule: json.dumps(rule["expr"])
+        failures.check(len(after) == 4, "no rule was lost or duplicated")
+        failures.check("7004" in ports(after[0]) and "established" in ports(after[1]) and "7001" in ports(after[2]) and "7002" in ports(after[3]), "nftables has the new order, with the new rule first")
+        failures.check(after[0].get("comment") == "archangel-managed", "the new rule is managed")
+        failures.check("counter" in ports(after[3]) and "ordered" in ports(after[3]) and "7003" in ports(after[3]), "a rule the form can't represent keeps its set, counter, and log")
+        failures.check("Applied 2 changes" in dashboard.page("/rules"), "the result is confirmed by reading it back")
+
         print("-- the connection warning, through the real API")
         nft("add chain inet filter input { type filter hook input priority 0 ; }")
         dashboard.add(chain=BASE + "input", protocol="tcp", destination_port=str(PORT), action="drop")

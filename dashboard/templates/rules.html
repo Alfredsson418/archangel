@@ -21,6 +21,15 @@
         <a class="refresh-button action-link" href="{{ url_for('pages.new_rule') }}">Add rule</a>
       </div>
     </div>
+    {% if chains %}
+    <form class="rules-filter" method="get" action="{{ url_for('pages.organize_rules') }}">
+      <label for="organize-chain">Change rule order in</label>
+      <select id="organize-chain" name="chain">
+        {% for chain in chains %}{% set key = chain.family ~ " " ~ chain.table ~ " " ~ chain.name %}<option value="{{ key }}">{{ key }}</option>{% endfor %}
+      </select>
+      <button class="text-button" type="submit">Organize</button>
+    </form>
+    {% endif %}
     <form class="rules-filter" method="get" action="{{ url_for('pages.rules_page') }}">
       <label for="rule-search">Filter rules</label>
       <input id="rule-search" name="q" type="search" value="{{ query }}" placeholder="Search family, table, chain, handle, or expression">
