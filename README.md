@@ -93,8 +93,8 @@ and `--export-firewall-config` are separate explicit firewall-bundle
 operations.
 
 The backend can export the complete active nftables ruleset in a versioned
-firewall config bundle, or import a bundle before starting the API. Firewall
-bundle v1 contains ruleset data only and separates rules created through
+firewall config bundle, or import a bundle. Both operations exit when finished
+and do not start the API. Firewall bundle v1 contains ruleset data only and separates rules created through
 the structured API from other rules and nftables objects:
 
 ```sh

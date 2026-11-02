@@ -123,7 +123,7 @@ int runApplication(int argc, char *argv[]) {
 	std::string importFirewallBundlePath;
 	std::string exportFirewallBundlePath;
 	app.add_option("--import-firewall-config", importFirewallBundlePath,
-				   "Import a versioned firewall ruleset bundle before serving");
+				   "Import a versioned firewall ruleset bundle and exit");
 	app.add_option("--export-firewall-config", exportFirewallBundlePath,
 				   "Export the complete nftables ruleset as a firewall bundle");
 	std::string rulesModeText;
@@ -303,6 +303,20 @@ int runApplication(int argc, char *argv[]) {
 			return 0;
 		}
 
+		// Exit instead of serving so a service definition that keeps this flag
+		// cannot reapply the bundle on every restart.
+		if (!importFirewallBundlePath.empty()) {
+			Firewall::BundleProvider &configProvider =
+				Cli::requireBundleProvider(nftables);
+			const Firewall::BundleImportMode importMode =
+				Firewall::resolveBundleImportMode(rulesModeText);
+			configProvider.importBundle(
+				Cli::readBundle(importFirewallBundlePath), importMode);
+			Logs::Logger::Program::log(
+				"Imported Archangel firewall config bundle");
+			return 0;
+		}
+
 		Auth::SqliteAuthProvider authProvider = makeAuthProvider(appConfig);
 
 		// Sources for GET /api/v1/logs, in display order.
@@ -314,23 +328,6 @@ int runApplication(int argc, char *argv[]) {
 				std::make_unique<Logs::NftablesJournalSource>(nftables));
 			return sources;
 		};
-
-		if (!importFirewallBundlePath.empty()) {
-			Firewall::BundleProvider &configProvider =
-				Cli::requireBundleProvider(nftables);
-			const Firewall::BundleImportMode importMode =
-				Firewall::resolveBundleImportMode(rulesModeText);
-			configProvider.importBundle(
-				Cli::readBundle(importFirewallBundlePath), importMode);
-			Logs::Logger::Program::log(
-				"Imported Archangel firewall config bundle");
-			Http::Server server(nftables, authProvider, logSources(),
-								appConfig.server, appConfig.tls,
-								appConfig.rate_limits);
-			server.run();
-			Logs::Logger::Program::log("Program stopped");
-			return 0;
-		}
 
 		Http::Server server(nftables, authProvider, logSources(),
 							appConfig.server, appConfig.tls,

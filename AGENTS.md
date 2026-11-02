@@ -19,7 +19,7 @@
 - Favor replaceable implementations for components with meaningful alternative backends or a committed need to support them. Define a narrow, backend-neutral contract around domain behavior; keep vendor/technology-specific code inside the implementation; select implementations at the composition/configuration boundary, following [Selecting an implementation](docs/architecture.md#selecting-an-implementation); and test contract behavior independently of concrete implementations. Do not spread backend-specific conditionals through handlers or domain logic.
 - Do not add interfaces, plugin loading, or generalized frameworks solely for hypothetical future flexibility. First identify a real alternative, portability requirement, or planned provider/sink, and keep abstractions proportional to that need.
 - Keep the dashboard server-rendered and server-side when it calls the C++ API; do not add API passthrough routes or duplicate backend identities in Flask/the browser. Any future authentication and authorization must be enforced by the C++ API.
-- Keep backend runtime settings separate from firewall import/export. Firewall imports are explicit, privileged operations; do not cause them to run implicitly at service startup.
+- Keep backend runtime settings separate from firewall import/export. Firewall imports are explicit, privileged operations; do not cause them to run implicitly at service startup. Starting or restarting the service must not change the firewall.
 - Keep structured firewall inputs and preserve the `Firewall::Backend` abstraction. Do not execute raw nftables commands built from request data.
 
 ## Security and operations

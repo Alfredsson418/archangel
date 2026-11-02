@@ -190,7 +190,7 @@ All authenticated roles can use read endpoints. `POST /api/v1/rules` and `DELETE
 
 ## Firewall ruleset bundle
 
-The backend supports one-shot export and startup import using version 1 firewall config bundles. The bundle format is `archangel-firewall-config`; it contains firewall rules only and is independent of listener and other runtime settings described in the [runtime-config guide](runtime-config.md). V1 separates rules marked as Archangel-managed from other native nftables rules and objects:
+The backend supports one-shot export and import, which exit without starting the API, using version 1 firewall config bundles. The bundle format is `archangel-firewall-config`; it contains firewall rules only and is independent of listener and other runtime settings described in the [runtime-config guide](runtime-config.md). V1 separates rules marked as Archangel-managed from other native nftables rules and objects:
 
 ```json
 {
@@ -213,7 +213,7 @@ The backend supports one-shot export and startup import using version 1 firewall
 Exported firewall bundles contain the complete ruleset objects and expressions, divided by the `archangel-managed` rule comment. Listener settings come only from the backend runtime config and `--host`/`--port`.
 
 - `--export-firewall-config PATH` writes firewall bundle v1 with `firewall.other_ruleset` and `firewall.archangel_rules`. Rules created through Archangel's structured API have the nftables comment `archangel-managed` and are placed in `archangel_rules`; all other rules and nftables objects are placed in `other_ruleset`. This comment is a reserved ownership marker, not an access-control mechanism.
-- `--import-firewall-config PATH --firewall-rules-mode merge` imports the bundle before the API starts and adds its objects/rules to the active ruleset.
+- `--import-firewall-config PATH --firewall-rules-mode merge` adds the bundle's objects/rules to the active ruleset.
 - `--import-firewall-config PATH --firewall-rules-mode replace` atomically replaces only currently marked Archangel rules and leaves unmarked rules and other objects untouched; the referenced tables and chains must already exist.
 - `--import-firewall-config PATH --firewall-rules-mode replace-all` explicitly flushes the entire active nftables ruleset, including tables not created by Archangel, then applies all imported objects and rules. This is destructive and can disconnect clients or lock out administrators.
 - Import mode is required for each import; accepted values are `merge`, `replace`, and `replace-all`. Only firewall bundle format `archangel-firewall-config` version 1 is supported; older formats and versions are rejected. Import and export cannot be combined. Imported and exported files are limited to 16 MiB.

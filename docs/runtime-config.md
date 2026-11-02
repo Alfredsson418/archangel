@@ -269,4 +269,5 @@ Firewall import/export remain explicit operations:
 ```
 
 An import remains a privileged, immediate firewall operation. Review bundles
-carefully and select `--firewall-rules-mode` explicitly.
+carefully and select `--firewall-rules-mode` explicitly. Export and import exit
+when finished and do not start the API, so start the service separately.
