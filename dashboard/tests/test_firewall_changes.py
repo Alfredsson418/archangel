@@ -454,6 +454,90 @@ class ApplyTests(ChangeFlowTestCase):
         self.assertEqual(len(self.pending()), 1)
         response.close()
 
+    def test_applied_rules_are_marked_on_the_rules_page_once(self):
+        self.add_rule()
+        self.apply().close()
+        page = self.client.get("/rules")
+        self.assertEqual(page.data.count(b"JUST APPLIED</span>"), 1)
+        self.assertLess(page.data.index(b"JUST APPLIED</span>"), page.data.index(b"443"))
+        page.close()
+        page = self.client.get("/rules")
+        self.assertNotIn(b"JUST APPLIED</span>", page.data)
+        page.close()
+
+    def test_edited_rules_are_marked_too(self):
+        self.post("/rules/edit", form_action="add", family="inet", table="filter", chain="input", handle="7", protocol="tcp", destination_port="2222", action="accept").close()
+        self.apply().close()
+        page = self.client.get("/rules")
+        self.assertIn(b"JUST APPLIED</span>", page.data)
+        page.close()
+
+    def test_a_retry_after_an_unknown_outcome_does_not_apply_twice(self):
+        # The request reached the backend and applied, but the reply was lost.
+
+        original_call = self.api.__call__
+        self.add_rule()
+
+        def lose_reply(request, **kwargs):
+            if request.full_url.endswith("/api/v1/firewall/changes"):
+                self.api._apply(json.loads(request.data))
+                self.api.revision = "rev2"
+                self.api.applied.append(json.loads(request.data))
+                raise URLError("timed out")
+            return original_call(request, **kwargs)
+
+        self.urlopen.side_effect = lose_reply
+        response = self.apply()
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(len(self.pending()), 1)
+        response.close()
+
+        self.urlopen.side_effect = self._respond
+        response = self.client.get("/changes")
+        self.assertEqual(response.status_code, 302)
+        response.close()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(len(self.api.applied), 1)
+        page = self.client.get("/rules")
+        self.assertIn(b"did apply these 1 change", page.data)
+        page.close()
+
+    def test_a_list_that_did_not_apply_stays_pending_after_an_unknown_outcome(self):
+        self.api.apply_response = URLError("timed out")
+        self.add_rule()
+        self.apply().close()
+        self.api.apply_response = None
+        self.assertEqual(len(self.pending()), 1)
+        page = self.client.get("/changes")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Accept TCP traffic to port 443", page.data)
+        page.close()
+        self.apply().close()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(len(self.api.applied), 2)
+
+    def test_an_identical_existing_rule_is_not_mistaken_for_an_applied_list(self):
+        self.api.ruleset = {"nftables": [input_chain(), listed_rule(7, port_match(443), {"accept": None})]}
+        self.api.apply_response = URLError("timed out")
+        self.add_rule()
+        self.apply().close()
+        self.api.apply_response = None
+        page = self.client.get("/changes")
+        self.assertEqual(page.status_code, 200)
+        page.close()
+        self.assertEqual(len(self.pending()), 1)
+
+    def test_an_unknown_outcome_stays_unresolved_while_the_backend_is_down(self):
+        self.api.apply_response = URLError("timed out")
+        self.add_rule()
+        self.apply().close()
+        self.urlopen.side_effect = URLError("refused")
+        page = self.client.get("/changes")
+        self.assertIn(b"can't be reviewed", page.data.replace(b"&#39;", b"'"))
+        page.close()
+        with app.app_context():
+            self.assertTrue(pending_changes.load(TEST_ACTOR_ID).get("outcome_unknown"))
+
     def test_a_server_failure_is_an_unknown_outcome(self):
         self.api.apply_response = UpstreamResponse({"error": "x"}, status=500)
         self.add_rule()
@@ -637,6 +721,12 @@ class BulkInputTests(ChangeFlowTestCase):
         self.assertIn(b'value="443"', response.data)
         response.close()
         self.assertEqual(len(self.pending()), 1)
+
+    def test_adding_a_rule_makes_as_few_api_calls_as_possible(self):
+        self.add_rule()
+        first = self.urlopen.call_count
+        self.add_rule(destination_port="444")
+        self.assertEqual(self.urlopen.call_count, first, "a second rule on the same chain needs no API calls")
 
     def test_many_rules_can_be_added_in_a_row(self):
         for port in range(1000, 1020):

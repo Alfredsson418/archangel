@@ -27,6 +27,7 @@ from .firewall_changes import (
     describe_change,
     describe_listed_rule,
     find_rule,
+    highlight_entries,
     is_unmanaged,
     management_risk,
     pending_on_rule,
@@ -249,27 +250,27 @@ def new_rule():
     Returns:
         The rendered form with an HTTP status, or a redirect after adding.
     """
-    chains, error = _form_chains()
     if request.method == "GET":
+        chains, error = _form_chains()
         return _render_rule_form(chains=chains, values=_duplicated_values() or {"action": "accept"}, error=error)
 
     values = {field: request.form.get(field, "") for field in _FORM_FIELDS}
     values["connection_states"] = request.form.getlist("connection_states")
     rule, form_error = _rule_from_form(request.form, request.form.getlist("connection_states"))
     if form_error:
-        return _render_rule_form(chains=chains, values=values, error=form_error, status=400)
+        return _render_rule_form(chains=_form_chains()[0], values=values, error=form_error, status=400)
     action = request.form.get("form_action", "preview")
     if action == "preview":
-        return _render_rule_form(chains=chains, values=values, preview=describe_rule(rule))
+        return _render_rule_form(chains=_form_chains()[0], values=values, preview=describe_rule(rule))
 
     store_error = add_rules_to_pending([rule])
     if store_error:
-        return _render_rule_form(chains=chains, values=values, error=store_error, status=409)
+        return _render_rule_form(chains=_form_chains()[0], values=values, error=store_error, status=409)
     current_app.logger.info("firewall_change_added type=%s", ADD_RULE)
     if action == "add_another":
         # Keep the values, so that adding many similar rules is quick.
         return _render_rule_form(
-            chains=chains,
+            chains=_form_chains()[0],
             values=values,
             message=f"Added to pending changes: {describe_rule(rule)}. Change what differs for the next rule.",
         )
@@ -442,14 +443,63 @@ def import_rules():
     )
 
 
-def _rules_redirect(success, message):
+def _rules_redirect(success, message, applied=()):
     """Return to the rules page, which shows the result once.
+
+    Args:
+        success: Whether the result is good news.
+        message: Text to show.
+        applied: Changes just applied, whose rules the page highlights.
 
     Returns:
         A redirect, so that refreshing can't repeat what was just done.
     """
-    session["firewall_result"] = {"success": success, "message": message}
+    session["firewall_result"] = {
+        "success": success,
+        "message": message,
+        "highlight": highlight_entries(applied),
+    }
     return redirect(url_for("pages.rules_page"))
+
+
+def _settle_unknown_outcome(actor, pending):
+    """Work out what happened to a change list whose outcome was unknown.
+
+    The list applied in one transaction, so it either fully applied or didn't
+    apply at all. Without this, retrying a list that did apply would add its
+    new rules a second time.
+
+    Returns:
+        A redirect to the rules page if the list did apply, otherwise None. The
+        list stays pending if the firewall can't be read yet.
+
+    Raises:
+        BackendSessionExpired: If the backend rejects the session.
+    """
+    if not pending.get("outcome_unknown"):
+        return None
+    ruleset, error = load("/api/v1/rules")
+    revisions, revision_error = load("/api/v1/firewall/revisions")
+    if error or revision_error or ruleset_shape_error(ruleset):
+        return None
+    current = _revision_map(revisions)
+    touched = {change_chain(change) for change in pending["changes"]}
+    # A transaction changes the revision of every chain it touches, which also
+    # rules out an identical rule that already existed.
+    chains_changed = all(current.get(chain) != pending["revisions"].get(chain) for chain in touched)
+    if chains_changed and verify_applied(ruleset, pending["changes"]):
+        applied = pending["changes"]
+        pending_changes.save(actor, {"changes": [], "revisions": {}})
+        current_app.logger.info("firewall_changes_outcome_settled applied=true count=%s", len(applied))
+        return _rules_redirect(
+            True,
+            f"The earlier attempt did apply these {len(applied)} change{'' if len(applied) == 1 else 's'}, so they weren't applied again.",
+            applied,
+        )
+    current_app.logger.info("firewall_changes_outcome_settled applied=false count=%s", len(pending["changes"]))
+    pending.pop("outcome_unknown")
+    pending_changes.save(actor, pending)
+    return None
 
 
 def _load_connection():
@@ -644,7 +694,11 @@ def review_changes():
     Returns:
         Rendered review HTML.
     """
-    pending = pending_changes.load(_actor_id())
+    actor = _actor_id()
+    pending = pending_changes.load(actor)
+    settled = _settle_unknown_outcome(actor, pending)
+    if settled is not None:
+        return settled
     return render_template("changes.html", **_review_context(pending))
 
 
@@ -685,6 +739,9 @@ def refresh_changes():
     """
     actor = _actor_id()
     pending = pending_changes.load(actor)
+    settled = _settle_unknown_outcome(actor, pending)
+    if settled is not None:
+        return settled
     revisions, error = load("/api/v1/firewall/revisions")
     if error is None:
         pending["revisions"].update(_revision_map(revisions))
@@ -705,6 +762,9 @@ def apply_changes():
     pending = pending_changes.load(actor)
     if not pending["changes"]:
         return redirect(url_for("pages.review_changes"))
+    settled = _settle_unknown_outcome(actor, pending)
+    if settled is not None:
+        return settled
     context = _review_context(pending)
 
     def refuse(message, status):
@@ -718,14 +778,18 @@ def apply_changes():
     if (context["risk_count"] or context["unmanaged_count"]) and request.form.get("confirm_risk") != "yes":
         return refuse("Confirm the management risks and rules Archangel doesn't manage. Nothing was changed.", 400)
 
+    def outcome_unknown(message):
+        current_app.logger.warning("firewall_changes_outcome_unknown count=%s", len(pending["changes"]))
+        pending["outcome_unknown"] = True
+        pending_changes.save(actor, pending)
+        return refuse(message, 502)
+
     try:
         response, payload = _call_changes_api("/api/v1/firewall/changes", api_payload(pending))
     except ApiConnectionError:
-        current_app.logger.warning("firewall_changes_outcome_unknown count=%s", len(pending["changes"]))
-        return refuse(_APPLY_FAILED_UNKNOWN, 502)
+        return outcome_unknown(_APPLY_FAILED_UNKNOWN)
     except ApiResponseError as error:
-        current_app.logger.warning("firewall_changes_outcome_unknown count=%s", len(pending["changes"]))
-        return refuse(f"{error} {_APPLY_FAILED_UNKNOWN}", 502)
+        return outcome_unknown(f"{error} {_APPLY_FAILED_UNKNOWN}")
 
     if not 200 <= response.status < 300:
         current_app.logger.warning("firewall_changes_rejected status=%s", response.status)
@@ -733,7 +797,7 @@ def apply_changes():
         rejected = index if response.status == 422 and isinstance(index, int) and not isinstance(index, bool) else None
         message = _rejection_message(response, payload)
         if response.status >= 500:
-            message = _APPLY_FAILED_UNKNOWN
+            return outcome_unknown(_APPLY_FAILED_UNKNOWN)
         return (
             render_template("changes.html", **_review_context(pending, error=message, rejected_index=rejected)),
             response.status if response.status in (403, 409, 422, 429) else 502,
@@ -748,6 +812,6 @@ def apply_changes():
         confirmed = False
     if not confirmed:
         current_app.logger.warning("firewall_changes_unverified count=%s", len(applied))
-        return _rules_redirect(False, "The backend reported success, but the result couldn't be confirmed. Check the rules below.")
+        return _rules_redirect(False, "The backend reported success, but the result couldn't be confirmed. Check the rules below.", applied)
     count = len(applied)
-    return _rules_redirect(True, f"Applied {count} change{'' if count == 1 else 's'}. The firewall now shows the result below.")
+    return _rules_redirect(True, f"Applied {count} change{'' if count == 1 else 's'}. The firewall now shows the result below.", applied)

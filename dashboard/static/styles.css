@@ -255,3 +255,5 @@ tbody tr:last-child td { border-bottom: 0; }
 .change-warning { margin: 6px 0 0; color: #74284f; font-size: 11px; }
 .change-problem { margin: 6px 0 0; color: #74284f; font-size: 11px; font-weight: 700; }
 .review-confirm { display: grid; gap: 12px; }
+.rule-just-applied td { background: #e6f7f6; }
+.applied-flag { display: inline-block; margin-bottom: 4px; border: 1px solid var(--teal); padding: 1px 6px; color: #075f63; font: 700 10px var(--mono); }

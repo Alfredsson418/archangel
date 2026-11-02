@@ -41,8 +41,8 @@
       <tbody>
         {% for rule in rules %}
           {% set expression = rule.get("expr", []) %}
-          <tr>
-            <td class="code-cell">{{ rule.get("family", "—") }}</td>
+          <tr {% if rule.just_applied %}class="rule-just-applied"{% endif %}>
+            <td class="code-cell">{% if rule.just_applied %}<span class="applied-flag">JUST APPLIED</span><br>{% endif %}{{ rule.get("family", "—") }}</td>
             <td class="code-cell">{{ rule.get("table", "—") }}</td>
             <td class="code-cell">{{ rule.get("chain", "—") }}</td>
             <td class="code-cell">{{ rule.get("handle", "—") }}</td>

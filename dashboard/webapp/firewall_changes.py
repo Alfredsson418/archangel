@@ -19,6 +19,7 @@ REPLACE_RULE = "replace_rule"
 # this many, every candidate is flagged rather than making the page slow.
 _MAX_FLAG_CANDIDATES = 64
 _INCOMING_HOOKS = ("input", "prerouting")
+_MAX_HIGHLIGHTED_RULES = 200
 _TERMINAL_STATEMENTS = ("accept", "drop", "reject")
 
 
@@ -451,6 +452,19 @@ def api_payload(pending):
         family, table, chain = key.split(" ")
         expected.append({"family": family, "table": table, "chain": chain, "revision": pending["revisions"].get(key, "")})
     return {"expected_revisions": expected, "changes": changes}
+
+
+def highlight_entries(changes):
+    """Summarize applied changes so that the rules page can mark their rules.
+
+    Bounded, because it's kept in the browser session until the next page. Past
+    the limit, the page still reports the result but marks only some rules.
+
+    Returns:
+        A list of the structured rules that were added or edited.
+    """
+    rules = [change["rule"] for change in changes if change["type"] in (ADD_RULE, REPLACE_RULE)]
+    return rules[:_MAX_HIGHLIGHTED_RULES]
 
 
 def verify_applied(ruleset, changes):

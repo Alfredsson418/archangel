@@ -258,10 +258,15 @@ def rules_page():
 
     rules.sort(key=sort_key, reverse=direction == "desc")
     # Whether the rule form can represent each rule, which edit and duplicate need.
-    rules = [dict(rule, representable=portable_rule(rule) is not None) for rule in rules]
+    firewall_result = session.pop("firewall_result", None)
+    highlighted = firewall_result.get("highlight", []) if firewall_result else []
+    rules = [
+        dict(rule, representable=portable is not None, just_applied=portable in highlighted if portable else False)
+        for rule, portable in ((rule, portable_rule(rule)) for rule in rules)
+    ]
     return render_template(
         "rules.html",
-        firewall_result=session.pop("firewall_result", None),
+        firewall_result=firewall_result,
         rules=rules,
         total_rules=total_rules,
         error=error,
