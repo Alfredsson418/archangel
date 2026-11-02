@@ -64,3 +64,31 @@ jobs:
 
       - name: Build backend
         run: make debug
+
+  namespace-checks:
+    name: Real firewall checks in a network namespace
+    # Ubuntu blocks unprivileged user namespaces by default, and these checks use
+    # one so that they can't touch the runner's own firewall.
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes g++ make libnftables-dev libsqlite3-dev libargon2-dev libssl-dev nftables iproute2 util-linux python3-venv
+          python3 -m venv dashboard/.venv
+          dashboard/.venv/bin/python -m pip install -r dashboard/requirements.txt
+
+      - name: Build backend
+        run: make debug
+
+      - name: Compare the connection check with real connections
+        run: unshare -rn dashboard/.venv/bin/python dashboard/tests/integration/connection_check_namespace.py
+
+      - name: Run the dashboard, API, and nftables together
+        run: unshare -rn dashboard/.venv/bin/python dashboard/tests/integration/changes_namespace.py
