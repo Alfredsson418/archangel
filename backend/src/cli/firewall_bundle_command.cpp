@@ -1,6 +1,5 @@
 #include "cli/firewall_bundle_command.hpp"
 #include "config/app_config.hpp"
-#include "firewall/bundle.hpp"
 
 #include <fstream>
 #include <stdexcept>
@@ -40,17 +39,16 @@ std::string readBundle(const std::string &path) {
 	return content;
 }
 
-void writeBundle(const std::string &path, const std::string &ruleset) {
-	const std::string configuration = Firewall::serializeBundle(ruleset);
-	if (configuration.size() >
+void writeBundle(const std::string &path, const std::string &bundle) {
+	if (bundle.size() >
 		static_cast<std::size_t>(Config::Limits::MAX_FIREWALL_BUNDLE_BYTES)) {
 		throw std::runtime_error(
 			"Exported firewall config exceeds the 16 MiB limit");
 	}
 	std::ofstream output(path, std::ios::binary | std::ios::trunc);
 	if (!output ||
-		!output.write(configuration.data(),
-					  static_cast<std::streamsize>(configuration.size()))) {
+		!output.write(bundle.data(),
+					  static_cast<std::streamsize>(bundle.size()))) {
 		throw std::runtime_error("Unable to write exported firewall config: " +
 								 path);
 	}

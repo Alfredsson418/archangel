@@ -61,8 +61,12 @@ void writesAndReadsVersionedBundles() {
 	const auto		   path	   = directory.file("bundle.json");
 	const std::string  ruleset = R"({"nftables":[]})";
 
-	Cli::writeBundle(path.string(), ruleset);
-	const std::string	   bundle = Cli::readBundle(path.string());
+	// Export passes an already serialized bundle, so it must be written as is.
+	const std::string exported = Firewall::serializeBundle(ruleset);
+	Cli::writeBundle(path.string(), exported);
+	const std::string bundle = Cli::readBundle(path.string());
+	TestSupport::require(bundle == exported,
+						 "exported bundle should be written unchanged");
 	const Firewall::Bundle parsed = Firewall::parseBundle(bundle);
 	TestSupport::require(parsed.ruleset == ruleset,
 						 "written bundle should preserve its native ruleset");

@@ -24,13 +24,14 @@ Firewall::BundleProvider &requireBundleProvider(Firewall::Backend &firewall);
 std::string readBundle(const std::string &path);
 
 /**
- * @brief Serializes and writes a firewall configuration bundle to disk.
+ * @brief Writes a serialized firewall configuration bundle to disk.
  * @param path Filesystem path to write.
- * @param ruleset Complete native nftables ruleset JSON.
+ * @param bundle Bundle JSON text, as returned by
+ * Firewall::BundleProvider::exportBundle.
  * @return No value.
- * @throws std::runtime_error If serialization or file writing fails, or the
- * serialized bundle exceeds 16 MiB.
+ * @throws std::runtime_error If file writing fails or the bundle exceeds
+ * 16 MiB.
  */
-void writeBundle(const std::string &path, const std::string &ruleset);
+void writeBundle(const std::string &path, const std::string &bundle);
 
 } // namespace Cli
